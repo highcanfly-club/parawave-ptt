@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - apps/client/**
+      - apps/backend-client/**
       - yarn.lock
       - .github/workflows/pages.yaml
 
@@ -39,7 +39,7 @@ jobs:
         run: |
           mv package.json package.json.bak
           mv yarn.lock yarn.lock.bak
-          cd apps/client
+          cd apps/backend-client
           npm install
           cd ../../apps/cloudflare-worker
           npm install
@@ -100,7 +100,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload docs directory
-          path: "apps/client/dist"
+          path: "apps/backend-client/dist"
 
   deploy:
     environment:
