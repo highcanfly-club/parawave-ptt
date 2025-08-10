@@ -26,15 +26,15 @@ fi
 # Clean existing node_modules
 echo -e "${YELLOW}🧹 Cleaning node_modules...${NC}"
 rm -rf node_modules
-rm -rf apps/client/node_modules 
+rm -rf apps/backend-admin/node_modules
 rm -rf apps/cloudflare-worker/node_modules
 rm -rf .turbo
-rm -rf apps/client/.turbo
-rm -rf apps/client/dist
+rm -rf apps/backend-admin/.turbo
+rm -rf apps/backend-admin/dist
 
 # npm install in each app
-echo -e "${YELLOW}📦 npm install in client...${NC}"
-cd apps/client
+echo -e "${YELLOW}📦 npm install in backend-admin...${NC}"
+cd apps/backend-admin
 npm install
 cd ../../
 
@@ -62,7 +62,7 @@ echo -e "${YELLOW}🔨 Building client...${NC}"
 yarn build:client:env
 
 # Check
-if [ -d "apps/client/dist" ]; then
+if [ -d "apps/backend-admin/dist" ]; then
     echo -e "${GREEN}✅ Client build succeeded${NC}"
     
     # Check HeroUI styles

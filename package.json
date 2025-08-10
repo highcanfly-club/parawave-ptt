@@ -5,7 +5,8 @@
   "type": "module",
   "packageManager": "yarn@4.9.2",
   "workspaces": [
-    "apps/*"
+    "apps/backend-admin",
+    "apps/cloudflare-worker"
   ],
   "scripts": {
     "build": "turbo run build",

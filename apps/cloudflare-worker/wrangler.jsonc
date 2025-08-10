@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "cloudflare-fake-secured-api",
+	"name": "parawave-backend",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-19",
 	"observability": {
@@ -58,4 +58,5 @@
 	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
 
 	// "routes": [{"pattern": "shop.example.com","custom_domain": true}]
+	,"routes": [{"pattern": "parawave-backend.highcanfly.club","custom_domain": true}]
 }

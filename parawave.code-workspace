@@ -5,8 +5,8 @@
       "path": "./"
     },
     {
-      "name": "Client App",
-      "path": "./apps/client"
+      "name": "Admin App",
+      "path": "./apps/backend-admin"
     },
     {
       "name": "Cloudflare Worker",
@@ -15,7 +15,8 @@
     {
       "name": "GitHub Actions",
       "path": "./.github"
-    }
+    },
+    {"name": "Documentation", "path": "./docs"}
   ],
   "settings": {
     "i18n-ally.keystyle": "flat",
