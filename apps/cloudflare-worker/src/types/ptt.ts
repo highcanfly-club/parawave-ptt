@@ -80,6 +80,13 @@ export interface CreateChannelRequest {
 }
 
 /**
+ * Request payload for creating a new channel with specific UUID
+ */
+export interface CreateChannelWithUuidRequest extends CreateChannelRequest {
+	uuid: string;
+}
+
+/**
  * Request payload for updating an existing channel
  */
 export interface UpdateChannelRequest {
@@ -165,4 +172,33 @@ export interface FlyingSite {
 	radius_km: number;
 	weather_station_id?: string;
 	associated_channels: string[]; // Channel UUIDs
+}
+
+/**
+ * Request payload for joining a channel
+ */
+export interface JoinChannelRequest {
+	location?: Coordinates;
+}
+
+/**
+ * Response payload for joining a channel
+ */
+export interface JoinChannelResponse {
+	success: boolean;
+	participant?: ChannelParticipant;
+	channel_info?: {
+		name: string;
+		participants_count: number;
+		max_participants: number;
+	};
+	error?: string;
+}
+
+/**
+ * Response payload for leaving a channel
+ */
+export interface LeaveChannelResponse {
+	success: boolean;
+	error?: string;
 }

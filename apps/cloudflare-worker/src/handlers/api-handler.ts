@@ -25,10 +25,15 @@
 import { checkPermissions } from '../auth0';
 import { ChannelService } from '../services/channel-service';
 import { 
-	CreateChannelRequest, 
+	CreateChannelRequest,
+	CreateChannelWithUuidRequest, 
 	UpdateChannelRequest, 
 	APIResponse,
-	ChannelsListResponse
+	ChannelsListResponse,
+	JoinChannelRequest,
+	JoinChannelResponse,
+	LeaveChannelResponse,
+	ChannelParticipant
 } from '../types/ptt';
 
 /**
@@ -122,6 +127,68 @@ import {
  *           minimum: -180
  *           maximum: 180
  *           description: Longitude
+ *     ChannelParticipant:
+ *       type: object
+ *       properties:
+ *         user_id:
+ *           type: string
+ *           description: User identifier from Auth0
+ *         username:
+ *           type: string
+ *           description: Display name for the user
+ *         join_time:
+ *           type: string
+ *           format: date-time
+ *           description: When the user joined the channel
+ *         last_seen:
+ *           type: string
+ *           format: date-time
+ *           description: Last activity timestamp
+ *         location:
+ *           $ref: '#/components/schemas/Coordinates'
+ *         connection_quality:
+ *           type: string
+ *           enum: [poor, fair, good, excellent]
+ *           description: Network connection quality
+ *         is_transmitting:
+ *           type: boolean
+ *           description: Whether the user is currently transmitting
+ *     JoinChannelRequest:
+ *       type: object
+ *       properties:
+ *         location:
+ *           $ref: '#/components/schemas/Coordinates'
+ *           description: Optional user location when joining
+ *     JoinChannelResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         participant:
+ *           $ref: '#/components/schemas/ChannelParticipant'
+ *         channel_info:
+ *           type: object
+ *           properties:
+ *             name:
+ *               type: string
+ *               description: Channel name
+ *             participants_count:
+ *               type: integer
+ *               description: Current number of participants
+ *             max_participants:
+ *               type: integer
+ *               description: Maximum allowed participants
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
+ *     LeaveChannelResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
  * 
  * info:
  *   title: ParaWave PTT API
@@ -195,11 +262,12 @@ export class PTTAPIHandler {
 
 			const resource = pathParts[2];
 			const resourceId = pathParts[3];
+			const subResource = pathParts[4];
 
 			// Route to appropriate handler
 			switch (resource) {
 				case 'channels':
-					return await this.handleChannelsAPI(request, env, resourceId);
+					return await this.handleChannelsAPI(request, env, resourceId, subResource);
 				case 'health':
 					return await this.handleHealthCheck(request);
 				default:
@@ -216,9 +284,10 @@ export class PTTAPIHandler {
 	 * @param request HTTP request
 	 * @param env Environment variables
 	 * @param resourceId Channel UUID if specified
+	 * @param subResource Sub-resource like 'join', 'leave', 'participants'
 	 * @returns HTTP response
 	 */
-	private async handleChannelsAPI(request: Request, env: Env, resourceId?: string): Promise<Response> {
+	private async handleChannelsAPI(request: Request, env: Env, resourceId?: string, subResource?: string): Promise<Response> {
 		const method = request.method;
 
 		// Authentication required for all channel operations
@@ -231,6 +300,41 @@ export class PTTAPIHandler {
 		const permissions = authResult.permissions!;
 
 		try {
+			// Special handling for /channels/with-uuid endpoint
+			if (resourceId === 'with-uuid' && !subResource) {
+				if (method === 'POST') {
+					return await this.createChannelWithUuid(request, userId, permissions);
+				}
+				return this.errorResponse(`Method ${method} not allowed for with-uuid endpoint`, 405);
+			}
+
+			// Handle sub-resources for specific channels
+			if (resourceId && subResource) {
+				switch (subResource) {
+					case 'join':
+						if (method === 'POST') {
+							return await this.joinChannel(request, resourceId, userId, permissions);
+						}
+						return this.errorResponse(`Method ${method} not allowed for join operation`, 405);
+
+					case 'leave':
+						if (method === 'POST' || method === 'DELETE') {
+							return await this.leaveChannel(request, resourceId, userId, permissions);
+						}
+						return this.errorResponse(`Method ${method} not allowed for leave operation`, 405);
+
+					case 'participants':
+						if (method === 'GET') {
+							return await this.getChannelParticipants(resourceId, permissions);
+						}
+						return this.errorResponse(`Method ${method} not allowed for participants operation`, 405);
+
+					default:
+						return this.errorResponse(`Unknown sub-resource: ${subResource}`, 404);
+				}
+			}
+
+			// Handle regular channel CRUD operations
 			switch (method) {
 				case 'GET':
 					return resourceId ? 
@@ -606,6 +710,90 @@ export class PTTAPIHandler {
 		const channel = await this.channelService.createChannel(createRequest, userId);
 		if (!channel) {
 			return this.errorResponse('Failed to create channel', 500);
+		}
+
+		return this.successResponse(channel, 201);
+	}
+
+	/**
+	 * POST /api/v1/channels/with-uuid - Create channel with specific UUID
+	 * 
+	 * @openapi
+	 * /api/v1/channels/with-uuid:
+	 *   post:
+	 *     summary: Create channel with specific UUID
+	 *     description: Creates a new channel with a manually specified UUID. UUID must be unique.
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             allOf:
+	 *               - $ref: '#/components/schemas/CreateChannelRequest'
+	 *               - type: object
+	 *                 required:
+	 *                   - uuid
+	 *                 properties:
+	 *                   uuid:
+	 *                     type: string
+	 *                     format: uuid
+	 *                     description: Specific UUID for the channel
+	 *     responses:
+	 *       201:
+	 *         description: Channel created successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ChannelResponse'
+	 *       400:
+	 *         description: Invalid request or UUID already exists
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Insufficient permissions
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Failed to create channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async createChannelWithUuid(request: Request, userId: string, permissions: string[]): Promise<Response> {
+		// Check write permission
+		if (!permissions.includes('write:api')) {
+			return this.errorResponse('Insufficient permissions', 403);
+		}
+
+		let createRequest: CreateChannelWithUuidRequest;
+		try {
+			createRequest = await request.json();
+		} catch (error) {
+			return this.errorResponse('Invalid JSON payload', 400);
+		}
+
+		// Validate required fields
+		if (!createRequest.name || !createRequest.type || !createRequest.uuid) {
+			return this.errorResponse('Name, type, and uuid are required fields', 400);
+		}
+
+		// Additional validation for emergency channels (admin only)
+		if (createRequest.type === 'emergency' && !permissions.includes('admin:api')) {
+			return this.errorResponse('Admin permission required to create emergency channels', 403);
+		}
+
+		const channel = await this.channelService.createChannelWithUuid(createRequest, userId, createRequest.uuid);
+		if (!channel) {
+			return this.errorResponse('Failed to create channel - UUID may already exist', 400);
 		}
 
 		return this.successResponse(channel, 201);
@@ -1109,6 +1297,306 @@ export class PTTAPIHandler {
 			status,
 			headers: this.corsHeaders
 		});
+	}
+
+	/**
+	 * POST /api/v1/channels/{uuid}/join - Join a channel as participant
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}/join:
+	 *   post:
+	 *     summary: Join a channel
+	 *     description: Join a PTT channel as participant. Requires access permission for the specific channel (access:{uuid}).
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     requestBody:
+	 *       description: Optional location information
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             $ref: '#/components/schemas/JoinChannelRequest'
+	 *           example:
+	 *             location:
+	 *               lat: 45.929681
+	 *               lon: 6.876345
+	 *     responses:
+	 *       200:
+	 *         description: Successfully joined channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/JoinChannelResponse'
+	 *             example:
+	 *               success: true
+	 *               participant:
+	 *                 user_id: "auth0|507f1f77bcf86cd799439011"
+	 *                 username: "pilot123"
+	 *                 join_time: "2025-08-11T10:30:00.000Z"
+	 *                 last_seen: "2025-08-11T10:30:00.000Z"
+	 *                 connection_quality: "good"
+	 *                 is_transmitting: false
+	 *               channel_info:
+	 *                 name: "Chamonix - Mont Blanc"
+	 *                 participants_count: 3
+	 *                 max_participants: 20
+	 *       400:
+	 *         description: Bad request (channel full, inactive, etc.)
+	 *       403:
+	 *         description: Access denied - insufficient permissions
+	 *       404:
+	 *         description: Channel not found
+	 */
+	private async joinChannel(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
+		// Check channel-specific access permission
+		const requiredPermission = `access:${channelUuid}`;
+		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
+			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+		}
+
+		try {
+			// Parse optional location from request body
+			let joinRequest: JoinChannelRequest = {};
+			try {
+				const body = await request.text();
+				if (body.trim()) {
+					joinRequest = JSON.parse(body);
+				}
+			} catch {
+				// Empty or invalid JSON body is OK for join request
+			}
+
+			// Join channel using service
+			const result = await this.channelService.joinChannel(channelUuid, userId, joinRequest.location);
+
+			if (!result.success) {
+				return this.errorResponse(result.error || 'Failed to join channel', 400);
+			}
+
+			// Get channel info for response
+			const channel = await this.channelService.getChannel(channelUuid);
+			const participants = await this.channelService.getChannelParticipants(channelUuid);
+
+			const response: JoinChannelResponse = {
+				success: true,
+				participant: result.participant,
+				channel_info: channel ? {
+					name: channel.name,
+					participants_count: participants.length,
+					max_participants: channel.max_participants
+				} : undefined
+			};
+
+			return new Response(JSON.stringify(response), {
+				status: 200,
+				headers: this.corsHeaders
+			});
+
+		} catch (error) {
+			console.error('Join channel error:', error);
+			return this.errorResponse('Internal server error', 500);
+		}
+	}
+
+	/**
+	 * POST /api/v1/channels/{uuid}/leave - Leave a channel
+	 * DELETE /api/v1/channels/{uuid}/leave - Leave a channel (alternative method)
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}/leave:
+	 *   post:
+	 *     summary: Leave a channel
+	 *     description: Leave a PTT channel. Requires access permission for the specific channel (access:{uuid}).
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     responses:
+	 *       200:
+	 *         description: Successfully left channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/LeaveChannelResponse'
+	 *             example:
+	 *               success: true
+	 *       400:
+	 *         description: Bad request (not a participant, etc.)
+	 *       403:
+	 *         description: Access denied - insufficient permissions
+	 *   delete:
+	 *     summary: Leave a channel (alternative method)
+	 *     description: Leave a PTT channel using DELETE method. Requires access permission for the specific channel (access:{uuid}).
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     responses:
+	 *       200:
+	 *         description: Successfully left channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/LeaveChannelResponse'
+	 *       400:
+	 *         description: Bad request (not a participant, etc.)
+	 *       403:
+	 *         description: Access denied - insufficient permissions
+	 */
+	private async leaveChannel(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
+		// Check channel-specific access permission
+		const requiredPermission = `access:${channelUuid}`;
+		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
+			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+		}
+
+		try {
+			// Leave channel using service
+			const result = await this.channelService.leaveChannel(channelUuid, userId);
+
+			if (!result.success) {
+				return this.errorResponse(result.error || 'Failed to leave channel', 400);
+			}
+
+			const response: LeaveChannelResponse = {
+				success: true
+			};
+
+			return new Response(JSON.stringify(response), {
+				status: 200,
+				headers: this.corsHeaders
+			});
+
+		} catch (error) {
+			console.error('Leave channel error:', error);
+			return this.errorResponse('Internal server error', 500);
+		}
+	}
+
+	/**
+	 * GET /api/v1/channels/{uuid}/participants - Get channel participants
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}/participants:
+	 *   get:
+	 *     summary: Get channel participants
+	 *     description: Retrieve list of current participants in a channel. Requires access permission for the specific channel (access:{uuid}).
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     responses:
+	 *       200:
+	 *         description: Participants retrieved successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: array
+	 *                   items:
+	 *                     $ref: '#/components/schemas/ChannelParticipant'
+	 *                 total_count:
+	 *                   type: integer
+	 *                   description: Total number of participants
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *             example:
+	 *               success: true
+	 *               data:
+	 *                 - user_id: "auth0|507f1f77bcf86cd799439011"
+	 *                   username: "pilot123"
+	 *                   join_time: "2025-08-11T10:30:00.000Z"
+	 *                   last_seen: "2025-08-11T10:35:00.000Z"
+	 *                   connection_quality: "good"
+	 *                   is_transmitting: false
+	 *               total_count: 1
+	 *               timestamp: "2025-08-11T10:35:00.000Z"
+	 *               version: "1.0.0"
+	 *       403:
+	 *         description: Access denied - insufficient permissions
+	 *       404:
+	 *         description: Channel not found
+	 */
+	private async getChannelParticipants(channelUuid: string, permissions: string[]): Promise<Response> {
+		// Check channel-specific access permission
+		const requiredPermission = `access:${channelUuid}`;
+		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
+			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+		}
+
+		try {
+			// Verify channel exists
+			const channel = await this.channelService.getChannel(channelUuid);
+			if (!channel) {
+				return this.errorResponse('Channel not found', 404);
+			}
+
+			// Get participants
+			const participants = await this.channelService.getChannelParticipants(channelUuid);
+
+			const response: APIResponse<ChannelParticipant[]> = {
+				success: true,
+				data: participants,
+				timestamp: new Date().toISOString(),
+				version: '1.0.0'
+			};
+
+			// Add total count as additional property
+			const responseWithCount = {
+				...response,
+				total_count: participants.length
+			};
+
+			return new Response(JSON.stringify(responseWithCount), {
+				status: 200,
+				headers: this.corsHeaders
+			});
+
+		} catch (error) {
+			console.error('Get channel participants error:', error);
+			return this.errorResponse('Failed to get channel participants', 500);
+		}
 	}
 
 	/**

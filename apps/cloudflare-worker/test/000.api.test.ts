@@ -93,6 +93,8 @@ const api = {
 
 describe('Parawave-PTT API', () => {
   let createdChannelUuid: string;
+  let testChannelCreated = false;
+  const testChannelUuid = '8879F616-D468-4793-AFCD-D66F0CEA4651';
   
   beforeAll(async () => {
     // Extract the user ID (sub) from the JWT token
@@ -125,7 +127,7 @@ describe('Parawave-PTT API', () => {
   });
 
   afterAll(async () => {
-    // Cleanup: delete the test channel if it was created
+    console.log('Cleaning up test resources...'); 
     if (createdChannelUuid) {
       try {
         await api.delete(`/v1/channels/${createdChannelUuid}?hard=true`);
@@ -133,6 +135,14 @@ describe('Parawave-PTT API', () => {
       } catch (error) {
         console.log(`Failed to cleanup test channel: ${error}`);
       }
+    }
+
+    // Cleanup: delete the specific test channel used for join/leave operations
+    try {
+      await api.delete(`/v1/channels/${testChannelUuid}?hard=true`);
+      console.log(`Cleaned up specific test channel: ${testChannelUuid}`);
+    } catch (error) {
+      console.log(`Failed to cleanup specific test channel ${testChannelUuid}: ${error}`);
     }
   });
 
@@ -632,6 +642,248 @@ describe('Parawave-PTT API', () => {
     } catch (error) {
       // CORS might be handled differently
       expect(true).toBe(true);
+    }
+  });
+
+  test('23. Should create test channel for join/leave operations', async () => {
+    // Create a test channel with the specific UUID that the user has access to
+    
+    const channelData = {
+      uuid: testChannelUuid,
+      name: 'Test Channel for Join/Leave',
+      type: 'general',
+      description: 'Test channel for join/leave functionality',
+      coordinates: {
+        lat: 45.929681,
+        lon: 6.876345
+      },
+      vhf_frequency: '144.150',
+      max_participants: 10,
+      difficulty: 'beginner'
+    };
+
+    try {
+      // Try to create the test channel with specific UUID using the new endpoint
+      const response = await api.post(`/v1/channels/with-uuid`, channelData);
+      console.log('Created test channel with UUID:', response.data);
+      
+      expect(response.status).toBe(201);
+      expect(response.data.success).toBe(true);
+      expect(response.data.data.uuid).toBe(testChannelUuid);
+      expect(response.data.data.name).toBe(channelData.name);
+      
+      testChannelCreated = true;
+      
+    } catch (error: any) {
+      // Channel might already exist, which is fine for testing
+      if (error.response?.status === 400 && error.response.data.error?.includes('already exists')) {
+        console.log('Test channel already exists (expected)');
+        testChannelCreated = true;
+        expect(true).toBe(true); // Pass the test since channel exists
+      } else {
+        console.log('Test channel creation error:', error.response?.data);
+        throw error; // Re-throw unexpected errors
+      }
+    }
+  });
+
+  test('24. Should join channel successfully', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    const testChannelUuid = '8879F616-D468-4793-AFCD-D66F0CEA4651';
+    
+    const joinRequest = {
+      location: {
+        lat: 45.929681,
+        lon: 6.876345
+      }
+    };
+
+    const response = await api.post(`/v1/channels/${testChannelUuid}/join`, joinRequest);
+    
+    // Add debug logging for failed responses
+    if (response.status !== 200) {
+      console.log('Join request failed with status:', response.status);
+      console.log('Response data:', JSON.stringify(response.data, null, 2));
+    }
+    
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.participant).toBeDefined();
+    expect(response.data.participant.user_id).toBe(testerId);
+    expect(response.data.participant.connection_quality).toBe('good');
+    expect(response.data.participant.is_transmitting).toBe(false);
+    expect(response.data.channel_info).toBeDefined();
+    expect(response.data.channel_info.name).toBeDefined();
+    expect(response.data.channel_info.participants_count).toBeGreaterThan(0);
+  });
+
+  test('25. Should get channel participants', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    const response = await api.get(`/v1/channels/${testChannelUuid}/participants`);
+    
+    // Add debug logging
+    if (response.status !== 200) {
+      console.log('Get participants failed with status:', response.status);
+      console.log('Response data:', JSON.stringify(response.data, null, 2));
+    }
+    
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(Array.isArray(response.data.data)).toBe(true);
+    
+    // Only check for participants if join worked in previous test
+    if (response.data.data.length > 0) {
+      expect(response.data.data.length).toBeGreaterThan(0);
+      expect(response.data.total_count).toBe(response.data.data.length);
+      
+      // Check participant structure
+      const participant = response.data.data[0];
+      expect(participant.user_id).toBeDefined();
+      expect(participant.username).toBeDefined();
+      expect(participant.join_time).toBeDefined();
+      expect(participant.last_seen).toBeDefined();
+      expect(participant.connection_quality).toBeDefined();
+      expect(typeof participant.is_transmitting).toBe('boolean');
+    } else {
+      console.log('No participants found - likely due to previous join test failure');
+    }
+  });
+
+  test('26. Should handle joining channel without access permission', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    // Use a different channel UUID that the user doesn't have access to
+    const unauthorizedChannelUuid = '12345678-1234-1234-1234-123456789012';
+    
+    try {
+      const response = await api.post(`/v1/channels/${unauthorizedChannelUuid}/join`, {});
+      // Should not reach here
+      expect(response.status).toBe(403);
+    } catch (error: any) {
+      expect(error.response.status).toBe(403);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Access denied');
+      expect(error.response.data.error).toContain(`access:${unauthorizedChannelUuid}`);
+    }
+  });
+
+  test('27. Should handle joining non-existent channel', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    const nonExistentChannelUuid = '99999999-9999-9999-9999-999999999999';
+    
+    try {
+      const response = await api.post(`/v1/channels/${nonExistentChannelUuid}/join`, {});
+      // Should not reach here if permissions work correctly
+      expect(response.status).toBe(403);
+    } catch (error: any) {
+      // Should fail with 403 (access denied) first, not 404
+      expect(error.response.status).toBe(403);
+      expect(error.response.data.success).toBe(false);
+    }
+  });
+
+  test('28. Should join channel again (idempotent operation)', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    const joinRequest = {
+      location: {
+        lat: 46.000000,
+        lon: 7.000000
+      }
+    };
+
+    const response = await api.post(`/v1/channels/${testChannelUuid}/join`, joinRequest);
+    
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.participant).toBeDefined();
+    expect(response.data.participant.user_id).toBe(testerId);
+    
+    // Location should be updated
+    expect(response.data.participant.location).toBeDefined();
+  });
+
+  test('29. Should leave channel successfully (POST method)', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    const response = await api.post(`/v1/channels/${testChannelUuid}/leave`, {});
+    
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+  });
+
+  test('30. Should handle leaving channel when not a participant', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    try {
+      const response = await api.post(`/v1/channels/${testChannelUuid}/leave`, {});
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('not a participant');
+    }
+  });
+
+  test('31. Should leave channel successfully (DELETE method)', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    // Join first
+    await api.post(`/v1/channels/${testChannelUuid}/join`, {});
+    
+    // Then leave with DELETE method
+    const response = await api.delete(`/v1/channels/${testChannelUuid}/leave`);
+    
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+  });
+
+  test('32. Should handle invalid HTTP methods for join/leave endpoints', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    try {
+      const response = await api.get(`/v1/channels/${testChannelUuid}/join`);
+      expect(response.status).toBe(405);
+    } catch (error: any) {
+      expect(error.response.status).toBe(405);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Method GET not allowed');
+    }
+  });
+
+  test('33. Should handle unknown sub-resources', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 23)');
+    }
+    
+    try {
+      const response = await api.post(`/v1/channels/${testChannelUuid}/unknown`, {});
+      expect(response.status).toBe(404);
+    } catch (error: any) {
+      expect(error.response.status).toBe(404);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Unknown sub-resource');
     }
   });
 });
