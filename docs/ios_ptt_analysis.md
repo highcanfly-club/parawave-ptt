@@ -34,7 +34,8 @@ Application de communication half-duplex simulant les radios deux voies traditio
 
 ### Fonctionnalités Clés
 
-- Authentification utilisateur avec stockage sécurisé dans le trousseau
+- Authentification Auth0 avec stockage sécurisé des tokens dans le trousseau
+- Renouvellement automatique des tokens expirés
 - Sélection dynamique de canaux depuis le backend
 - Transmission audio temps réel via PushToTalk
 - Intégration des boutons de volume physiques
@@ -50,29 +51,31 @@ Application de communication half-duplex simulant les radios deux voies traditio
 
 ```mermaid
 graph TB
-    A[Lancement App iOS] --> B[Vérification Authentification]
-    B --> C{Identifiants Existent?}
-    C -->|Non| D[Écran de Connexion]
-    C -->|Oui| E[Authentification Backend]
-    D --> F[Stockage Trousseau]
-    F --> E
-    E --> G[Réception Liste Canaux]
-    G --> H[Interface Sélection Canal]
-    H --> I[Rejoindre Canal Sélectionné]
-    I --> J[Interface PTT]
-    J --> K[Transmission Audio]
+    A[Lancement App iOS] --> B[Vérification Token Auth0]
+    B --> C{Token Valide?}
+    C -->|Non| D[Authentification Auth0 SDK]
+    C -->|Expiré| E[Renouvellement Token]
+    C -->|Oui| F[Authentification Backend]
+    D --> G[Stockage Tokens Trousseau]
+    E --> G
+    G --> F
+    F --> H[Réception Liste Canaux]
+    H --> I[Interface Sélection Canal]
+    I --> J[Rejoindre Canal Sélectionné]
+    J --> K[Interface PTT]
+    K --> L[Transmission Audio]
 
-    L[Gestionnaire Bouton Volume] --> K
-    M[Changement Canal] --> N[Quitter Canal Actuel]
-    N --> I
+    M[Gestionnaire Bouton Volume] --> L
+    N[Changement Canal] --> O[Quitter Canal Actuel]
+    O --> J
 
-    O[Surveillance Réseau] --> P{Connexion 4G/5G?}
-    P -->|Oui| J
-    P -->|Non| Q[Mode Dégradé]
-    Q --> R[Notifications Offline]
+    P[Surveillance Réseau] --> Q{Connexion 4G/5G?}
+    Q -->|Oui| K
+    Q -->|Non| R[Mode Dégradé]
+    R --> S[Notifications Offline]
 
-    S[Localisation GPS] --> T[Canal Site Automatique]
-    T --> I
+    T[Localisation GPS] --> U[Canal Site Automatique]
+    U --> J
 ```
 
 ## Exigences Techniques
@@ -92,9 +95,10 @@ graph TB
 - Foundation framework
 - UIKit framework
 - PushToTalk framework
-- Security framework (Trousseau)
+- Security framework (Trousseau pour tokens Auth0)
 - AVFoundation framework
 - Network framework
+- **Auth0 SDK pour iOS (Swift)**
 - **CoreLocation framework (géolocalisation sites de vol)**
 - **CoreTelephony framework (surveillance signal cellulaire)**
 
@@ -137,27 +141,32 @@ sequenceDiagram
     participant P as Parapentiste
     participant A as App
     participant K as Trousseau
+    participant AUTH0 as Auth0
     participant B as Backend
     participant PTT as PushToTalk
     participant L as CoreLocation
     participant N as Network Monitor
 
     P->>A: Lancement App
-    A->>K: Vérification Identifiants
-    K-->>A: Retour Identifiants
+    A->>K: Vérification Token Auth0
+    K-->>A: Retour Token (ou vide)
 
-    alt Pas d'Identifiants
-        A->>P: Affichage Connexion
-        P->>A: Saisie Identifiants
-        A->>K: Stockage Identifiants
+    alt Pas de Token Valide
+        A->>AUTH0: Authentification via SDK
+        AUTH0-->>A: Token JWT + Refresh Token
+        A->>K: Stockage Tokens Sécurisé
+    else Token Expiré
+        A->>AUTH0: Renouvellement via Refresh Token
+        AUTH0-->>A: Nouveau Token JWT
+        A->>K: Mise à jour Token
     end
 
-    A->>B: Authentification
+    A->>B: Authentification avec Token JWT
     B-->>A: Liste Canaux JSON
 
     A->>L: Demande Localisation
     L-->>A: Coordonnées GPS
-    A->>B: Canaux pour Site Local
+    A->>B: Canaux pour Site Local (avec JWT)
     B-->>A: Canaux Géo-Localisés
 
     A->>P: Affichage Sélection Canal
@@ -183,9 +192,9 @@ sequenceDiagram
 ### Hiérarchie des Écrans
 
 1. **Écran de Lancement** - Expérience de lancement iOS standard
-2. **Écran d'Authentification** - Saisie nom d'utilisateur/mot de passe (premier lancement uniquement)
+2. **Authentification Auth0** - SDK Auth0 intégré (biométrie, SSO, MFA supportés)
 3. **Interface Principale** - Sélection canal et contrôles PTT
-4. **Écran Paramètres** - Configuration sites favoris, préférences audio
+4. **Écran Paramètres** - Configuration sites favoris, préférences audio, logout
 5. **Écran État Réseau** - Diagnostic couverture 4G/5G et latence
 
 ### Layout Interface Principale
@@ -228,18 +237,32 @@ graph TD
 
 ## Intégration Backend Spécialisée
 
-### Endpoint d'Authentification
+### Endpoint d'Authentification Auth0
 
 ```
-GET https://ptt.highcanfly.club?user=USER&pass=PASSWORD&location=LAT,LON
+POST https://parawave-backend.highcanfly.club/api/v1/auth
+Authorization: Bearer JWT_TOKEN_FROM_AUTH0
+Content-Type: application/json
+
+{
+  "location": {
+    "lat": 45.929681,
+    "lon": 6.876345
+  }
+}
 ```
 
 ### Format de Réponse Étendu
 
 ```json
 {
-  "user": "username",
-  "pass": "password",
+  "success": true,
+  "user": {
+    "id": "auth0|507f1f77bcf86cd799439011",
+    "email": "pilot@example.com",
+    "name": "Jean Pilot",
+    "groups": ["parapente_chamonix", "instructeurs"]
+  },
   "channels": [
     {
       "name": "Chamonix - Mont Blanc",
@@ -261,7 +284,7 @@ GET https://ptt.highcanfly.club?user=USER&pass=PASSWORD&location=LAT,LON
       "always_available": true
     }
   ],
-  "user_groups": ["parapente_chamonix", "instructeurs"],
+  "permissions": ["read:api", "write:api", "admin:api"],
   "network_status": {
     "server_latency_ms": 45,
     "recommended_codec": "aac-lc",
@@ -275,43 +298,156 @@ GET https://ptt.highcanfly.club?user=USER&pass=PASSWORD&location=LAT,LON
 
 ```swift
 protocol ParapenteNetworkServiceProtocol {
-    func authenticate(username: String, password: String, location: CLLocation?) async throws -> ParapenteAuthResponse
+    func authenticateWithAuth0Token(_ token: String, location: CLLocation?) async throws -> ParapenteAuthResponse
     func getChannelsForLocation(location: CLLocation, radius: Double) async throws -> [ParapenteChannel]
     func joinChannel(channelUUID: String, userLocation: CLLocation?) async throws -> ChannelResponse
     func reportNetworkQuality(latency: TimeInterval, signalStrength: Int) async throws -> Void
     func sendEmergencyAlert(location: CLLocation, message: String) async throws -> Void
+    func refreshAuthToken() async throws -> String
 }
 
 class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
     private let session = URLSession.shared
-    private let baseURL = "https://ptt.highcanfly.club"
+    private let baseURL = "https://parawave-backend.highcanfly.club"
     private var networkMonitor = NWPathMonitor()
+    private var currentJWTToken: String?
 
-    // Implémentation spécialisée parapente...
+    func authenticateWithAuth0Token(_ token: String, location: CLLocation?) async throws -> ParapenteAuthResponse {
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/v1/auth")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let location = location {
+            let payload = ["location": ["lat": location.coordinate.latitude, "lon": location.coordinate.longitude]]
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw NetworkError.authenticationFailed
+        }
+
+        self.currentJWTToken = token
+        return try JSONDecoder().decode(ParapenteAuthResponse.self, from: data)
+    }
+
+    // Implémentation spécialisée parapente avec JWT...
 }
 ```
 
 ## Stratégie de Stockage des Données
 
-### Implémentation Trousseau
+### Implémentation Trousseau pour Auth0
 
 ```swift
 import Security
+import Auth0
 
-class KeychainManager {
-    private let service = "com.highcanfly.pttapp"
+class Auth0KeychainManager {
+    private let service = "com.highcanfly.pttapp.auth0"
+    private let accessTokenKey = "auth0_access_token"
+    private let refreshTokenKey = "auth0_refresh_token"
+    private let expiryDateKey = "auth0_token_expiry"
 
-    func store(username: String, password: String) throws {
-        // Implémentation du stockage sécurisé des identifiants
+    func storeTokens(accessToken: String, refreshToken: String, expiresIn: TimeInterval) throws {
+        let expiryDate = Date().addingTimeInterval(expiresIn)
+
+        try storeInKeychain(key: accessTokenKey, value: accessToken)
+        try storeInKeychain(key: refreshTokenKey, value: refreshToken)
+        try storeInKeychain(key: expiryDateKey, value: ISO8601DateFormatter().string(from: expiryDate))
     }
 
-    func retrieve() throws -> (username: String, password: String)? {
-        // Implémentation de la récupération des identifiants
+    func getValidAccessToken() throws -> String? {
+        guard let token = try getFromKeychain(key: accessTokenKey),
+              let expiryString = try getFromKeychain(key: expiryDateKey),
+              let expiryDate = ISO8601DateFormatter().date(from: expiryString) else {
+            return nil
+        }
+
+        // Vérifier si le token expire dans les 5 prochaines minutes
+        if expiryDate.timeIntervalSinceNow > 300 {
+            return token
+        } else {
+            // Token expiré ou presque expiré, essayer de le renouveler
+            return try refreshAccessToken()
+        }
     }
 
-    func delete() throws {
-        // Implémentation de la suppression des identifiants
+    private func refreshAccessToken() throws -> String? {
+        guard let refreshToken = try getFromKeychain(key: refreshTokenKey) else {
+            throw KeychainError.refreshTokenNotFound
+        }
+
+        // Utilisation Auth0 SDK pour renouveler
+        return try await Auth0
+            .authentication()
+            .renew(withRefreshToken: refreshToken)
+            .start()
+            .accessToken
     }
+
+    private func storeInKeychain(key: String, value: String) throws {
+        let data = value.data(using: .utf8)!
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data
+        ]
+
+        // Supprimer l'élément existant
+        SecItemDelete(query as CFDictionary)
+
+        // Ajouter le nouvel élément
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainError.storageError
+        }
+    }
+
+    private func getFromKeychain(key: String) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        return string
+    }
+
+    func deleteAllTokens() throws {
+        let queries = [accessTokenKey, refreshTokenKey, expiryDateKey].map { key in
+            [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: key
+            ] as [String: Any]
+        }
+
+        for query in queries {
+            SecItemDelete(query as CFDictionary)
+        }
+    }
+}
+
+enum KeychainError: Error {
+    case storageError
+    case retrievalError
+    case refreshTokenNotFound
+    case tokenRefreshFailed
 }
 ```
 
@@ -329,7 +465,17 @@ extension UserDefaults {
         set { set(newValue, forKey: "preferredLanguage") }
     }
 
-    // Nouvelles préférences spécialisées parapente
+    var auth0Domain: String {
+        get { string(forKey: "auth0Domain") ?? "your-tenant.auth0.com" }
+        set { set(newValue, forKey: "auth0Domain") }
+    }
+
+    var auth0ClientId: String {
+        get { string(forKey: "auth0ClientId") ?? "your-client-id" }
+        set { set(newValue, forKey: "auth0ClientId") }
+    }
+
+    // Préférences spécialisées parapente
     var favoriteFlyingSites: [String] {
         get { stringArray(forKey: "favoriteFlyingSites") ?? [] }
         set { set(newValue, forKey: "favoriteFlyingSites") }
@@ -349,6 +495,11 @@ extension UserDefaults {
         get { string(forKey: "vhfFrequencyBackup") }
         set { set(newValue, forKey: "vhfFrequencyBackup") }
     }
+
+    var biometricAuthEnabled: Bool {
+        get { bool(forKey: "biometricAuthEnabled") }
+        set { set(newValue, forKey: "biometricAuthEnabled") }
+    }
 }
 ```
 
@@ -363,10 +514,10 @@ extension UserDefaults {
 
 ### Zones de Localisation Clés
 
-1. **Écran d'Authentification**
-   - Labels nom d'utilisateur/mot de passe
-   - Texte bouton connexion
-   - Messages d'erreur
+1. **Authentification Auth0**
+   - Messages de connexion Auth0
+   - Écrans biométrie et SSO
+   - Messages d'erreur d'authentification
 
 2. **Interface Principale**
    - Labels sélection canal
@@ -375,6 +526,7 @@ extension UserDefaults {
    - Indicateurs de connexion
    - **Noms de sites de vol localisés**
    - **Messages d'urgence**
+   - **Bouton de déconnexion Auth0**
    - **Bouton d'urgence appelant les urgences européennes après un appui de 3 secondes (112)**
 
 3. **Intégration Système**
@@ -386,10 +538,12 @@ extension UserDefaults {
 ### Approche d'Implémentation Parapente
 
 ```swift
-// Structure Localizable.strings spécialisée
-"auth.username.placeholder" = "Nom d'utilisateur";
-"auth.password.placeholder" = "Mot de passe";
-"auth.login.button" = "Connexion";
+// Structure Localizable.strings spécialisée avec Auth0
+"auth0.login.button" = "Se connecter avec Auth0";
+"auth0.logout.button" = "Se déconnecter";
+"auth0.biometric.prompt" = "Utiliser %@ pour vous connecter";
+"auth0.error.network" = "Erreur de connexion Auth0";
+"auth0.error.token_expired" = "Session expirée, reconnexion...";
 "main.talk.button" = "PARLER";
 "main.channel.label" = "Canal";
 "status.connected" = "Connecté";
@@ -407,9 +561,9 @@ extension UserDefaults {
 "vhf.backup.frequency" = "Fréquence VHF de secours";
 
 // Traductions anglaises
-"auth.username.placeholder" = "Username"; // en
-"auth.password.placeholder" = "Password"; // en
-"auth.login.button" = "Login"; // en
+"auth0.login.button" = "Login with Auth0"; // en
+"auth0.logout.button" = "Logout"; // en
+"auth0.biometric.prompt" = "Use %@ to sign in"; // en
 "main.talk.button" = "TALK"; // en
 "main.channel.label" = "Channel"; // en
 "status.connected" = "Connected"; // en
@@ -422,12 +576,14 @@ extension UserDefaults {
 "error.network.title" = "Network Error"; // en
 
 // Traductions espagnoles
+"auth0.login.button" = "Iniciar sesión con Auth0"; // es
 "main.talk.button" = "HABLAR"; // es
 "main.channel.label" = "Canal"; // es
 "status.connected" = "Conectado"; // es
 "status.disconnected" = "Desconectado"; // es
 
 // Traductions italiennes
+"auth0.login.button" = "Accedi con Auth0"; // it
 "main.talk.button" = "PARLA"; // it
 "main.channel.label" = "Canale"; // it
 "status.connected" = "Connesso"; // it
@@ -444,6 +600,7 @@ class ParapentePTTManager: NSObject {
     private var currentChannel: PTChannelDescriptor?
     private let locationManager = CLLocationManager()
     private let networkMonitor = NWPathMonitor()
+    private let auth0Manager = Auth0KeychainManager()
 
     override init() {
         super.init()
@@ -451,6 +608,35 @@ class ParapentePTTManager: NSObject {
         configureAudioSessionForFlight()
         setupNetworkMonitoring()
         setupLocationServices()
+        setupAuth0()
+    }
+
+    private func setupAuth0() {
+        // Configuration Auth0 avec renouvellement automatique
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTokenExpiration),
+            name: .auth0TokenWillExpire,
+            object: nil
+        )
+    }
+
+    @objc private func handleTokenExpiration() {
+        Task {
+            do {
+                // Renouvellement automatique du token
+                let newToken = try await auth0Manager.getValidAccessToken()
+                await MainActor.run {
+                    // Mise à jour des headers réseau avec le nouveau token
+                    self.updateNetworkServiceToken(newToken)
+                }
+            } catch {
+                // Redirection vers Auth0 login si le renouvellement échoue
+                await MainActor.run {
+                    self.presentAuth0Login()
+                }
+            }
+        }
     }
 
     private func configureAudioSessionForFlight() {
@@ -1046,12 +1232,13 @@ enum EmergencyType {
 
 ## Estimation Calendrier de Développement
 
-### Phase 1 : Fondations (3-4 semaines)
+### Phase 1 : Fondations + Auth0 (4-5 semaines)
 
 - Configuration et setup du projet
-- Implémentation UI de base
-- Flux d'authentification
-- Intégration trousseau
+- **Intégration Auth0 SDK iOS**
+- **Implémentation gestion tokens trousseau**
+- Implémentation UI de base avec Auth0
+- **Gestion renouvellement automatique tokens**
 - **Intégration CoreLocation et géolocalisation**
 - **Base de données sites de vol**
 
@@ -1202,7 +1389,7 @@ function parapenteReducer(
 // iOS Network Service with async/await
 class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
     private let session = URLSession.shared
-    private let baseURL = "https://ptt.highcanfly.club"
+    private let baseURL = "https://parawave-backend.highcanfly.club"
 
     func authenticate(username: String, password: String, location: CLLocation?) async throws -> ParapenteAuthResponse {
         var components = URLComponents(string: "\(baseURL)/auth")!
@@ -1240,7 +1427,7 @@ interface ParapenteNetworkService {
 }
 
 class ParapenteNetworkServiceImpl implements ParapenteNetworkService {
-  private readonly baseURL = "https://ptt.highcanfly.club";
+  private readonly baseURL = "https://parawave-backend.highcanfly.club";
 
   async authenticate(
     username: string,
