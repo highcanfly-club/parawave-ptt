@@ -39,7 +39,7 @@ jobs:
         run: |
           mv package.json package.json.bak
           mv yarn.lock yarn.lock.bak
-          cd apps/backend-client
+          cd apps/backend-admin
           npm install
           cd ../../apps/cloudflare-worker
           npm install
@@ -100,7 +100,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload docs directory
-          path: "apps/backend-client/dist"
+          path: "apps/backend-admin/dist"
 
   deploy:
     environment:

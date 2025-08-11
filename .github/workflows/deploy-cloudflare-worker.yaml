@@ -35,7 +35,7 @@ jobs:
         run: |
           mv package.json package.json.bak
           mv yarn.lock yarn.lock.bak
-          cd apps/backend-client
+          cd apps/backend-admin
           npm install
           cd ../../apps/cloudflare-worker
           npm install
