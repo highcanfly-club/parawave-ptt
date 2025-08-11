@@ -9,10 +9,11 @@ import { PageNotFound } from "./pages/404";
 import { AuthenticationGuard, LogoutButton, useAuth } from "./authentication";
 
 import IndexPage from "@/pages/index";
-import ApiPage from "@/pages/api";
+import ApiPage from "@/pages/test-secured-api";
 import PricingPage from "@/pages/pricing";
 import BlogPage from "@/pages/blog";
 import AboutPage from "@/pages/about";
+import OpenApiPage from "./pages/openapi-api";
 
 function App() {
   const { isLoading, isAuthenticated } = useAuth();
@@ -67,6 +68,10 @@ function App() {
           path="/blog"
         />
         <Route element={<AboutPage />} path="/about" />
+        <Route
+          element={<OpenApiPage />}
+          path="/openapi"
+        />
         <Route element={<PageNotFound />} path="*" />
       </Routes>
     </Suspense>

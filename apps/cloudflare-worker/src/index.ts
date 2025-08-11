@@ -21,36 +21,186 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { checkPermissions } from "./auth0";
 
+import { checkPermissions } from "./auth0";
+import { PTTAPIHandler } from "./handlers/api-handler";
+import { ChannelDurableObject } from "./durable-objects/channel-durable-object";
+
+// Export Durable Object class
+export { ChannelDurableObject };
+
+/**
+ * CORS headers configuration
+ */
 const corsHeaders = (env: Env) => {
 	return {
 		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-		"Access-Control-Allow-Origin": env.CORS_ORIGIN,
+		"Access-Control-Allow-Origin": env.CORS_ORIGIN || "*",
 		"Access-Control-Allow-Headers": "Content-Type, Authorization",
+		"Access-Control-Max-Age": "86400",
 	};
 };
 
-const fakePayload = {
-	message: "Hello World!",
-};
+/**
+ * Handle requests to channel Durable Objects for real-time operations
+ * Path: /channel/{uuid}/{operation}
+ */
+async function handleChannelDurableObjectRequest(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const pathParts = url.pathname.split('/').filter(Boolean);
 
+	// Expected path: /channel/{uuid}/{operation}
+	if (pathParts.length < 2 || pathParts[0] !== 'channel') {
+		return new Response('Invalid channel path', { status: 400 });
+	}
+
+	const channelUuid = pathParts[1];
+	const operation = pathParts[2] || 'status';
+
+	// Get Durable Object instance for this channel
+	const durableObjectId = env.CHANNEL_OBJECTS.idFromName(channelUuid);
+	const durableObject = env.CHANNEL_OBJECTS.get(durableObjectId);
+
+	// Forward request to Durable Object with adjusted path
+	const forwardUrl = new URL(request.url);
+	forwardUrl.pathname = '/' + pathParts.slice(2).join('/') || '/status';
+
+	const forwardedRequest = new Request(forwardUrl.toString(), {
+		method: request.method,
+		headers: request.headers,
+		body: request.body,
+	});
+
+	const response = await durableObject.fetch(forwardedRequest);
+
+	// Add CORS headers to response
+	const newHeaders = new Headers(response.headers);
+	Object.entries(corsHeaders(env)).forEach(([key, value]) => {
+		newHeaders.set(key, value);
+	});
+
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers: newHeaders,
+	});
+}
+
+/**
+ * Legacy request handler for backward compatibility
+ * Used for initial testing and simple authentication validation
+ */
+async function handleLegacyRequest(request: Request, env: Env): Promise<Response> {
+	const token = request.headers.get("Authorization")?.split(" ")[1];
+
+	if (!token) {
+		return new Response(
+			JSON.stringify({
+				error: "Missing Authorization token",
+				code: 'MISSING_TOKEN'
+			}),
+			{
+				status: 401,
+				headers: { 
+					...corsHeaders(env), 
+					'Content-Type': 'application/json' 
+				},
+			}
+		);
+	}
+
+	try {
+		const { access, payload } = await checkPermissions(
+			token,
+			env.READ_PERMISSION || 'read:api',
+			env,
+		);
+
+		if (access) {
+			return new Response(
+				JSON.stringify({
+					service: "ParaWave PTT Backend",
+					message: "Authentication successful",
+					authenticatedUser: payload.sub,
+					permissions: payload.permissions,
+					timestamp: new Date().toISOString(),
+					deprecated: true,
+					migration: {
+						notice: "This endpoint is deprecated. Please use /api/v1/ endpoints instead.",
+						new_endpoints: {
+							channels: "/api/v1/channels",
+							health: "/api/v1/health"
+						}
+					}
+				}),
+				{
+					headers: { 
+						...corsHeaders(env), 
+						'Content-Type': 'application/json' 
+					},
+				}
+			);
+		}
+
+		return new Response(
+			JSON.stringify({
+				error: "Access denied - insufficient permissions",
+				code: 'INSUFFICIENT_PERMISSIONS'
+			}),
+			{
+				status: 403,
+				headers: { 
+					...corsHeaders(env), 
+					'Content-Type': 'application/json' 
+				},
+			}
+		);
+
+	} catch (error) {
+		console.error('Legacy authentication error:', error);
+		return new Response(
+			JSON.stringify({
+				error: "Authentication failed",
+				code: 'AUTH_FAILED'
+			}),
+			{
+				status: 401,
+				headers: { 
+					...corsHeaders(env), 
+					'Content-Type': 'application/json' 
+				},
+			}
+		);
+	}
+}
+
+/**
+ * Main Cloudflare Worker entry point
+ * Handles PTT API requests and channel management
+ */
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const { pathname } = new URL(request.url);
 
+		// Rate limiting
 		const { success } = await env.RATE_LIMITER.limit({ key: pathname });
-
 		if (!success) {
 			return new Response(
-				JSON.stringify(`429 Failure – rate limit exceeded for ${pathname}`),
+				JSON.stringify({
+					error: `Rate limit exceeded for ${pathname}`,
+					code: 'RATE_LIMIT_EXCEEDED'
+				}),
 				{
 					status: 429,
-					headers: { contentType: "application/json" },
+					headers: { 
+						...corsHeaders(env),
+						'Content-Type': 'application/json'
+					},
 				},
 			);
 		}
 
+		// Handle CORS preflight requests
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
@@ -60,40 +210,77 @@ export default {
 				},
 			});
 		}
-		if (request.headers.has("Authorization")) {
-			const token = request.headers.get("Authorization")?.split(" ")[1];
 
-			// Check if the Authorization header is present and has a string at the second index
-			if (token) {
-				const { access, payload } = await checkPermissions(
-					token,
-					env.READ_PERMISSION,
-					env,
-				);
-
-				// Query the API if the user has the required permission
-				if (access) {
-					const date = new Date();
-
-					return new Response(
-						JSON.stringify({
-							...fakePayload,
-							query: request.url,
-							authenticatedUser: payload.sub,
-							bearer: token,
-							date: date.toISOString(),
-						}),
-						{
-							headers: { ...corsHeaders(env), contentType: "application/json" },
-						},
-					);
-				}
+		try {
+			// Route API requests to dedicated handler
+			if (pathname.startsWith('/api/v1/')) {
+				const apiHandler = new PTTAPIHandler(env.PTT_DB, env.PTT_CACHE, env.CORS_ORIGIN);
+				return await apiHandler.handleAPIRequest(request, env);
 			}
-		}
 
-		return new Response(JSON.stringify("403 Failure - Not allowed"), {
-			status: 403,
-			headers: { ...corsHeaders(env), contentType: "application/json" },
-		});
+			// Route channel real-time operations to Durable Objects
+			if (pathname.startsWith('/channel/')) {
+				return await handleChannelDurableObjectRequest(request, env);
+			}
+
+			// Legacy endpoint for backward compatibility
+			if (pathname === "/" && request.headers.has("Authorization")) {
+				return await handleLegacyRequest(request, env);
+			}
+
+			// Default health check
+			if (pathname === "/" || pathname === "/health") {
+				return new Response(
+					JSON.stringify({
+						service: "ParaWave PTT Backend",
+						version: "1.0.0",
+						status: "healthy",
+						timestamp: new Date().toISOString(),
+						endpoints: {
+							api: "/api/v1/",
+							channels: "/api/v1/channels",
+							health: "/api/v1/health",
+							websocket: "/channel/{uuid}/websocket"
+						}
+					}),
+					{
+						headers: { 
+							...corsHeaders(env), 
+							'Content-Type': 'application/json' 
+						},
+					}
+				);
+			}
+
+			return new Response(
+				JSON.stringify({
+					error: "Endpoint not found",
+					code: 'NOT_FOUND'
+				}), 
+				{
+					status: 404,
+					headers: { 
+						...corsHeaders(env), 
+						'Content-Type': 'application/json' 
+					},
+				}
+			);
+
+		} catch (error) {
+			console.error('Worker error:', error);
+			return new Response(
+				JSON.stringify({
+					error: "Internal server error",
+					code: 'INTERNAL_ERROR'
+				}),
+				{
+					status: 500,
+					headers: { 
+						...corsHeaders(env), 
+						'Content-Type': 'application/json' 
+					},
+				}
+			);
+		}
 	},
 } satisfies ExportedHandler<Env>;

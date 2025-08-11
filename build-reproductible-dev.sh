@@ -59,7 +59,7 @@ yarn install
 
 # Build client with environment
 echo -e "${YELLOW}🔨 Building client...${NC}"
-yarn build:client:env
+yarn build:env
 
 # Check
 if [ -d "apps/backend-admin/dist" ]; then

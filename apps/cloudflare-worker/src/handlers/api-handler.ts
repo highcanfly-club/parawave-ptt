@@ -1,0 +1,1130 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2025 Ronan LE MEILLAT
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import { checkPermissions } from '../auth0';
+import { ChannelService } from '../services/channel-service';
+import { 
+	CreateChannelRequest, 
+	UpdateChannelRequest, 
+	APIResponse,
+	ChannelsListResponse
+} from '../types/ptt';
+
+/**
+ * @openapi
+ * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *       description: Auth0 JWT token
+ *   schemas:
+ *     ErrorResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: false
+ *         error:
+ *           type: string
+ *           description: Error message
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *         version:
+ *           type: string
+ *           example: "1.0.0"
+ *     Channel:
+ *       type: object
+ *       properties:
+ *         uuid:
+ *           type: string
+ *           format: uuid
+ *         name:
+ *           type: string
+ *         description:
+ *           type: string
+ *         type:
+ *           type: string
+ *           enum: [site_local, emergency, general, cross_country, instructors]
+ *         frequency:
+ *           type: number
+ *         flying_site_id:
+ *           type: integer
+ *         is_active:
+ *           type: boolean
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         creator_user_id:
+ *           type: string
+ *         max_participants:
+ *           type: integer
+ *         difficulty:
+ *           type: string
+ *           enum: [beginner, intermediate, advanced, expert]
+ *         location:
+ *           type: object
+ *           properties:
+ *             lat:
+ *               type: number
+ *             lon:
+ *               type: number
+ *     ChannelStats:
+ *       type: object
+ *       properties:
+ *         total_participants:
+ *           type: integer
+ *         active_participants:
+ *           type: integer
+ *         total_messages:
+ *           type: integer
+ *         total_transmissions:
+ *           type: integer
+ *         last_activity:
+ *           type: string
+ *           format: date-time
+ *     Coordinates:
+ *       type: object
+ *       properties:
+ *         lat:
+ *           type: number
+ *           minimum: -90
+ *           maximum: 90
+ *           description: Latitude
+ *         lon:
+ *           type: number
+ *           minimum: -180
+ *           maximum: 180
+ *           description: Longitude
+ * 
+ * info:
+ *   title: ParaWave PTT API
+ *   description: API for managing PTT channels for paragliding pilots
+ *   version: 1.0.0
+ *   contact:
+ *     name: ParaWave Team
+ *     email: support@parawave.com
+ *   license:
+ *     name: MIT
+ * 
+ * servers:
+ *   - url: https://your-worker.your-subdomain.workers.dev
+ *     description: Production server
+ *   - url: http://localhost:8787
+ *     description: Development server
+ * 
+ * tags:
+ *   - name: Channels
+ *     description: PTT channel management operations
+ *   - name: System
+ *     description: System health and status endpoints
+ */
+
+/**
+ * PTT API handler for channel management
+ * Provides RESTful API endpoints under /api/v1/channels
+ */
+export class PTTAPIHandler {
+	private channelService: ChannelService;
+	private corsHeaders: Record<string, string>;
+
+	constructor(db: D1Database, kv: KVNamespace, corsOrigin: string = '*') {
+		this.channelService = new ChannelService(db, kv);
+		this.corsHeaders = {
+			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+			'Access-Control-Allow-Origin': corsOrigin,
+			'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+			'Access-Control-Max-Age': '86400',
+			'Content-Type': 'application/json'
+		};
+	}
+
+	/**
+	 * Handle API requests under /api/v1/
+	 * @param request HTTP request
+	 * @param env Environment variables
+	 * @returns HTTP response
+	 */
+	async handleAPIRequest(request: Request, env: Env): Promise<Response> {
+		const url = new URL(request.url);
+		const pathname = url.pathname;
+
+		// Handle CORS preflight requests
+		if (request.method === 'OPTIONS') {
+			return new Response(null, {
+				status: 204,
+				headers: {
+					...this.corsHeaders,
+					'Access-Control-Allow-Credentials': 'true'
+				}
+			});
+		}
+
+		try {
+			// Parse API path
+			const pathParts = pathname.split('/').filter(Boolean);
+			if (pathParts.length < 2 || pathParts[0] !== 'api' || pathParts[1] !== 'v1') {
+				return this.errorResponse('Invalid API path', 404);
+			}
+
+			const resource = pathParts[2];
+			const resourceId = pathParts[3];
+
+			// Route to appropriate handler
+			switch (resource) {
+				case 'channels':
+					return await this.handleChannelsAPI(request, env, resourceId);
+				case 'health':
+					return await this.handleHealthCheck(request);
+				default:
+					return this.errorResponse(`Unknown resource: ${resource}`, 404);
+			}
+		} catch (error) {
+			console.error('API error:', error);
+			return this.errorResponse('Internal server error', 500);
+		}
+	}
+
+	/**
+	 * Handle channels API endpoints
+	 * @param request HTTP request
+	 * @param env Environment variables
+	 * @param resourceId Channel UUID if specified
+	 * @returns HTTP response
+	 */
+	private async handleChannelsAPI(request: Request, env: Env, resourceId?: string): Promise<Response> {
+		const method = request.method;
+
+		// Authentication required for all channel operations
+		const authResult = await this.authenticateRequest(request, env);
+		if (!authResult.success) {
+			return this.errorResponse(authResult.error || 'Authentication failed', 401);
+		}
+
+		const userId = authResult.userId!;
+		const permissions = authResult.permissions!;
+
+		try {
+			switch (method) {
+				case 'GET':
+					return resourceId ? 
+						await this.getChannel(resourceId, permissions) :
+						await this.getChannels(request, permissions);
+
+				case 'POST':
+					return await this.createChannel(request, userId, permissions);
+
+				case 'PUT':
+					if (!resourceId) {
+						return this.errorResponse('Channel UUID required for update', 400);
+					}
+					return await this.updateChannel(request, resourceId, userId, permissions);
+
+				case 'DELETE':
+					if (!resourceId) {
+						return this.errorResponse('Channel UUID required for deletion', 400);
+					}
+					return await this.deleteChannel(request, resourceId, userId, permissions);
+
+				default:
+					return this.errorResponse(`Method ${method} not allowed`, 405);
+			}
+		} catch (error) {
+			console.error('Channel API error:', error);
+			return this.errorResponse('Channel operation failed', 500);
+		}
+	}
+
+	/**
+	 * GET /api/v1/channels - List all channels with optional filtering
+	 * 
+	 * @openapi
+	 * /api/v1/channels:
+	 *   get:
+	 *     summary: List channels
+	 *     description: Retrieve a list of channels with optional filtering by type, location, and active status. Requires read permission.
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - in: query
+	 *         name: type
+	 *         schema:
+	 *           type: string
+	 *           enum: [site_local, emergency, general, cross_country, instructors]
+	 *         description: Filter by channel type
+	 *       - in: query
+	 *         name: active
+	 *         schema:
+	 *           type: boolean
+	 *           default: true
+	 *         description: Filter by active status
+	 *       - in: query
+	 *         name: lat
+	 *         schema:
+	 *           type: number
+	 *           minimum: -90
+	 *           maximum: 90
+	 *         description: Latitude for location-based filtering
+	 *       - in: query
+	 *         name: lon
+	 *         schema:
+	 *           type: number
+	 *           minimum: -180
+	 *           maximum: 180
+	 *         description: Longitude for location-based filtering
+	 *       - in: query
+	 *         name: radius
+	 *         schema:
+	 *           type: number
+	 *           minimum: 0
+	 *         description: Search radius in kilometers (requires lat/lon)
+	 *     responses:
+	 *       200:
+	 *         description: Channels retrieved successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: object
+	 *                   properties:
+	 *                     channels:
+	 *                       type: array
+	 *                       items:
+	 *                         $ref: '#/components/schemas/Channel'
+	 *                     total:
+	 *                       type: integer
+	 *                       description: Total number of channels
+	 *                     filters_applied:
+	 *                       type: object
+	 *                       description: Applied filter parameters
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       401:
+	 *         description: Authentication failed
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Insufficient permissions
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async getChannels(request: Request, permissions: string[]): Promise<Response> {
+		// Check read permission
+		if (!permissions.includes('read:api')) {
+			return this.errorResponse('Insufficient permissions', 403);
+		}
+
+		const url = new URL(request.url);
+		const type = url.searchParams.get('type') || undefined;
+		const activeOnly = url.searchParams.get('active') !== 'false';
+		const lat = url.searchParams.get('lat');
+		const lon = url.searchParams.get('lon');
+		const radius = url.searchParams.get('radius');
+
+		let location;
+		if (lat && lon) {
+			location = {
+				lat: parseFloat(lat),
+				lon: parseFloat(lon)
+			};
+		}
+
+		const radiusKm = radius ? parseFloat(radius) : undefined;
+
+		const result = await this.channelService.getChannels(type, activeOnly, location, radiusKm);
+		
+		return this.successResponse<ChannelsListResponse>(result);
+	}
+
+	/**
+	 * GET /api/v1/channels/{uuid} - Get specific channel
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}:
+	 *   get:
+	 *     summary: Get channel details
+	 *     description: Retrieve detailed information about a specific channel. Requires read permission. Admin users get additional statistics.
+	 *     tags:
+	 *       - Channels
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     security:
+	 *       - bearerAuth: []
+	 *     responses:
+	 *       200:
+	 *         description: Channel details retrieved successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   allOf:
+	 *                     - $ref: '#/components/schemas/Channel'
+	 *                     - type: object
+	 *                       properties:
+	 *                         stats:
+	 *                           $ref: '#/components/schemas/ChannelStats'
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       401:
+	 *         description: Authentication failed
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Insufficient permissions
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       404:
+	 *         description: Channel not found
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async getChannel(uuid: string, permissions: string[]): Promise<Response> {
+		// Check read permission
+		if (!permissions.includes('read:api')) {
+			return this.errorResponse('Insufficient permissions', 403);
+		}
+
+		const channel = await this.channelService.getChannel(uuid);
+		if (!channel) {
+			return this.errorResponse('Channel not found', 404);
+		}
+
+		// Get channel statistics if user has admin permissions
+		if (permissions.includes('admin:api')) {
+			const stats = await this.channelService.getChannelStats(uuid);
+			if (stats) {
+				return this.successResponse({ ...channel, stats });
+			}
+		}
+
+		return this.successResponse(channel);
+	}
+
+	/**
+	 * POST /api/v1/channels - Create new channel
+	 * 
+	 * @openapi
+	 * /api/v1/channels:
+	 *   post:
+	 *     summary: Create new channel
+	 *     description: Creates a new PTT channel. Requires write permission. Emergency channels require admin permission.
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             required:
+	 *               - name
+	 *               - type
+	 *             properties:
+	 *               name:
+	 *                 type: string
+	 *                 minLength: 1
+	 *                 maxLength: 100
+	 *                 description: Channel name
+	 *                 example: "Val d'Isère - Site Local"
+	 *               description:
+	 *                 type: string
+	 *                 maxLength: 500
+	 *                 description: Channel description
+	 *                 example: "Canal local pour le site de parapente de Val d'Isère"
+	 *               type:
+	 *                 type: string
+	 *                 enum: [site_local, emergency, general, cross_country, instructors]
+	 *                 description: Channel type
+	 *                 example: "site_local"
+	 *               frequency:
+	 *                 type: number
+	 *                 minimum: 118.0
+	 *                 maximum: 136.975
+	 *                 description: Radio frequency in MHz
+	 *                 example: 143.9875
+	 *               flying_site_id:
+	 *                 type: integer
+	 *                 description: Associated flying site ID
+	 *                 example: 1234
+	 *               max_participants:
+	 *                 type: integer
+	 *                 minimum: 1
+	 *                 maximum: 100
+	 *                 default: 50
+	 *                 description: Maximum number of participants
+	 *                 example: 30
+	 *               difficulty:
+	 *                 type: string
+	 *                 enum: [beginner, intermediate, advanced, expert]
+	 *                 description: Channel difficulty level
+	 *                 example: "intermediate"
+	 *               location:
+	 *                 $ref: '#/components/schemas/Coordinates'
+	 *     responses:
+	 *       201:
+	 *         description: Channel created successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   $ref: '#/components/schemas/Channel'
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       400:
+	 *         description: Invalid request data
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       401:
+	 *         description: Authentication failed
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Insufficient permissions
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Failed to create channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async createChannel(request: Request, userId: string, permissions: string[]): Promise<Response> {
+		// Check write permission
+		if (!permissions.includes('write:api')) {
+			return this.errorResponse('Insufficient permissions', 403);
+		}
+
+		let createRequest: CreateChannelRequest;
+		try {
+			createRequest = await request.json();
+		} catch (error) {
+			return this.errorResponse('Invalid JSON payload', 400);
+		}
+
+		// Validate required fields
+		if (!createRequest.name || !createRequest.type) {
+			return this.errorResponse('Name and type are required fields', 400);
+		}
+
+		// Additional validation for emergency channels (admin only)
+		if (createRequest.type === 'emergency' && !permissions.includes('admin:api')) {
+			return this.errorResponse('Admin permission required to create emergency channels', 403);
+		}
+
+		const channel = await this.channelService.createChannel(createRequest, userId);
+		if (!channel) {
+			return this.errorResponse('Failed to create channel', 500);
+		}
+
+		return this.successResponse(channel, 201);
+	}
+
+	/**
+	 * PUT /api/v1/channels/{uuid} - Update existing channel
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}:
+	 *   put:
+	 *     summary: Update channel
+	 *     description: Updates an existing channel. Requires write permission.
+	 *     tags:
+	 *       - Channels
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     security:
+	 *       - bearerAuth: []
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               name:
+	 *                 type: string
+	 *                 description: Channel name
+	 *               description:
+	 *                 type: string
+	 *                 description: Channel description
+	 *               type:
+	 *                 type: string
+	 *                 enum: [site_local, emergency, general, cross_country, instructors]
+	 *                 description: Channel type
+	 *               frequency:
+	 *                 type: number
+	 *                 description: Radio frequency in MHz
+	 *               flying_site_id:
+	 *                 type: integer
+	 *                 description: Associated flying site ID
+	 *               max_participants:
+	 *                 type: integer
+	 *                 minimum: 1
+	 *                 maximum: 100
+	 *                 description: Maximum number of participants
+	 *               difficulty:
+	 *                 type: string
+	 *                 enum: [beginner, intermediate, advanced, expert]
+	 *                 description: Channel difficulty level
+	 *               location:
+	 *                 type: object
+	 *                 properties:
+	 *                   lat:
+	 *                     type: number
+	 *                     minimum: -90
+	 *                     maximum: 90
+	 *                   lon:
+	 *                     type: number
+	 *                     minimum: -180
+	 *                     maximum: 180
+	 *                 description: Channel location coordinates
+	 *     responses:
+	 *       200:
+	 *         description: Channel updated successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: object
+	 *                   properties:
+	 *                     uuid:
+	 *                       type: string
+	 *                       format: uuid
+	 *                     name:
+	 *                       type: string
+	 *                     description:
+	 *                       type: string
+	 *                     type:
+	 *                       type: string
+	 *                       enum: [site_local, emergency, general, cross_country, instructors]
+	 *                     frequency:
+	 *                       type: number
+	 *                     flying_site_id:
+	 *                       type: integer
+	 *                     is_active:
+	 *                       type: boolean
+	 *                     created_at:
+	 *                       type: string
+	 *                       format: date-time
+	 *                     updated_at:
+	 *                       type: string
+	 *                       format: date-time
+	 *                     creator_user_id:
+	 *                       type: string
+	 *                     max_participants:
+	 *                       type: integer
+	 *                     difficulty:
+	 *                       type: string
+	 *                       enum: [beginner, intermediate, advanced, expert]
+	 *                     location:
+	 *                       type: object
+	 *                       properties:
+	 *                         lat:
+	 *                           type: number
+	 *                         lon:
+	 *                           type: number
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       400:
+	 *         description: Invalid JSON payload
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: false
+	 *                 error:
+	 *                   type: string
+	 *                   example: "Invalid JSON payload"
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       401:
+	 *         description: Authentication failed
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: false
+	 *                 error:
+	 *                   type: string
+	 *                   example: "Authentication failed"
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       403:
+	 *         description: Insufficient permissions
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: false
+	 *                 error:
+	 *                   type: string
+	 *                   example: "Insufficient permissions"
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       404:
+	 *         description: Channel not found
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: false
+	 *                 error:
+	 *                   type: string
+	 *                   example: "Channel not found"
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       500:
+	 *         description: Failed to update channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: false
+	 *                 error:
+	 *                   type: string
+	 *                   example: "Failed to update channel"
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 */
+	private async updateChannel(request: Request, uuid: string, userId: string, permissions: string[]): Promise<Response> {
+		// Check write permission
+		if (!permissions.includes('write:api')) {
+			return this.errorResponse('Insufficient permissions', 403);
+		}
+
+		// Check if channel exists
+		const existingChannel = await this.channelService.getChannel(uuid);
+		if (!existingChannel) {
+			return this.errorResponse('Channel not found', 404);
+		}
+
+		// Emergency channels require admin permission to modify
+		if (existingChannel.type === 'emergency' && !permissions.includes('admin:api')) {
+			return this.errorResponse('Admin permission required to modify emergency channels', 403);
+		}
+
+		let updateRequest: UpdateChannelRequest;
+		try {
+			updateRequest = await request.json();
+		} catch (error) {
+			return this.errorResponse('Invalid JSON payload', 400);
+		}
+
+		// Additional validation for changing to emergency type (admin only)
+		if (updateRequest.type === 'emergency' && !permissions.includes('admin:api')) {
+			return this.errorResponse('Admin permission required to change channel to emergency type', 403);
+		}
+
+		const updatedChannel = await this.channelService.updateChannel(uuid, updateRequest, userId);
+		if (!updatedChannel) {
+			return this.errorResponse('Failed to update channel', 500);
+		}
+
+		return this.successResponse(updatedChannel);
+	}
+
+	/**
+	 * DELETE /api/v1/channels/{uuid} - Delete channel (soft delete)
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}:
+	 *   delete:
+	 *     summary: Delete channel
+	 *     description: Deletes a channel (soft delete by default). Requires admin permission. Use ?hard=true for permanent deletion.
+	 *     tags:
+	 *       - Channels
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *       - in: query
+	 *         name: hard
+	 *         schema:
+	 *           type: boolean
+	 *           default: false
+	 *         description: Perform hard delete (permanent removal)
+	 *     security:
+	 *       - bearerAuth: []
+	 *     responses:
+	 *       200:
+	 *         description: Channel deleted successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: object
+	 *                   properties:
+	 *                     message:
+	 *                       type: string
+	 *                       example: "Channel deactivated"
+	 *                     uuid:
+	 *                       type: string
+	 *                       format: uuid
+	 *                     hard_delete:
+	 *                       type: boolean
+	 *                       description: Whether hard delete was performed
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       401:
+	 *         description: Authentication failed
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Admin permission required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       404:
+	 *         description: Channel not found
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Failed to delete channel
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async deleteChannel(request: Request, uuid: string, userId: string, permissions: string[]): Promise<Response> {
+		// Check admin permission for deletion
+		if (!permissions.includes('admin:api')) {
+			return this.errorResponse('Admin permission required for channel deletion', 403);
+		}
+
+		// Check if channel exists
+		const existingChannel = await this.channelService.getChannel(uuid);
+		if (!existingChannel) {
+			return this.errorResponse('Channel not found', 404);
+		}
+
+		// Check for hard delete parameter
+		const url = new URL(request.url);
+		const hardDelete = url.searchParams.get('hard') === 'true';
+
+		let success;
+		if (hardDelete) {
+			// Hard delete (permanent) - super admin only
+			// TODO: Add super admin permission check
+			success = await this.channelService.hardDeleteChannel(uuid, userId);
+		} else {
+			// Soft delete (deactivate)
+			success = await this.channelService.deleteChannel(uuid, userId);
+		}
+
+		if (!success) {
+			return this.errorResponse('Failed to delete channel', 500);
+		}
+
+		return this.successResponse({ 
+			message: `Channel ${hardDelete ? 'permanently deleted' : 'deactivated'}`,
+			uuid,
+			hard_delete: hardDelete
+		});
+	}
+
+	/**
+	 * Health check endpoint
+	 * 
+	 * @openapi
+	 * /api/v1/health:
+	 *   get:
+	 *     summary: Health check
+	 *     description: Returns the health status of the PTT API service and its dependencies.
+	 *     tags:
+	 *       - System
+	 *     responses:
+	 *       200:
+	 *         description: Service health status
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: object
+	 *                   properties:
+	 *                     status:
+	 *                       type: string
+	 *                       enum: [healthy, degraded, unhealthy]
+	 *                       example: "healthy"
+	 *                     timestamp:
+	 *                       type: string
+	 *                       format: date-time
+	 *                     version:
+	 *                       type: string
+	 *                       example: "1.0.0"
+	 *                     api_version:
+	 *                       type: string
+	 *                       example: "v1"
+	 *                     services:
+	 *                       type: object
+	 *                       properties:
+	 *                         database:
+	 *                           type: string
+	 *                           enum: [operational, degraded, down]
+	 *                           example: "operational"
+	 *                         cache:
+	 *                           type: string
+	 *                           enum: [operational, degraded, down]
+	 *                           example: "operational"
+	 *                         channels:
+	 *                           type: string
+	 *                           enum: [operational, degraded, down]
+	 *                           example: "operational"
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 */
+	private async handleHealthCheck(request: Request): Promise<Response> {
+		const health = {
+			status: 'healthy',
+			timestamp: new Date().toISOString(),
+			version: '1.0.0',
+			api_version: 'v1',
+			services: {
+				database: 'operational',
+				cache: 'operational',
+				channels: 'operational'
+			}
+		};
+
+		return this.successResponse(health);
+	}
+
+	/**
+	 * Authenticate request using Auth0 token
+	 */
+	private async authenticateRequest(request: Request, env: Env): Promise<{
+		success: boolean;
+		userId?: string;
+		permissions?: string[];
+		error?: string;
+	}> {
+		const authHeader = request.headers.get('Authorization');
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return { success: false, error: 'Missing or invalid Authorization header' };
+		}
+
+		const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+		try {
+			// Use the existing checkPermissions function with minimal permissions
+			const { access, payload } = await checkPermissions(token, 'read:api', env);
+			
+			if (!access) {
+				return { success: false, error: 'Invalid token or insufficient permissions' };
+			}
+
+			const userId = payload.sub as string;
+			const permissions = payload.permissions as string[] || [];
+
+			return {
+				success: true,
+				userId,
+				permissions
+			};
+		} catch (error) {
+			console.error('Authentication error:', error);
+			return { success: false, error: 'Token validation failed' };
+		}
+	}
+
+	/**
+	 * Create success response
+	 */
+	private successResponse<T = any>(data: T, status: number = 200): Response {
+		const response: APIResponse<T> = {
+			success: true,
+			data,
+			timestamp: new Date().toISOString(),
+			version: '1.0.0'
+		};
+
+		return new Response(JSON.stringify(response), {
+			status,
+			headers: this.corsHeaders
+		});
+	}
+
+	/**
+	 * Create error response
+	 */
+	private errorResponse(error: string, status: number = 400): Response {
+		const response: APIResponse = {
+			success: false,
+			error,
+			timestamp: new Date().toISOString(),
+			version: '1.0.0'
+		};
+
+		return new Response(JSON.stringify(response), {
+			status,
+			headers: this.corsHeaders
+		});
+	}
+}
