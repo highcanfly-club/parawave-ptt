@@ -1,7 +1,8 @@
 {
-  "name": "cloudflare-worker",
+  "name": "ptt-backend-worker",
   "version": "0.0.0",
   "private": true,
+  "description": "Backend Cloudflare Workers pour PTT Parapente",
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",

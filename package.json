@@ -1,7 +1,8 @@
 {
-  "name": "vite-react-heroui-auth0-template",
+  "name": "parawave-ptt",
   "private": true,
   "version": "1.0.0",
+  "description": "Application PTT Parapente - iOS + Cloudflare Workers Backend",
   "type": "module",
   "packageManager": "yarn@4.9.2",
   "workspaces": [

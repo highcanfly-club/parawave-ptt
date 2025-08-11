@@ -1,7 +1,8 @@
 {
-  "name": "client",
+  "name": "ptt-admin-frontend",
   "private": true,
   "version": "0.0.0",
+  "description": "Interface d'administration PTT Parapente",
   "type": "module",
   "scripts": {
     "dev": "vite",

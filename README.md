@@ -1,6 +1,8 @@
-# Vite, OAuth & HeroUI Template
+# ParaWave PTT - Application Push-to-Talk pour Parapentistes
 
-This is a monorepo template for creating applications using Vite 7, HeroUI (v2) and a flexible authentication layer that supports multiple OAuth providers (Auth0, Dex, and more). Built with Turborepo and Yarn 4 workspaces for optimal developer experience and performance.
+A half-duplex communication application specialized for paragliding, using Apple's iOS 16+ PushToTalk framework with a Cloudflare Workers backend. A hybrid system designed to complement traditional VHF/UHF radios.
+
+**Based on** the Vite 7 + HeroUI (v2) + Auth0 with Turborepo and Yarn 4 workspaces template.
 
 [Try it on CodeSandbox](https://githubbox.com/sctg-development/vite-react-heroui-auth0-template)
 
