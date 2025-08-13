@@ -94,7 +94,7 @@ const api = {
 describe('Parawave-PTT API', () => {
   let createdChannelUuid: string;
   let testChannelCreated = false;
-  const testChannelUuid = '8879F616-D468-4793-AFCD-D66F0CEA4651';
+  const testChannelUuid = '8879F616-D468-4793-AFCD-D66F0CEA4651'.toLowerCase();
   
   beforeAll(async () => {
     // Extract the user ID (sub) from the JWT token
@@ -147,7 +147,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Health Check Tests
-  test('01. Should return 200 for health endpoint', async () => {
+  test('10. Should return 200 for health endpoint', async () => {
     const response = await api.get('/v1/health');
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
@@ -159,7 +159,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Channels - GET Tests
-  test('02. Should get channels list successfully', async () => {
+  test('20. Should get channels list successfully', async () => {
     const response = await api.get('/v1/channels');
     console.log('GET /v1/channels response:', JSON.stringify(response.data, null, 2));
     
@@ -187,7 +187,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('03. Should get channels with type filter', async () => {
+  test('30. Should get channels with type filter', async () => {
     const response = await api.get('/v1/channels?type=general');
     console.log('GET /v1/channels?type=general response:', JSON.stringify(response.data, null, 2));
     
@@ -201,14 +201,14 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('04. Should get channels with active filter', async () => {
+  test('40. Should get channels with active filter', async () => {
     const response = await api.get('/v1/channels?active=true');
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(response.data.data.channels).toBeDefined();
   });
 
-  test('05. Should get channels with location filter', async () => {
+  test('50. Should get channels with location filter', async () => {
     const response = await api.get('/v1/channels?lat=45.4486&lon=6.9816&radius=50');
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
@@ -216,7 +216,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Channels - POST Tests (Create)
-  test('06. Should create a new channel successfully', async () => {
+  test('60. Should create a new channel successfully', async () => {
     const channelData = {
       name: 'Test Channel - E2E',
       description: 'Channel created for end-to-end testing',
@@ -267,7 +267,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('07. Should fail to create channel without required fields', async () => {
+  test('70. Should fail to create channel without required fields', async () => {
     const incompleteData = {
       description: 'Missing name and type'
     };
@@ -289,7 +289,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('08. Should fail to create emergency channel without admin permission', async () => {
+  test('80. Should fail to create emergency channel without admin permission', async () => {
     const emergencyChannelData = {
       name: 'Emergency Test Channel',
       description: 'Should require admin permission',
@@ -327,7 +327,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Channels - GET Single Channel
-  test('09. Should get specific channel by UUID', async () => {
+  test('90. Should get specific channel by UUID', async () => {
     if (!createdChannelUuid) {
       console.log('Skipping test - No test channel UUID available (channel creation may have failed)');
       expect(true).toBe(true); // Mark as passed but skipped
@@ -344,7 +344,7 @@ describe('Parawave-PTT API', () => {
     expect(response.data.data.created_by).toBe(testerId);
   });
 
-  test('10. Should return 404 for non-existent channel', async () => {
+  test('100. Should return 404 for non-existent channel', async () => {
     const fakeUuid = '00000000-0000-4000-8000-000000000000';
     const response = await api.get(`/v1/channels/${fakeUuid}`);
     expect(response.status).toBe(404);
@@ -353,7 +353,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Channels - PUT Tests (Update)
-  test('11. Should update channel successfully', async () => {
+  test('110. Should update channel successfully', async () => {
     if (!createdChannelUuid) {
       console.log('Skipping test - No test channel UUID available (channel creation may have failed)');
       expect(true).toBe(true); // Mark as passed but skipped
@@ -388,7 +388,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('12. Should fail to update non-existent channel', async () => {
+  test('120. Should fail to update non-existent channel', async () => {
     const fakeUuid = '00000000-0000-4000-8000-000000000000';
     const updateData = {
       name: 'This should fail'
@@ -400,7 +400,7 @@ describe('Parawave-PTT API', () => {
     expect(response.data.error).toContain('not found');
   });
 
-  test('13. Should fail to update with invalid JSON', async () => {
+  test('130. Should fail to update with invalid JSON', async () => {
     if (!createdChannelUuid) {
       console.log('Skipping test - No test channel UUID available (channel creation may have failed)');
       expect(true).toBe(true); // Mark as passed but skipped
@@ -488,7 +488,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Authentication Tests
-  test('14. Should fail without authorization header', async () => {
+  test('140. Should fail without authorization header', async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/v1/channels`, {
         validateStatus: function (status) {
@@ -503,7 +503,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('15. Should fail with invalid authorization token', async () => {
+  test('150. Should fail with invalid authorization token', async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/v1/channels`, {
         headers: {
@@ -521,7 +521,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Channels - DELETE Tests
-  test('16. Should soft delete channel (admin permission required)', async () => {
+  test('160. Should soft delete channel (admin permission required)', async () => {
     if (!createdChannelUuid) {
       console.log('Skipping test - No test channel UUID available (channel creation may have failed)');
       expect(true).toBe(true); // Mark as passed but skipped
@@ -554,7 +554,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('17. Should hard delete channel (admin permission required)', async () => {
+  test('170. Should hard delete channel (admin permission required)', async () => {
     if (!createdChannelUuid) {
       console.log('Skipping test - No test channel UUID available (channel creation may have failed)');
       expect(true).toBe(true); // Mark as passed but skipped
@@ -589,7 +589,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('18. Should fail to delete non-existent channel', async () => {
+  test('180. Should fail to delete non-existent channel', async () => {
     const fakeUuid = '00000000-0000-4000-8000-000000000000';
     const response = await api.delete(`/v1/channels/${fakeUuid}`);
     expect([404, 403]).toContain(response.status);
@@ -597,7 +597,7 @@ describe('Parawave-PTT API', () => {
   });
 
   // Health Check Test (kept as test 19 for continuity)
-  test('19. Should test the health endpoint', async () => {
+  test('190. Should test the health endpoint', async () => {
     const response = await api.get('/v1/health');
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
@@ -607,13 +607,13 @@ describe('Parawave-PTT API', () => {
   });
 
   // Edge Cases and Error Handling
-  test('20. Should handle malformed UUID in path', async () => {
+  test('200. Should handle malformed UUID in path', async () => {
     const response = await api.get('/v1/channels/not-a-uuid');
     expect([400, 404]).toContain(response.status);
     expect(response.data.success).toBe(false);
   });
 
-  test('21. Should handle unsupported HTTP methods', async () => {
+  test('210. Should handle unsupported HTTP methods', async () => {
     try {
       const response = await axios.patch(`${API_BASE_URL}/v1/channels`, {}, {
         headers: {
@@ -631,7 +631,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('22. Should handle CORS preflight requests', async () => {
+  test('220. Should handle CORS preflight requests', async () => {
     try {
       const response = await axios.options(`${API_BASE_URL}/v1/channels`, {
         validateStatus: function (status) {
@@ -645,7 +645,77 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('23. Should create test channel for join/leave operations', async () => {
+  test('222. Should create channel with uppercase UUID and store it in lowercase', async () => {
+    const uppercaseUuid = 'AA11BB22-CC33-4444-A555-FF6677889900';
+    const lowercaseUuid = uppercaseUuid.toLowerCase();
+    
+    const channelData = {
+      uuid: uppercaseUuid,
+      name: 'Test Channel UUID Normalization',
+      description: 'Testing UUID case normalization',
+      type: 'general',
+      vhf_frequency: '145.500'
+    };
+
+    const response = await axios.post(`${API_BASE_URL}/v1/channels/with-uuid`, channelData, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      }
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.data.success).toBe(true);
+    expect(response.data.data.uuid).toBe(lowercaseUuid); // Should be stored in lowercase
+    expect(response.data.data.name).toBe(channelData.name);
+
+    // Clean up - delete the test channel
+    await axios.delete(`${API_BASE_URL}/v1/channels/${lowercaseUuid}?hardDelete=true`, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      }
+    });
+  });
+
+  test('224. Should find channel when searching with uppercase UUID', async () => {
+    const uppercaseUuid = 'BB22CC33-DD44-4555-A666-77889900AA11';
+    const lowercaseUuid = uppercaseUuid.toLowerCase();
+    
+    // First, create a channel with lowercase UUID
+    const channelData = {
+      uuid: lowercaseUuid,
+      name: 'Test Channel UUID Search',
+      description: 'Testing UUID case-insensitive search',
+      type: 'general',
+      vhf_frequency: '145.600'
+    };
+
+    await axios.post(`${API_BASE_URL}/v1/channels/with-uuid`, channelData, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      }
+    });
+
+    // Now search for it using uppercase UUID
+    const response = await axios.get(`${API_BASE_URL}/v1/channels/${uppercaseUuid}`, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.data.uuid).toBe(lowercaseUuid); // Should return lowercase UUID
+    expect(response.data.data.name).toBe(channelData.name);
+
+    // Clean up - delete the test channel
+    await axios.delete(`${API_BASE_URL}/v1/channels/${lowercaseUuid}?hardDelete=true`, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      }
+    });
+  });
+
+  test('230. Should create test channel for join/leave operations', async () => {
     // Create a test channel with the specific UUID that the user has access to
     
     const channelData = {
@@ -687,7 +757,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('24. Should join channel successfully', async () => {
+  test('240. Should join channel successfully', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -720,7 +790,7 @@ describe('Parawave-PTT API', () => {
     expect(response.data.channel_info.participants_count).toBeGreaterThan(0);
   });
 
-  test('25. Should get channel participants', async () => {
+  test('250. Should get channel participants', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -755,7 +825,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('26. Should handle joining channel without access permission', async () => {
+  test('260. Should handle joining channel without access permission', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -775,7 +845,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('27. Should handle joining non-existent channel', async () => {
+  test('270. Should handle joining non-existent channel', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -793,7 +863,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('28. Should join channel again (idempotent operation)', async () => {
+  test('280. Should join channel again (idempotent operation)', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -816,7 +886,7 @@ describe('Parawave-PTT API', () => {
     expect(response.data.participant.location).toBeDefined();
   });
 
-  test('29. Should leave channel successfully (POST method)', async () => {
+  test('290. Should leave channel successfully (POST method)', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -827,7 +897,7 @@ describe('Parawave-PTT API', () => {
     expect(response.data.success).toBe(true);
   });
 
-  test('30. Should handle leaving channel when not a participant', async () => {
+  test('300. Should handle leaving channel when not a participant', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -842,7 +912,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('31. Should leave channel successfully (DELETE method)', async () => {
+  test('310. Should leave channel successfully (DELETE method)', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -857,7 +927,7 @@ describe('Parawave-PTT API', () => {
     expect(response.data.success).toBe(true);
   });
 
-  test('32. Should handle invalid HTTP methods for join/leave endpoints', async () => {
+  test('320. Should handle invalid HTTP methods for join/leave endpoints', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
@@ -872,7 +942,7 @@ describe('Parawave-PTT API', () => {
     }
   });
 
-  test('33. Should handle unknown sub-resources', async () => {
+  test('330. Should handle unknown sub-resources', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }

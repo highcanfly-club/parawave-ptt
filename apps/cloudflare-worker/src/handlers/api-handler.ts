@@ -562,14 +562,14 @@ export class PTTAPIHandler {
 			return this.errorResponse('Insufficient permissions', 403);
 		}
 
-		const channel = await this.channelService.getChannel(uuid);
+		const channel = await this.channelService.getChannel(uuid.toLowerCase());
 		if (!channel) {
 			return this.errorResponse('Channel not found', 404);
 		}
 
 		// Get channel statistics if user has admin permissions
 		if (permissions.includes('admin:api')) {
-			const stats = await this.channelService.getChannelStats(uuid);
+			const stats = await this.channelService.getChannelStats(uuid.toLowerCase());
 			if (stats) {
 				return this.successResponse({ ...channel, stats });
 			}
@@ -791,7 +791,7 @@ export class PTTAPIHandler {
 			return this.errorResponse('Admin permission required to create emergency channels', 403);
 		}
 
-		const channel = await this.channelService.createChannelWithUuid(createRequest, userId, createRequest.uuid);
+		const channel = await this.channelService.createChannelWithUuid(createRequest, userId, createRequest.uuid.toLowerCase());
 		if (!channel) {
 			return this.errorResponse('Failed to create channel - UUID may already exist', 400);
 		}
@@ -1022,7 +1022,7 @@ export class PTTAPIHandler {
 		}
 
 		// Check if channel exists
-		const existingChannel = await this.channelService.getChannel(uuid);
+		const existingChannel = await this.channelService.getChannel(uuid.toLowerCase());
 		if (!existingChannel) {
 			return this.errorResponse('Channel not found', 404);
 		}
@@ -1044,7 +1044,7 @@ export class PTTAPIHandler {
 			return this.errorResponse('Admin permission required to change channel to emergency type', 403);
 		}
 
-		const updatedChannel = await this.channelService.updateChannel(uuid, updateRequest, userId);
+		const updatedChannel = await this.channelService.updateChannel(uuid.toLowerCase(), updateRequest, userId);
 		if (!updatedChannel) {
 			return this.errorResponse('Failed to update channel', 500);
 		}
@@ -1139,7 +1139,7 @@ export class PTTAPIHandler {
 		}
 
 		// Check if channel exists
-		const existingChannel = await this.channelService.getChannel(uuid);
+		const existingChannel = await this.channelService.getChannel(uuid.toLowerCase());
 		if (!existingChannel) {
 			return this.errorResponse('Channel not found', 404);
 		}
@@ -1152,10 +1152,10 @@ export class PTTAPIHandler {
 		if (hardDelete) {
 			// Hard delete (permanent) - super admin only
 			// TODO: Add super admin permission check
-			success = await this.channelService.hardDeleteChannel(uuid, userId);
+			success = await this.channelService.hardDeleteChannel(uuid.toLowerCase(), userId);
 		} else {
 			// Soft delete (deactivate)
-			success = await this.channelService.deleteChannel(uuid, userId);
+			success = await this.channelService.deleteChannel(uuid.toLowerCase(), userId);
 		}
 
 		if (!success) {
@@ -1376,15 +1376,15 @@ export class PTTAPIHandler {
 			}
 
 			// Join channel using service
-			const result = await this.channelService.joinChannel(channelUuid, userId, joinRequest.location);
+			const result = await this.channelService.joinChannel(channelUuid.toLowerCase(), userId, joinRequest.location);
 
 			if (!result.success) {
 				return this.errorResponse(result.error || 'Failed to join channel', 400);
 			}
 
 			// Get channel info for response
-			const channel = await this.channelService.getChannel(channelUuid);
-			const participants = await this.channelService.getChannelParticipants(channelUuid);
+			const channel = await this.channelService.getChannel(channelUuid.toLowerCase());
+			const participants = await this.channelService.getChannelParticipants(channelUuid.toLowerCase());
 
 			const response: JoinChannelResponse = {
 				success: true,
@@ -1477,7 +1477,7 @@ export class PTTAPIHandler {
 
 		try {
 			// Leave channel using service
-			const result = await this.channelService.leaveChannel(channelUuid, userId);
+			const result = await this.channelService.leaveChannel(channelUuid.toLowerCase(), userId);
 
 			if (!result.success) {
 				return this.errorResponse(result.error || 'Failed to leave channel', 400);
@@ -1567,13 +1567,13 @@ export class PTTAPIHandler {
 
 		try {
 			// Verify channel exists
-			const channel = await this.channelService.getChannel(channelUuid);
+			const channel = await this.channelService.getChannel(channelUuid.toLowerCase());
 			if (!channel) {
 				return this.errorResponse('Channel not found', 404);
 			}
 
 			// Get participants
-			const participants = await this.channelService.getChannelParticipants(channelUuid);
+			const participants = await this.channelService.getChannelParticipants(channelUuid.toLowerCase());
 
 			const response: APIResponse<ChannelParticipant[]> = {
 				success: true,

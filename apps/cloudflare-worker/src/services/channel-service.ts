@@ -97,94 +97,95 @@ export class ChannelService {
 	 * @returns Created channel or null if failed
 	 */
 	async createChannelWithUuid(request: CreateChannelRequest, createdBy: string, specificUuid: string): Promise<PTTChannel | null> {
-		try {
-			const now = this.getCurrentTimestamp();
+		   try {
+			   const now = this.getCurrentTimestamp();
+			   const uuidLower = specificUuid.toLowerCase();
 
-			// Validate UUID format
-			const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-			if (!uuidRegex.test(specificUuid)) {
-				throw new Error('Invalid UUID format');
-			}
+			   // Validate UUID format
+			   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+			   if (!uuidRegex.test(uuidLower)) {
+				   throw new Error('Invalid UUID format');
+			   }
 
-			// Check if UUID already exists
-			const existingChannel = await this.db.prepare(`
-				SELECT uuid FROM channels WHERE uuid = ?
-			`).bind(specificUuid).first();
+			   // Check if UUID already exists
+			   const existingChannel = await this.db.prepare(`
+				   SELECT uuid FROM channels WHERE uuid = ?
+			   `).bind(uuidLower).first();
 
-			if (existingChannel) {
-				throw new Error('Channel with this UUID already exists');
-			}
+			   if (existingChannel) {
+				   throw new Error('Channel with this UUID already exists');
+			   }
 
-			// Validate required fields
-			if (!request.name || !request.type) {
-				throw new Error('Name and type are required fields');
-			}
+			   // Validate required fields
+			   if (!request.name || !request.type) {
+				   throw new Error('Name and type are required fields');
+			   }
 
-			// Validate coordinates if provided
-			if (request.coordinates) {
-				if (!this.isValidCoordinates(request.coordinates.lat, request.coordinates.lon)) {
-					throw new Error('Invalid coordinates provided');
-				}
-			}
+			   // Validate coordinates if provided
+			   if (request.coordinates) {
+				   if (!this.isValidCoordinates(request.coordinates.lat, request.coordinates.lon)) {
+					   throw new Error('Invalid coordinates provided');
+				   }
+			   }
 
-			// Validate VHF frequency format if provided
-			if (request.vhf_frequency && !this.isValidVHFFrequency(request.vhf_frequency)) {
-				throw new Error('Invalid VHF frequency format');
-			}
+			   // Validate VHF frequency format if provided
+			   if (request.vhf_frequency && !this.isValidVHFFrequency(request.vhf_frequency)) {
+				   throw new Error('Invalid VHF frequency format');
+			   }
 
-			const channel: PTTChannel = {
-				uuid: specificUuid,
-				name: request.name,
-				type: request.type,
-				description: request.description,
-				coordinates: request.coordinates,
-				radius_km: request.radius_km || 50,
-				vhf_frequency: request.vhf_frequency,
-				max_participants: request.max_participants || 50,
-				difficulty: request.difficulty,
-				is_active: true,
-				created_at: now,
-				created_by: createdBy
-			};
+			   const channel: PTTChannel = {
+				   uuid: uuidLower,
+				   name: request.name,
+				   type: request.type,
+				   description: request.description,
+				   coordinates: request.coordinates,
+				   radius_km: request.radius_km || 50,
+				   vhf_frequency: request.vhf_frequency,
+				   max_participants: request.max_participants || 50,
+				   difficulty: request.difficulty,
+				   is_active: true,
+				   created_at: now,
+				   created_by: createdBy
+			   };
 
-			// Insert into database
-			const result = await this.db.prepare(`
-				INSERT INTO channels (
-					uuid, name, type, description, coordinates_lat, coordinates_lon,
-					radius_km, vhf_frequency, max_participants, difficulty, is_active,
-					created_at, created_by
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`).bind(
-				channel.uuid,
-				channel.name,
-				channel.type,
-				channel.description || null,
-				channel.coordinates?.lat || null,
-				channel.coordinates?.lon || null,
-				channel.radius_km,
-				channel.vhf_frequency || null,
-				channel.max_participants,
-				channel.difficulty || null,
-				channel.is_active ? 1 : 0,
-				channel.created_at,
-				channel.created_by
-			).run();
+			   // Insert into database
+			   const result = await this.db.prepare(`
+				   INSERT INTO channels (
+					   uuid, name, type, description, coordinates_lat, coordinates_lon,
+					   radius_km, vhf_frequency, max_participants, difficulty, is_active,
+					   created_at, created_by
+				   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			   `).bind(
+				   channel.uuid,
+				   channel.name,
+				   channel.type,
+				   channel.description || null,
+				   channel.coordinates?.lat || null,
+				   channel.coordinates?.lon || null,
+				   channel.radius_km,
+				   channel.vhf_frequency || null,
+				   channel.max_participants,
+				   channel.difficulty || null,
+				   channel.is_active ? 1 : 0,
+				   channel.created_at,
+				   channel.created_by
+			   ).run();
 
-			if (!result.success) {
-				console.error('Failed to insert channel:', result);
-				return null;
-			}
+			   if (!result.success) {
+				   console.error('Failed to insert channel:', result);
+				   return null;
+			   }
 
-			// Cache the channel
-			await this.cacheChannel(channel);
+			   // Cache the channel
+			   await this.cacheChannel(channel);
 
-			return channel;
+			   return channel;
 
-		} catch (error) {
-			console.error('Error creating channel with specific UUID:', error);
-			return null;
-		}
-	}
+		   } catch (error) {
+			   console.error('Error creating channel with specific UUID:', error);
+			   return null;
+		   }
+	   }
 
 	/**
 	 * Create a new PTT channel
@@ -278,34 +279,35 @@ export class ChannelService {
 	 * @returns Channel or null if not found
 	 */
 	async getChannel(uuid: string): Promise<PTTChannel | null> {
-		try {
-			// Try cache first
-			const cached = await this.getCachedChannel(uuid);
-			if (cached) {
-				return cached;
-			}
+		   try {
+			   const uuidLower = uuid.toLowerCase();
+			   // Try cache first
+			   const cached = await this.getCachedChannel(uuidLower);
+			   if (cached) {
+				   return cached;
+			   }
 
-			// Query database
-			const result = await this.db.prepare(`
-				SELECT uuid, name, type, description, coordinates_lat, coordinates_lon,
-				       radius_km, vhf_frequency, max_participants, difficulty, is_active,
-				       created_at, created_by, updated_at, updated_by
-				FROM channels WHERE uuid = ?
-			`).bind(uuid).first();
+			   // Query database
+			   const result = await this.db.prepare(`
+				   SELECT uuid, name, type, description, coordinates_lat, coordinates_lon,
+						  radius_km, vhf_frequency, max_participants, difficulty, is_active,
+						  created_at, created_by, updated_at, updated_by
+				   FROM channels WHERE uuid = ?
+			   `).bind(uuidLower).first();
 
-			if (result) {
-				const channel = this.mapRowToChannel(result);
-				// Cache the result
-				await this.cacheChannel(channel);
-				return channel;
-			}
+			   if (result) {
+				   const channel = this.mapRowToChannel(result);
+				   // Cache the result
+				   await this.cacheChannel(channel);
+				   return channel;
+			   }
 
-			return null;
-		} catch (error) {
-			console.error('Error getting channel:', error);
-			return null;
-		}
-	}
+			   return null;
+		   } catch (error) {
+			   console.error('Error getting channel:', error);
+			   return null;
+		   }
+	   }
 
 	/**
 	 * Get all channels with optional filtering
@@ -414,107 +416,108 @@ export class ChannelService {
 	 * @returns Updated channel or null if failed
 	 */
 	async updateChannel(uuid: string, request: UpdateChannelRequest, updatedBy: string): Promise<PTTChannel | null> {
-		try {
-			// Get existing channel
-			const existingChannel = await this.getChannel(uuid);
-			if (!existingChannel) {
-				return null;
-			}
+		   try {
+			   const uuidLower = uuid.toLowerCase();
+			   // Get existing channel
+			   const existingChannel = await this.getChannel(uuidLower);
+			   if (!existingChannel) {
+				   return null;
+			   }
 
-			// Build update query dynamically
-			const updateFields: string[] = [];
-			const params: any[] = [];
+			   // Build update query dynamically
+			   const updateFields: string[] = [];
+			   const params: any[] = [];
 
-			if (request.name !== undefined) {
-				updateFields.push('name = ?');
-				params.push(request.name);
-			}
+			   if (request.name !== undefined) {
+				   updateFields.push('name = ?');
+				   params.push(request.name);
+			   }
 
-			if (request.type !== undefined) {
-				updateFields.push('type = ?');
-				params.push(request.type);
-			}
+			   if (request.type !== undefined) {
+				   updateFields.push('type = ?');
+				   params.push(request.type);
+			   }
 
-			if (request.description !== undefined) {
-				updateFields.push('description = ?');
-				params.push(request.description);
-			}
+			   if (request.description !== undefined) {
+				   updateFields.push('description = ?');
+				   params.push(request.description);
+			   }
 
-			if (request.coordinates !== undefined) {
-				if (request.coordinates && this.isValidCoordinates(request.coordinates.lat, request.coordinates.lon)) {
-					updateFields.push('coordinates_lat = ?', 'coordinates_lon = ?');
-					params.push(request.coordinates.lat, request.coordinates.lon);
-				} else {
-					updateFields.push('coordinates_lat = NULL', 'coordinates_lon = NULL');
-				}
-			}
+			   if (request.coordinates !== undefined) {
+				   if (request.coordinates && this.isValidCoordinates(request.coordinates.lat, request.coordinates.lon)) {
+					   updateFields.push('coordinates_lat = ?', 'coordinates_lon = ?');
+					   params.push(request.coordinates.lat, request.coordinates.lon);
+				   } else {
+					   updateFields.push('coordinates_lat = NULL', 'coordinates_lon = NULL');
+				   }
+			   }
 
-			if (request.radius_km !== undefined) {
-				updateFields.push('radius_km = ?');
-				params.push(request.radius_km);
-			}
+			   if (request.radius_km !== undefined) {
+				   updateFields.push('radius_km = ?');
+				   params.push(request.radius_km);
+			   }
 
-			if (request.vhf_frequency !== undefined) {
-				if (request.vhf_frequency && !this.isValidVHFFrequency(request.vhf_frequency)) {
-					throw new Error('Invalid VHF frequency format');
-				}
-				updateFields.push('vhf_frequency = ?');
-				params.push(request.vhf_frequency);
-			}
+			   if (request.vhf_frequency !== undefined) {
+				   if (request.vhf_frequency && !this.isValidVHFFrequency(request.vhf_frequency)) {
+					   throw new Error('Invalid VHF frequency format');
+				   }
+				   updateFields.push('vhf_frequency = ?');
+				   params.push(request.vhf_frequency);
+			   }
 
-			if (request.max_participants !== undefined) {
-				updateFields.push('max_participants = ?');
-				params.push(request.max_participants);
-			}
+			   if (request.max_participants !== undefined) {
+				   updateFields.push('max_participants = ?');
+				   params.push(request.max_participants);
+			   }
 
-			if (request.difficulty !== undefined) {
-				updateFields.push('difficulty = ?');
-				params.push(request.difficulty);
-			}
+			   if (request.difficulty !== undefined) {
+				   updateFields.push('difficulty = ?');
+				   params.push(request.difficulty);
+			   }
 
-			if (request.is_active !== undefined) {
-				updateFields.push('is_active = ?');
-				params.push(request.is_active);
-			}
+			   if (request.is_active !== undefined) {
+				   updateFields.push('is_active = ?');
+				   params.push(request.is_active);
+			   }
 
-			if (updateFields.length === 0) {
-				// No fields to update
-				return existingChannel;
-			}
+			   if (updateFields.length === 0) {
+				   // No fields to update
+				   return existingChannel;
+			   }
 
-			// Add update metadata
-			updateFields.push('updated_at = ?', 'updated_by = ?');
-			params.push(this.getCurrentTimestamp(), updatedBy);
+			   // Add update metadata
+			   updateFields.push('updated_at = ?', 'updated_by = ?');
+			   params.push(this.getCurrentTimestamp(), updatedBy);
 
-			// Add UUID for WHERE clause
-			params.push(uuid);
+			   // Add UUID for WHERE clause
+			   params.push(uuidLower);
 
-			const query = `UPDATE channels SET ${updateFields.join(', ')} WHERE uuid = ?`;
-			const result = await this.db.prepare(query).bind(...params).run();
+			   const query = `UPDATE channels SET ${updateFields.join(', ')} WHERE uuid = ?`;
+			   const result = await this.db.prepare(query).bind(...params).run();
 
-			if (result.success) {
-				// Invalidate cache
-				await this.invalidateChannelCache(uuid);
+			   if (result.success) {
+				   // Invalidate cache
+				   await this.invalidateChannelCache(uuidLower);
 
-				// Get updated channel
-				const updatedChannel = await this.getChannel(uuid);
-				
-				if (updatedChannel) {
-					// Log update event
-					await this.logChannelEvent(uuid, 'channel_updated', updatedBy, {
-						updated_fields: Object.keys(request)
-					});
-				}
+				   // Get updated channel
+				   const updatedChannel = await this.getChannel(uuidLower);
+               
+				   if (updatedChannel) {
+					   // Log update event
+					   await this.logChannelEvent(uuidLower, 'channel_updated', updatedBy, {
+						   updated_fields: Object.keys(request)
+					   });
+				   }
 
-				return updatedChannel;
-			}
+				   return updatedChannel;
+			   }
 
-			return null;
-		} catch (error) {
-			console.error('Error updating channel:', error);
-			return null;
-		}
-	}
+			   return null;
+		   } catch (error) {
+			   console.error('Error updating channel:', error);
+			   return null;
+		   }
+	   }
 
 	/**
 	 * Delete a channel (soft delete by setting is_active to false)
@@ -523,38 +526,39 @@ export class ChannelService {
 	 * @returns Success status
 	 */
 	async deleteChannel(uuid: string, deletedBy: string): Promise<boolean> {
-		try {
-			// Check if channel exists
-			const existingChannel = await this.getChannel(uuid);
-			if (!existingChannel) {
-				return false;
-			}
+		   try {
+			   const uuidLower = uuid.toLowerCase();
+			   // Check if channel exists
+			   const existingChannel = await this.getChannel(uuidLower);
+			   if (!existingChannel) {
+				   return false;
+			   }
 
-			// Soft delete: set is_active to false
-			const result = await this.db.prepare(`
-				UPDATE channels 
-				SET is_active = ?, updated_at = ?, updated_by = ?
-				WHERE uuid = ?
-			`).bind(false, this.getCurrentTimestamp(), deletedBy, uuid).run();
+			   // Soft delete: set is_active to false
+			   const result = await this.db.prepare(`
+				   UPDATE channels 
+				   SET is_active = ?, updated_at = ?, updated_by = ?
+				   WHERE uuid = ?
+			   `).bind(false, this.getCurrentTimestamp(), deletedBy, uuidLower).run();
 
-			if (result.success) {
-				// Invalidate cache
-				await this.invalidateChannelCache(uuid);
+			   if (result.success) {
+				   // Invalidate cache
+				   await this.invalidateChannelCache(uuidLower);
 
-				// Log deletion event
-				await this.logChannelEvent(uuid, 'channel_deleted', deletedBy, {
-					channel_name: existingChannel.name
-				});
+				   // Log deletion event
+				   await this.logChannelEvent(uuidLower, 'channel_deleted', deletedBy, {
+					   channel_name: existingChannel.name
+				   });
 
-				return true;
-			}
+				   return true;
+			   }
 
-			return false;
-		} catch (error) {
-			console.error('Error deleting channel:', error);
-			return false;
-		}
-	}
+			   return false;
+		   } catch (error) {
+			   console.error('Error deleting channel:', error);
+			   return false;
+		   }
+	   }
 
 	/**
 	 * Hard delete a channel (admin only - permanently removes from database)
@@ -563,34 +567,35 @@ export class ChannelService {
 	 * @returns Success status
 	 */
 	async hardDeleteChannel(uuid: string, deletedBy: string): Promise<boolean> {
-		try {
-			// Check if channel exists
-			const existingChannel = await this.getChannel(uuid);
-			if (!existingChannel) {
-				return false;
-			}
+		   try {
+			   const uuidLower = uuid.toLowerCase();
+			   // Check if channel exists
+			   const existingChannel = await this.getChannel(uuidLower);
+			   if (!existingChannel) {
+				   return false;
+			   }
 
-			// Hard delete from database (CASCADE will handle related records)
-			const result = await this.db.prepare('DELETE FROM channels WHERE uuid = ?').bind(uuid).run();
+			   // Hard delete from database (CASCADE will handle related records)
+			   const result = await this.db.prepare('DELETE FROM channels WHERE uuid = ?').bind(uuidLower).run();
 
-			if (result.success) {
-				// Invalidate cache
-				await this.invalidateChannelCache(uuid);
+			   if (result.success) {
+				   // Invalidate cache
+				   await this.invalidateChannelCache(uuidLower);
 
-				// Log hard deletion event
-				await this.logChannelEvent(uuid, 'channel_hard_deleted', deletedBy, {
-					channel_name: existingChannel.name
-				});
+				   // Log hard deletion event
+				   await this.logChannelEvent(uuidLower, 'channel_hard_deleted', deletedBy, {
+					   channel_name: existingChannel.name
+				   });
 
-				return true;
-			}
+				   return true;
+			   }
 
-			return false;
-		} catch (error) {
-			console.error('Error hard deleting channel:', error);
-			return false;
-		}
-	}
+			   return false;
+		   } catch (error) {
+			   console.error('Error hard deleting channel:', error);
+			   return false;
+		   }
+	   }
 
 	/**
 	 * Get channel statistics for admin dashboard
@@ -598,50 +603,51 @@ export class ChannelService {
 	 * @returns Channel statistics
 	 */
 	async getChannelStats(uuid: string): Promise<ChannelStats | null> {
-		try {
-			const result = await this.db.prepare(`
-				SELECT 
-					c.uuid,
-					COUNT(DISTINCT cp.user_id) as current_participants,
-					COUNT(DISTINCT CASE WHEN DATE(cm.timestamp) = DATE('now') THEN cm.user_id END) as total_participants_today,
-					COUNT(CASE WHEN cm.message_type = 'audio_start' AND DATE(cm.timestamp) = DATE('now') THEN 1 END) as total_transmissions_today,
-					AVG(th.duration_seconds) as avg_transmission_duration,
-					MAX(cm.timestamp) as last_activity,
-					AVG(CASE 
-						WHEN cp.connection_quality = 'excellent' THEN 4
-						WHEN cp.connection_quality = 'good' THEN 3
-						WHEN cp.connection_quality = 'fair' THEN 2
-						WHEN cp.connection_quality = 'poor' THEN 1
-						ELSE 3
-					END) as avg_quality_score
-				FROM channels c
-				LEFT JOIN channel_participants cp ON c.uuid = cp.channel_uuid AND cp.last_seen > datetime('now', '-5 minutes')
-				LEFT JOIN channel_messages cm ON c.uuid = cm.channel_uuid
-				LEFT JOIN transmission_history th ON c.uuid = th.channel_uuid AND DATE(th.start_time) = DATE('now')
-				WHERE c.uuid = ?
-				GROUP BY c.uuid
-			`).bind(uuid).first();
+		   try {
+			   const uuidLower = uuid.toLowerCase();
+			   const result = await this.db.prepare(`
+				   SELECT 
+					   c.uuid,
+					   COUNT(DISTINCT cp.user_id) as current_participants,
+					   COUNT(DISTINCT CASE WHEN DATE(cm.timestamp) = DATE('now') THEN cm.user_id END) as total_participants_today,
+					   COUNT(CASE WHEN cm.message_type = 'audio_start' AND DATE(cm.timestamp) = DATE('now') THEN 1 END) as total_transmissions_today,
+					   AVG(th.duration_seconds) as avg_transmission_duration,
+					   MAX(cm.timestamp) as last_activity,
+					   AVG(CASE 
+						   WHEN cp.connection_quality = 'excellent' THEN 4
+						   WHEN cp.connection_quality = 'good' THEN 3
+						   WHEN cp.connection_quality = 'fair' THEN 2
+						   WHEN cp.connection_quality = 'poor' THEN 1
+						   ELSE 3
+					   END) as avg_quality_score
+				   FROM channels c
+				   LEFT JOIN channel_participants cp ON c.uuid = cp.channel_uuid AND cp.last_seen > datetime('now', '-5 minutes')
+				   LEFT JOIN channel_messages cm ON c.uuid = cm.channel_uuid
+				   LEFT JOIN transmission_history th ON c.uuid = th.channel_uuid AND DATE(th.start_time) = DATE('now')
+				   WHERE c.uuid = ?
+				   GROUP BY c.uuid
+			   `).bind(uuidLower).first();
 
-		if (result) {
-			const qualityMap = ['poor', 'poor', 'fair', 'good', 'excellent'];
-			const avgQualityScore = Number(result.avg_quality_score) || 3;
-			const avgQualityIndex = Math.round(avgQualityScore - 1);
-			
-			return {
-				uuid: String(result.uuid),
-				current_participants: Number(result.current_participants) || 0,
-				total_participants_today: Number(result.total_participants_today) || 0,
-				total_transmissions_today: Number(result.total_transmissions_today) || 0,
-				avg_transmission_duration: Number(result.avg_transmission_duration) || 0,
-				last_activity: result.last_activity ? String(result.last_activity) : null,
-				avg_connection_quality: qualityMap[avgQualityIndex] as any || 'good'
-			};
-		}			return null;
-		} catch (error) {
-			console.error('Error getting channel stats:', error);
-			return null;
-		}
-	}
+		   if (result) {
+			   const qualityMap = ['poor', 'poor', 'fair', 'good', 'excellent'];
+			   const avgQualityScore = Number(result.avg_quality_score) || 3;
+			   const avgQualityIndex = Math.round(avgQualityScore - 1);
+           
+			   return {
+				   uuid: String(result.uuid),
+				   current_participants: Number(result.current_participants) || 0,
+				   total_participants_today: Number(result.total_participants_today) || 0,
+				   total_transmissions_today: Number(result.total_transmissions_today) || 0,
+				   avg_transmission_duration: Number(result.avg_transmission_duration) || 0,
+				   last_activity: result.last_activity ? String(result.last_activity) : null,
+				   avg_connection_quality: qualityMap[avgQualityIndex] as any || 'good'
+			   };
+		   }           return null;
+		   } catch (error) {
+			   console.error('Error getting channel stats:', error);
+			   return null;
+		   }
+	   }
 
 	/**
 	 * Validate geographic coordinates
@@ -691,103 +697,104 @@ export class ChannelService {
 	 * @returns Success status and participant info
 	 */
 	async joinChannel(channelUuid: string, userId: string, userLocation?: Coordinates): Promise<{success: boolean, participant?: ChannelParticipant, error?: string}> {
-		try {
-			// Check if channel exists and is active
-			const channel = await this.getChannel(channelUuid);
-			if (!channel) {
-				return { success: false, error: 'Channel not found' };
-			}
+		   try {
+			   const uuidLower = channelUuid.toLowerCase();
+			   // Check if channel exists and is active
+			   const channel = await this.getChannel(uuidLower);
+			   if (!channel) {
+				   return { success: false, error: 'Channel not found' };
+			   }
 
-			if (!channel.is_active) {
-				return { success: false, error: 'Channel is not active' };
-			}
+			   if (!channel.is_active) {
+				   return { success: false, error: 'Channel is not active' };
+			   }
 
-			// Check current participant count
-			const currentParticipants = await this.db.prepare(`
-				SELECT COUNT(*) as count 
-				FROM channel_participants 
-				WHERE channel_uuid = ? AND is_active = 1
-			`).bind(channelUuid).first<{ count: number }>();
+			   // Check current participant count
+			   const currentParticipants = await this.db.prepare(`
+				   SELECT COUNT(*) as count 
+				   FROM channel_participants 
+				   WHERE channel_uuid = ? AND is_active = 1
+			   `).bind(uuidLower).first<{ count: number }>();
 
-			if (currentParticipants && currentParticipants.count >= channel.max_participants) {
-				return { success: false, error: 'Channel is full' };
-			}
+			   if (currentParticipants && currentParticipants.count >= channel.max_participants) {
+				   return { success: false, error: 'Channel is full' };
+			   }
 
-			// Check if user is already a participant
-			const existingParticipant = await this.db.prepare(`
-				SELECT * FROM channel_participants 
-				WHERE channel_uuid = ? AND user_id = ? AND is_active = 1
-			`).bind(channelUuid, userId).first() as any;
+			   // Check if user is already a participant
+			   const existingParticipant = await this.db.prepare(`
+				   SELECT * FROM channel_participants 
+				   WHERE channel_uuid = ? AND user_id = ? AND is_active = 1
+			   `).bind(uuidLower, userId).first() as any;
 
-			if (existingParticipant) {
-				// User is already in the channel, update last seen
-				await this.db.prepare(`
-					UPDATE channel_participants 
-					SET last_seen = ?, location_lat = ?, location_lon = ?
-					WHERE channel_uuid = ? AND user_id = ?
-				`).bind(
-					this.getCurrentTimestamp(),
-					userLocation?.lat || null,
-					userLocation?.lon || null,
-					channelUuid,
-					userId
-				).run();
+			   if (existingParticipant) {
+				   // User is already in the channel, update last seen
+				   await this.db.prepare(`
+					   UPDATE channel_participants 
+					   SET last_seen = ?, location_lat = ?, location_lon = ?
+					   WHERE channel_uuid = ? AND user_id = ?
+				   `).bind(
+					   this.getCurrentTimestamp(),
+					   userLocation?.lat || null,
+					   userLocation?.lon || null,
+					   uuidLower,
+					   userId
+				   ).run();
 
-				const participant: ChannelParticipant = {
-					user_id: userId,
-					username: existingParticipant.username || userId,
-					join_time: existingParticipant.join_time,
-					last_seen: this.getCurrentTimestamp(),
-					location: userLocation,
-					connection_quality: 'good',
-					is_transmitting: false
-				};
+				   const participant: ChannelParticipant = {
+					   user_id: userId,
+					   username: existingParticipant.username || userId,
+					   join_time: existingParticipant.join_time,
+					   last_seen: this.getCurrentTimestamp(),
+					   location: userLocation,
+					   connection_quality: 'good',
+					   is_transmitting: false
+				   };
 
-				return { success: true, participant };
-			}
+				   return { success: true, participant };
+			   }
 
-			// Add user as new participant
-			const joinTime = this.getCurrentTimestamp();
-			await this.db.prepare(`
-				INSERT INTO channel_participants (
-					channel_uuid, user_id, username, join_time, last_seen, 
-					location_lat, location_lon, connection_quality, is_active
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`).bind(
-				channelUuid,
-				userId,
-				userId, // Using userId as username for now
-				joinTime,
-				joinTime,
-				userLocation?.lat || null,
-				userLocation?.lon || null,
-				'good',
-				1
-			).run();
+			   // Add user as new participant
+			   const joinTime = this.getCurrentTimestamp();
+			   await this.db.prepare(`
+				   INSERT INTO channel_participants (
+					   channel_uuid, user_id, username, join_time, last_seen, 
+					   location_lat, location_lon, connection_quality, is_active
+				   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			   `).bind(
+				   uuidLower,
+				   userId,
+				   userId, // Using userId as username for now
+				   joinTime,
+				   joinTime,
+				   userLocation?.lat || null,
+				   userLocation?.lon || null,
+				   'good',
+				   1
+			   ).run();
 
-			// Log join event
-			await this.logChannelEvent(channelUuid, 'user_joined', userId, { location: userLocation });
+			   // Log join event
+			   await this.logChannelEvent(uuidLower, 'user_joined', userId, { location: userLocation });
 
-			const participant: ChannelParticipant = {
-				user_id: userId,
-				username: userId,
-				join_time: joinTime,
-				last_seen: joinTime,
-				location: userLocation,
-				connection_quality: 'good',
-				is_transmitting: false
-			};
+			   const participant: ChannelParticipant = {
+				   user_id: userId,
+				   username: userId,
+				   join_time: joinTime,
+				   last_seen: joinTime,
+				   location: userLocation,
+				   connection_quality: 'good',
+				   is_transmitting: false
+			   };
 
-			// Invalidate cache
-			await this.invalidateChannelCache(channelUuid);
+			   // Invalidate cache
+			   await this.invalidateChannelCache(uuidLower);
 
-			return { success: true, participant };
+			   return { success: true, participant };
 
-		} catch (error) {
-			console.error('Error joining channel:', error);
-			return { success: false, error: 'Failed to join channel' };
-		}
-	}
+		   } catch (error) {
+			   console.error('Error joining channel:', error);
+			   return { success: false, error: 'Failed to join channel' };
+		   }
+	   }
 
 	/**
 	 * Remove a user from channel participants
@@ -796,41 +803,42 @@ export class ChannelService {
 	 * @returns Success status
 	 */
 	async leaveChannel(channelUuid: string, userId: string): Promise<{success: boolean, error?: string}> {
-		try {
-			// Check if user is a participant
-			const participant = await this.db.prepare(`
-				SELECT * FROM channel_participants 
-				WHERE channel_uuid = ? AND user_id = ? AND is_active = 1
-			`).bind(channelUuid, userId).first() as any;
+		   try {
+			   const uuidLower = channelUuid.toLowerCase();
+			   // Check if user is a participant
+			   const participant = await this.db.prepare(`
+				   SELECT * FROM channel_participants 
+				   WHERE channel_uuid = ? AND user_id = ? AND is_active = 1
+			   `).bind(uuidLower, userId).first() as any;
 
-			if (!participant) {
-				return { success: false, error: 'User is not a participant in this channel' };
-			}
+			   if (!participant) {
+				   return { success: false, error: 'User is not a participant in this channel' };
+			   }
 
-			// Mark participant as inactive instead of deleting for audit trail
-			await this.db.prepare(`
-				UPDATE channel_participants 
-				SET is_active = 0, leave_time = ?
-				WHERE channel_uuid = ? AND user_id = ?
-			`).bind(
-				this.getCurrentTimestamp(),
-				channelUuid,
-				userId
-			).run();
+			   // Mark participant as inactive instead of deleting for audit trail
+			   await this.db.prepare(`
+				   UPDATE channel_participants 
+				   SET is_active = 0, leave_time = ?
+				   WHERE channel_uuid = ? AND user_id = ?
+			   `).bind(
+				   this.getCurrentTimestamp(),
+				   uuidLower,
+				   userId
+			   ).run();
 
-			// Log leave event
-			await this.logChannelEvent(channelUuid, 'user_left', userId);
+			   // Log leave event
+			   await this.logChannelEvent(uuidLower, 'user_left', userId);
 
-			// Invalidate cache
-			await this.invalidateChannelCache(channelUuid);
+			   // Invalidate cache
+			   await this.invalidateChannelCache(uuidLower);
 
-			return { success: true };
+			   return { success: true };
 
-		} catch (error) {
-			console.error('Error leaving channel:', error);
-			return { success: false, error: 'Failed to leave channel' };
-		}
-	}
+		   } catch (error) {
+			   console.error('Error leaving channel:', error);
+			   return { success: false, error: 'Failed to leave channel' };
+		   }
+	   }
 
 	/**
 	 * Get current participants of a channel
@@ -838,34 +846,35 @@ export class ChannelService {
 	 * @returns List of active participants
 	 */
 	async getChannelParticipants(channelUuid: string): Promise<ChannelParticipant[]> {
-		try {
-			const results = await this.db.prepare(`
-				SELECT 
-					user_id, username, join_time, last_seen,
-					location_lat, location_lon, connection_quality, is_transmitting
-				FROM channel_participants 
-				WHERE channel_uuid = ? AND is_active = 1
-				ORDER BY join_time ASC
-			`).bind(channelUuid).all();
+		   try {
+			   const uuidLower = channelUuid.toLowerCase();
+			   const results = await this.db.prepare(`
+				   SELECT 
+					   user_id, username, join_time, last_seen,
+					   location_lat, location_lon, connection_quality, is_transmitting
+				   FROM channel_participants 
+				   WHERE channel_uuid = ? AND is_active = 1
+				   ORDER BY join_time ASC
+			   `).bind(uuidLower).all();
 
-			return results.results.map((row: any) => ({
-				user_id: row.user_id as string,
-				username: row.username as string,
-				join_time: row.join_time as string,
-				last_seen: row.last_seen as string,
-				location: row.location_lat && row.location_lon ? {
-					lat: row.location_lat as number,
-					lon: row.location_lon as number
-				} : undefined,
-				connection_quality: (row.connection_quality as any) || 'good',
-				is_transmitting: Boolean(row.is_transmitting)
-			}));
+			   return results.results.map((row: any) => ({
+				   user_id: row.user_id as string,
+				   username: row.username as string,
+				   join_time: row.join_time as string,
+				   last_seen: row.last_seen as string,
+				   location: row.location_lat && row.location_lon ? {
+					   lat: row.location_lat as number,
+					   lon: row.location_lon as number
+				   } : undefined,
+				   connection_quality: (row.connection_quality as any) || 'good',
+				   is_transmitting: Boolean(row.is_transmitting)
+			   }));
 
-		} catch (error) {
-			console.error('Error getting channel participants:', error);
-			return [];
-		}
-	}
+		   } catch (error) {
+			   console.error('Error getting channel participants:', error);
+			   return [];
+		   }
+	   }
 
 	/**
 	 * Log channel-related events for audit trail
