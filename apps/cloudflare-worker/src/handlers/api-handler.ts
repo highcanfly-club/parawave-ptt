@@ -1269,7 +1269,16 @@ export class PTTAPIHandler {
 			}
 
 			const userId = payload.sub as string;
-			const permissions = payload.permissions as string[] || [];
+			const rawPermissions = payload.permissions as string[] || [];
+			
+			// Normalize permissions: convert access:UUID permissions to lowercase
+			const permissions = rawPermissions.map(permission => {
+				if (permission.startsWith('access:')) {
+					const uuid = permission.substring(7); // Remove 'access:' prefix
+					return `access:${uuid.toLowerCase()}`;
+				}
+				return permission;
+			});
 
 			return {
 				success: true,
@@ -1358,7 +1367,7 @@ export class PTTAPIHandler {
 	 */
 	private async joinChannel(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid}`;
+		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
 		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
 			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
 		}
@@ -1470,7 +1479,7 @@ export class PTTAPIHandler {
 	 */
 	private async leaveChannel(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid}`;
+		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
 		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
 			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
 		}
@@ -1560,7 +1569,7 @@ export class PTTAPIHandler {
 	 */
 	private async getChannelParticipants(channelUuid: string, permissions: string[]): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid}`;
+		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
 		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
 			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
 		}
