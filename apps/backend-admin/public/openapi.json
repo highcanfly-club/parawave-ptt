@@ -879,6 +879,89 @@
         }
       }
     },
+    "/api/v1/channels/with-uuid": {
+      "post": {
+        "summary": "Create channel with specific UUID",
+        "description": "Creates a new channel with a manually specified UUID. UUID must be unique.",
+        "tags": [
+          "Channels"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateChannelRequest"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "uuid"
+                    ],
+                    "properties": {
+                      "uuid": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Specific UUID for the channel"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Channel created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or UUID already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to create channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "summary": "Health check",
@@ -968,6 +1051,257 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{uuid}/join": {
+      "post": {
+        "summary": "Join a channel",
+        "description": "Join a PTT channel as participant. Requires access permission for the specific channel (access:{uuid}).",
+        "tags": [
+          "Channels"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Channel UUID"
+          }
+        ],
+        "requestBody": {
+          "description": "Optional location information",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinChannelRequest"
+              },
+              "example": {
+                "location": {
+                  "lat": 45.929681,
+                  "lon": 6.876345
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully joined channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinChannelResponse"
+                },
+                "example": {
+                  "success": true,
+                  "participant": {
+                    "user_id": "auth0|507f1f77bcf86cd799439011",
+                    "username": "pilot123",
+                    "join_time": "2025-08-11T10:30:00.000Z",
+                    "last_seen": "2025-08-11T10:30:00.000Z",
+                    "connection_quality": "good",
+                    "is_transmitting": false
+                  },
+                  "channel_info": {
+                    "name": "Chamonix - Mont Blanc",
+                    "participants_count": 3,
+                    "max_participants": 20
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (channel full, inactive, etc.)"
+          },
+          "403": {
+            "description": "Access denied - insufficient permissions"
+          },
+          "404": {
+            "description": "Channel not found"
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{uuid}/leave": {
+      "post": {
+        "summary": "Leave a channel",
+        "description": "Leave a PTT channel. Requires access permission for the specific channel (access:{uuid}).",
+        "tags": [
+          "Channels"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Channel UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully left channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveChannelResponse"
+                },
+                "example": {
+                  "success": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (not a participant, etc.)"
+          },
+          "403": {
+            "description": "Access denied - insufficient permissions"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Leave a channel (alternative method)",
+        "description": "Leave a PTT channel using DELETE method. Requires access permission for the specific channel (access:{uuid}).",
+        "tags": [
+          "Channels"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Channel UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully left channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveChannelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (not a participant, etc.)"
+          },
+          "403": {
+            "description": "Access denied - insufficient permissions"
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{uuid}/participants": {
+      "get": {
+        "summary": "Get channel participants",
+        "description": "Retrieve list of current participants in a channel. Requires access permission for the specific channel (access:{uuid}).",
+        "tags": [
+          "Channels"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Channel UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Participants retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ChannelParticipant"
+                      }
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "description": "Total number of participants"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": [
+                    {
+                      "user_id": "auth0|507f1f77bcf86cd799439011",
+                      "username": "pilot123",
+                      "join_time": "2025-08-11T10:30:00.000Z",
+                      "last_seen": "2025-08-11T10:35:00.000Z",
+                      "connection_quality": "good",
+                      "is_transmitting": false
+                    }
+                  ],
+                  "total_count": 1,
+                  "timestamp": "2025-08-11T10:35:00.000Z",
+                  "version": "1.0.0"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied - insufficient permissions"
+          },
+          "404": {
+            "description": "Channel not found"
           }
         }
       }
@@ -1106,6 +1440,99 @@
             "minimum": -180,
             "maximum": 180,
             "description": "Longitude"
+          }
+        }
+      },
+      "ChannelParticipant": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "User identifier from Auth0"
+          },
+          "username": {
+            "type": "string",
+            "description": "Display name for the user"
+          },
+          "join_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the user joined the channel"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last activity timestamp"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Coordinates"
+          },
+          "connection_quality": {
+            "type": "string",
+            "enum": [
+              "poor",
+              "fair",
+              "good",
+              "excellent"
+            ],
+            "description": "Network connection quality"
+          },
+          "is_transmitting": {
+            "type": "boolean",
+            "description": "Whether the user is currently transmitting"
+          }
+        }
+      },
+      "JoinChannelRequest": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/Coordinates",
+            "description": "Optional user location when joining"
+          }
+        }
+      },
+      "JoinChannelResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "participant": {
+            "$ref": "#/components/schemas/ChannelParticipant"
+          },
+          "channel_info": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Channel name"
+              },
+              "participants_count": {
+                "type": "integer",
+                "description": "Current number of participants"
+              },
+              "max_participants": {
+                "type": "integer",
+                "description": "Maximum allowed participants"
+              }
+            }
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false"
+          }
+        }
+      },
+      "LeaveChannelResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false"
           }
         }
       }
