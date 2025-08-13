@@ -715,6 +715,19 @@ describe('Parawave-PTT API', () => {
     });
   });
 
+  test('226. Should delete channel with specific UUID', async () => {
+    const channelUuid = 'BB22CC33-DD44-4555-A666-77889900AA11';
+
+    const response = await axios.delete(`${API_BASE_URL}/v1/channels/${channelUuid}?hardDelete=true`, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+  });
+
   test('230. Should create test channel for join/leave operations', async () => {
     // Create a test channel with the specific UUID that the user has access to
     
@@ -758,11 +771,57 @@ describe('Parawave-PTT API', () => {
   });
 
   test('240. Should join channel successfully', async () => {
+    // Ensure test channel exists (create if needed)
     if (!testChannelCreated) {
-      throw new Error('Test channel must be created first (test 23)');
+      const channelData = {
+        uuid: testChannelUuid,
+        name: 'Test Channel for Join/Leave',
+        type: 'general',
+        description: 'Test channel for join/leave functionality',
+        coordinates: {
+          lat: 45.929681,
+          lon: 6.876345
+        },
+        vhf_frequency: '144.150',
+        max_participants: 10,
+        difficulty: 'beginner'
+      };
+      
+      try {
+        await api.post(`/v1/channels/with-uuid`, channelData);
+        testChannelCreated = true;
+      } catch (error: any) {
+        if (error.response?.data?.error?.includes('UUID may already exist')) {
+          testChannelCreated = true; // Channel already exists
+        } else {
+          throw error;
+        }
+      }
     }
     
-    const testChannelUuid = '8879F616-D468-4793-AFCD-D66F0CEA4651';
+    // First, verify the channel exists
+    try {
+      await api.get(`/v1/channels/${testChannelUuid}`);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        // Channel doesn't exist, recreate it
+        const channelData = {
+          uuid: testChannelUuid,
+          name: 'Test Channel for Join/Leave',
+          type: 'general',
+          description: 'Test channel for join/leave functionality',
+          coordinates: {
+            lat: 45.929681,
+            lon: 6.876345
+          },
+          vhf_frequency: '144.150',
+          max_participants: 10,
+          difficulty: 'beginner'
+        };
+        await api.post(`/v1/channels/with-uuid`, channelData);
+        console.log('Recreated test channel');
+      }
+    }
     
     const joinRequest = {
       location: {

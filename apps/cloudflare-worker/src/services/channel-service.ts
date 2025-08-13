@@ -699,6 +699,7 @@ export class ChannelService {
 	async joinChannel(channelUuid: string, userId: string, userLocation?: Coordinates): Promise<{success: boolean, participant?: ChannelParticipant, error?: string}> {
 		   try {
 			   const uuidLower = channelUuid.toLowerCase();
+			   
 			   // Check if channel exists and is active
 			   const channel = await this.getChannel(uuidLower);
 			   if (!channel) {
@@ -713,7 +714,7 @@ export class ChannelService {
 			   const currentParticipants = await this.db.prepare(`
 				   SELECT COUNT(*) as count 
 				   FROM channel_participants 
-				   WHERE channel_uuid = ? AND is_active = 1
+				   WHERE channel_uuid = ?
 			   `).bind(uuidLower).first<{ count: number }>();
 
 			   if (currentParticipants && currentParticipants.count >= channel.max_participants) {
@@ -723,7 +724,7 @@ export class ChannelService {
 			   // Check if user is already a participant
 			   const existingParticipant = await this.db.prepare(`
 				   SELECT * FROM channel_participants 
-				   WHERE channel_uuid = ? AND user_id = ? AND is_active = 1
+				   WHERE channel_uuid = ? AND user_id = ?
 			   `).bind(uuidLower, userId).first() as any;
 
 			   if (existingParticipant) {
@@ -755,11 +756,11 @@ export class ChannelService {
 
 			   // Add user as new participant
 			   const joinTime = this.getCurrentTimestamp();
-			   await this.db.prepare(`
+			   const insertResult = await this.db.prepare(`
 				   INSERT INTO channel_participants (
 					   channel_uuid, user_id, username, join_time, last_seen, 
-					   location_lat, location_lon, connection_quality, is_active
-				   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+					   location_lat, location_lon, connection_quality
+				   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			   `).bind(
 				   uuidLower,
 				   userId,
@@ -768,8 +769,7 @@ export class ChannelService {
 				   joinTime,
 				   userLocation?.lat || null,
 				   userLocation?.lon || null,
-				   'good',
-				   1
+				   'good'
 			   ).run();
 
 			   // Log join event
@@ -805,28 +805,24 @@ export class ChannelService {
 	async leaveChannel(channelUuid: string, userId: string): Promise<{success: boolean, error?: string}> {
 		   try {
 			   const uuidLower = channelUuid.toLowerCase();
-			   // Check if user is a participant
-			   const participant = await this.db.prepare(`
-				   SELECT * FROM channel_participants 
-				   WHERE channel_uuid = ? AND user_id = ? AND is_active = 1
-			   `).bind(uuidLower, userId).first() as any;
+		   // Check if user is a participant
+		   const participant = await this.db.prepare(`
+			   SELECT * FROM channel_participants 
+			   WHERE channel_uuid = ? AND user_id = ?
+		   `).bind(uuidLower, userId).first() as any;
 
-			   if (!participant) {
-				   return { success: false, error: 'User is not a participant in this channel' };
-			   }
+		   if (!participant) {
+			   return { success: false, error: 'User is not a participant in this channel' };
+		   }
 
-			   // Mark participant as inactive instead of deleting for audit trail
-			   await this.db.prepare(`
-				   UPDATE channel_participants 
-				   SET is_active = 0, leave_time = ?
-				   WHERE channel_uuid = ? AND user_id = ?
-			   `).bind(
-				   this.getCurrentTimestamp(),
-				   uuidLower,
-				   userId
-			   ).run();
-
-			   // Log leave event
+		   // Remove participant from channel
+		   await this.db.prepare(`
+			   DELETE FROM channel_participants 
+			   WHERE channel_uuid = ? AND user_id = ?
+		   `).bind(
+			   uuidLower,
+			   userId
+		   ).run();			   // Log leave event
 			   await this.logChannelEvent(uuidLower, 'user_left', userId);
 
 			   // Invalidate cache
@@ -848,16 +844,14 @@ export class ChannelService {
 	async getChannelParticipants(channelUuid: string): Promise<ChannelParticipant[]> {
 		   try {
 			   const uuidLower = channelUuid.toLowerCase();
-			   const results = await this.db.prepare(`
-				   SELECT 
-					   user_id, username, join_time, last_seen,
-					   location_lat, location_lon, connection_quality, is_transmitting
-				   FROM channel_participants 
-				   WHERE channel_uuid = ? AND is_active = 1
-				   ORDER BY join_time ASC
-			   `).bind(uuidLower).all();
-
-			   return results.results.map((row: any) => ({
+		   const results = await this.db.prepare(`
+			   SELECT 
+				   user_id, username, join_time, last_seen,
+				   location_lat, location_lon, connection_quality, is_transmitting
+			   FROM channel_participants 
+			   WHERE channel_uuid = ?
+			   ORDER BY join_time ASC
+		   `).bind(uuidLower).all();			   return results.results.map((row: any) => ({
 				   user_id: row.user_id as string,
 				   username: row.username as string,
 				   join_time: row.join_time as string,
@@ -882,6 +876,23 @@ export class ChannelService {
 	 */
 	private async logChannelEvent(channelUuid: string, eventType: string, userId: string, metadata: any = {}): Promise<void> {
 		try {
+			// Map event types to message types that match the DB constraint
+			const eventTypeToMessageType: { [key: string]: string } = {
+				'user_joined': 'join',
+				'user_left': 'leave',
+				'channel_created': 'text',
+				'channel_updated': 'text',
+				'channel_deleted': 'text',
+				'channel_hard_deleted': 'text'
+			};
+
+			const messageType = eventTypeToMessageType[eventType] || 'text';
+
+			// For hard delete events, skip logging since the channel will be deleted
+			if (eventType === 'channel_hard_deleted') {
+				return;
+			}
+
 			await this.db.prepare(`
 				INSERT INTO channel_messages (channel_uuid, user_id, username, message_type, content, metadata)
 				VALUES (?, ?, ?, ?, ?, ?)
@@ -889,7 +900,7 @@ export class ChannelService {
 				channelUuid,
 				userId,
 				'system', // System user for channel events
-				'text', // Use 'text' type for all system events (DB constraint compliance)
+				messageType,
 				`Channel event: ${eventType}`, // The actual event type is in the content
 				JSON.stringify({
 					event_type: eventType, // Store the real event type in metadata
