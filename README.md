@@ -67,6 +67,7 @@ yarn install
 
 # Create a .env file with your Auth0 credentials
 cat <<EOF > .env
+APPLE_APP_BUNDLE_ID=your-apple-app-bundle-id
 AUTHENTICATION_PROVIDER_TYPE=auth0
 AUTH0_CLIENT_ID=your-auth0-client-id
 AUTH0_CLIENT_SECRET=your-auth0-client-secret
@@ -180,6 +181,7 @@ The authentication system can be extended to support other OAuth providers like 
 To keep your Auth0 credentials secure, use environment variables. Create a `.env` file in the root of your project and add the following:
 
 ```env
+APPLE_APP_BUNDLE_ID=your-apple-app-bundle-id
 AUTH0_CLIENT_ID=your-auth0-client-id
 AUTH0_CLIENT_SECRET=your-auth0-secret
 AUTH0_DOMAIN=your-auth0-domain
@@ -197,6 +199,7 @@ ADMIN_PERMISSION=admin:api
 For using the provided GitHub Actions workflows, you need to add the following secrets to your repository:
 
 ```env
+APPLE_APP_BUNDLE_ID=your-apple-app-bundle-id
 AUTH0_CLIENT_ID=your-auth0-client-id
 AUTH0_CLIENT_SECRET=your-auth0-secret
 AUTH0_DOMAIN=your-auth0-domain
