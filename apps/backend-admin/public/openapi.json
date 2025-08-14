@@ -1090,7 +1090,8 @@
                 "location": {
                   "lat": 45.929681,
                   "lon": 6.876345
-                }
+                },
+                "ephemeral_push_token": "abcd1234-push-token-from-ios-framework"
               }
             }
           }
@@ -1305,6 +1306,82 @@
           }
         }
       }
+    },
+    "/api/v1/channels/{uuid}/update-token": {
+      "put": {
+        "summary": "Update ephemeral push token",
+        "description": "Update the ephemeral APNs PTT push token for a channel participant. This token is provided by the iOS Push-to-Talk framework after joining a channel.",
+        "tags": [
+          "Channels"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uuid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Channel UUID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ephemeral_push_token": {
+                    "type": "string",
+                    "description": "Ephemeral APNs PTT token from iOS framework"
+                  }
+                },
+                "required": [
+                  "ephemeral_push_token"
+                ]
+              },
+              "example": {
+                "ephemeral_push_token": "abcd1234-push-token-from-ios-framework"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Push token updated successfully"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (missing token, not a participant, etc.)"
+          },
+          "403": {
+            "description": "Access denied - insufficient permissions"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1480,6 +1557,10 @@
           "is_transmitting": {
             "type": "boolean",
             "description": "Whether the user is currently transmitting"
+          },
+          "ephemeral_push_token": {
+            "type": "string",
+            "description": "Ephemeral APNs PTT token (only visible to admin users)"
           }
         }
       },
@@ -1489,6 +1570,10 @@
           "location": {
             "$ref": "#/components/schemas/Coordinates",
             "description": "Optional user location when joining"
+          },
+          "ephemeral_push_token": {
+            "type": "string",
+            "description": "Ephemeral APNs PTT token from iOS framework for push notifications"
           }
         }
       },

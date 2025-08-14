@@ -237,6 +237,30 @@ graph TD
 
 ## Intégration Backend Spécialisée
 
+### Flux Token Éphémère PTT
+
+Le framework Push-to-Talk d'Apple fournit un token éphémère APNs spécifique au canal rejoint. Ce token doit être transmis au backend pour permettre les notifications push PTT.
+
+```mermaid
+sequenceDiagram
+    participant iOS as App iOS
+    participant PTT as Framework PTT
+    participant API as Backend API
+    participant APNS as APNs PTT
+
+    iOS->>PTT: requestJoinChannel(channelUUID, descriptor)
+    PTT->>iOS: channelManager(_:receivedEphemeralPushToken:)
+    Note over iOS,PTT: Token éphémère reçu
+    iOS->>API: POST /api/v1/channels/{uuid}/join<br/>{location, ephemeral_push_token}
+    API->>API: Store token in channel_participants
+    Note over API: Token stocké pour notifications
+
+    Note over iOS,APNS: Plus tard, lors d'une transmission...
+    API->>APNS: Send PTT notification<br/>type: pushtotalk<br/>token: ephemeral_token
+    APNS->>iOS: PTT Notification delivered
+    PTT->>iOS: channelManager(_:incomingPushResult:)
+```
+
 ### Endpoints d'Authentification et Channels
 
 #### Authentification Auth0
@@ -309,6 +333,14 @@ GET /api/v1/channels/{uuid}/participants
 Authorization: Bearer JWT_TOKEN_FROM_Auth0
 - Liste des participants actifs
 - Permissions requises: access:{uuid} OU admin:api
+
+PUT /api/v1/channels/{uuid}/update-token
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+Body: {"ephemeral_push_token": "token-from-ios-framework"}
+- Mise à jour du token éphémère PTT d'un participant
+- Permissions requises: access:{uuid} OU admin:api
+- Utilisé quand le framework iOS fournit un nouveau token
 ```
 
 ### Structure des Données Réelles
@@ -512,9 +544,12 @@ protocol ParapenteNetworkServiceProtocol {
     func deleteChannel(uuid: String, hard: Bool) async throws -> Bool
 
     // Gestion des participants
-    func joinChannel(uuid: String, location: CLLocation?) async throws -> JoinChannelResponse
+    func joinChannel(uuid: String, location: CLLocation?, ephemeralPushToken: String?) async throws -> JoinChannelResponse
     func leaveChannel(uuid: String) async throws -> LeaveChannelResponse
     func getChannelParticipants(uuid: String) async throws -> [ChannelParticipant]
+
+    // Gestion du token éphémère PTT
+    func updateParticipantPushToken(channelUuid: String, ephemeralPushToken: String) async throws -> Bool
 
     // Monitoring réseau
     func checkHealth() async throws -> HealthResponse
@@ -1269,7 +1304,23 @@ class ParapenteStateManager: ObservableObject {
         }
 
         do {
-            let response = try await networkService.joinChannel(uuid: channel.uuid, location: currentLocation)
+            // Étape 1: Rejoindre le canal PTT avec le framework iOS
+            channelManager.requestJoinChannel(
+                channelUUID: UUID(uuidString: channel.uuid)!,
+                descriptor: PTChannelDescriptor(name: channel.name, image: nil)
+            )
+
+            // Étape 2: Le framework fournira le token éphémère via delegate
+            // Voir channelManager(_:receivedEphemeralPushToken:) ci-dessous
+
+            // Étape 3: Join avec l'API backend (sera fait après réception du token)
+            // Temporairement, on join sans token puis on l'update
+            let response = try await networkService.joinChannel(
+                uuid: channel.uuid,
+                location: currentLocation,
+                ephemeralPushToken: nil // Sera mis à jour après réception
+            )
+
             self.currentChannel = channel
             self.channelParticipants = [response.participant]
 
@@ -1286,7 +1337,26 @@ class ParapenteStateManager: ObservableObject {
         }
     }
 
-    @MainActor
+    // IMPORTANT: Implémentation du delegate PTT pour le token éphémère
+    func channelManager(_ channelManager: PTChannelManager, receivedEphemeralPushToken token: Data) {
+        let tokenString = token.base64EncodedString()
+        print("📱 Token éphémère PTT reçu: \(tokenString)")
+
+        // Mettre à jour le token au backend pour le canal actuel
+        if let currentChannel = self.currentChannel {
+            Task {
+                do {
+                    _ = try await networkService.updateParticipantPushToken(
+                        channelUuid: currentChannel.uuid,
+                        ephemeralPushToken: tokenString
+                    )
+                    print("✅ Token éphémère PTT mis à jour au backend")
+                } catch {
+                    print("❌ Erreur mise à jour token éphémère: \(error)")
+                }
+            }
+        }
+    }    @MainActor
     func leaveChannel() async {
         guard let channel = currentChannel else { return }
 

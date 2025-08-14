@@ -153,12 +153,18 @@ import {
  *         is_transmitting:
  *           type: boolean
  *           description: Whether the user is currently transmitting
+ *         ephemeral_push_token:
+ *           type: string
+ *           description: Ephemeral APNs PTT token (only visible to admin users)
  *     JoinChannelRequest:
  *       type: object
  *       properties:
  *         location:
  *           $ref: '#/components/schemas/Coordinates'
  *           description: Optional user location when joining
+ *         ephemeral_push_token:
+ *           type: string
+ *           description: Ephemeral APNs PTT token from iOS framework for push notifications
  *     JoinChannelResponse:
  *       type: object
  *       properties:
@@ -328,6 +334,12 @@ export class PTTAPIHandler {
 							return await this.getChannelParticipants(resourceId, permissions);
 						}
 						return this.errorResponse(`Method ${method} not allowed for participants operation`, 405);
+
+					case 'update-token':
+						if (method === 'PUT' || method === 'POST') {
+							return await this.updateParticipantToken(request, resourceId, userId, permissions);
+						}
+						return this.errorResponse(`Method ${method} not allowed for update-token operation`, 405);
 
 					default:
 						return this.errorResponse(`Unknown sub-resource: ${subResource}`, 404);
@@ -1338,6 +1350,7 @@ export class PTTAPIHandler {
 	 *             location:
 	 *               lat: 45.929681
 	 *               lon: 6.876345
+	 *             ephemeral_push_token: "abcd1234-push-token-from-ios-framework"
 	 *     responses:
 	 *       200:
 	 *         description: Successfully joined channel
@@ -1385,7 +1398,12 @@ export class PTTAPIHandler {
 			}
 
 			// Join channel using service
-			const result = await this.channelService.joinChannel(channelUuid.toLowerCase(), userId, joinRequest.location);
+			const result = await this.channelService.joinChannel(
+				channelUuid.toLowerCase(), 
+				userId, 
+				joinRequest.location,
+				joinRequest.ephemeral_push_token
+			);
 
 			if (!result.success) {
 				return this.errorResponse(result.error || 'Failed to join channel', 400);
@@ -1605,6 +1623,103 @@ export class PTTAPIHandler {
 		} catch (error) {
 			console.error('Get channel participants error:', error);
 			return this.errorResponse('Failed to get channel participants', 500);
+		}
+	}
+
+	/**
+	 * PUT /api/v1/channels/{uuid}/update-token - Update participant ephemeral push token
+	 * 
+	 * @openapi
+	 * /api/v1/channels/{uuid}/update-token:
+	 *   put:
+	 *     summary: Update ephemeral push token
+	 *     description: Update the ephemeral APNs PTT push token for a channel participant. This token is provided by the iOS Push-to-Talk framework after joining a channel.
+	 *     tags:
+	 *       - Channels
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - in: path
+	 *         name: uuid
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: Channel UUID
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               ephemeral_push_token:
+	 *                 type: string
+	 *                 description: Ephemeral APNs PTT token from iOS framework
+	 *             required:
+	 *               - ephemeral_push_token
+	 *           example:
+	 *             ephemeral_push_token: "abcd1234-push-token-from-ios-framework"
+	 *     responses:
+	 *       200:
+	 *         description: Token updated successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 message:
+	 *                   type: string
+	 *                   example: "Push token updated successfully"
+	 *       400:
+	 *         description: Bad request (missing token, not a participant, etc.)
+	 *       403:
+	 *         description: Access denied - insufficient permissions
+	 */
+	private async updateParticipantToken(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
+		// Check channel-specific access permission
+		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
+		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
+			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+		}
+
+		try {
+			// Parse request body
+			const body = await request.json() as { ephemeral_push_token?: string };
+			
+			if (!body.ephemeral_push_token) {
+				return this.errorResponse('Missing ephemeral_push_token in request body', 400);
+			}
+
+			// Update token using service
+			const result = await this.channelService.updateParticipantPushToken(
+				channelUuid.toLowerCase(),
+				userId,
+				body.ephemeral_push_token
+			);
+
+			if (!result.success) {
+				return this.errorResponse(result.error || 'Failed to update push token', 400);
+			}
+
+			const response = {
+				success: true,
+				message: 'Push token updated successfully',
+				timestamp: new Date().toISOString(),
+				version: '1.0.0'
+			};
+
+			return new Response(JSON.stringify(response), {
+				status: 200,
+				headers: this.corsHeaders
+			});
+
+		} catch (error) {
+			console.error('Update participant token error:', error);
+			return this.errorResponse('Invalid request body', 400);
 		}
 	}
 

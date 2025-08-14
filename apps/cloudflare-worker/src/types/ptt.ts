@@ -112,6 +112,7 @@ export interface ChannelParticipant {
 	location?: Coordinates;
 	connection_quality: NetworkQuality;
 	is_transmitting: boolean;
+	ephemeral_push_token?: string; // Token éphémère APNs PTT pour notifications
 }
 
 /**
@@ -179,6 +180,7 @@ export interface FlyingSite {
  */
 export interface JoinChannelRequest {
 	location?: Coordinates;
+	ephemeral_push_token?: string; // Token éphémère APNs PTT depuis iOS framework
 }
 
 /**

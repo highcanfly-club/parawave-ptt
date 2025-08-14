@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS channel_participants (
     location_lon REAL,
     connection_quality TEXT DEFAULT 'good' CHECK (connection_quality IN ('poor', 'fair', 'good', 'excellent')),
     is_transmitting BOOLEAN DEFAULT FALSE,
+    ephemeral_push_token TEXT, -- Ephemeral APNs PTT token from iOS framework
     FOREIGN KEY (channel_uuid) REFERENCES channels (uuid) ON DELETE CASCADE,
     UNIQUE(channel_uuid, user_id)
 );
@@ -117,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_channels_coordinates ON channels(coordinates_lat,
 CREATE INDEX IF NOT EXISTS idx_channel_participants_channel ON channel_participants(channel_uuid);
 CREATE INDEX IF NOT EXISTS idx_channel_participants_user ON channel_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_channel_participants_last_seen ON channel_participants(last_seen);
+CREATE INDEX IF NOT EXISTS idx_channel_participants_push_token ON channel_participants(ephemeral_push_token) WHERE ephemeral_push_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(channel_uuid);
 CREATE INDEX IF NOT EXISTS idx_channel_messages_timestamp ON channel_messages(timestamp);
 CREATE INDEX IF NOT EXISTS idx_channel_messages_type ON channel_messages(message_type);
@@ -182,3 +184,15 @@ INSERT OR IGNORE INTO channels (
 INSERT OR IGNORE INTO site_channels (site_id, channel_uuid, is_primary) VALUES 
     ('chamonix-planpraz', '04b242cb-91b5-4e6d-a10a-27099fb6e866', TRUE),
     ('annecy-forclaz', '74250fc5-4569-49b1-a5f3-b3abeec34ef2', TRUE);
+
+-- Create view for push token statistics (admin use)
+CREATE VIEW IF NOT EXISTS v_channel_push_token_stats AS
+SELECT 
+    channel_uuid,
+    COUNT(*) as total_participants,
+    COUNT(ephemeral_push_token) as participants_with_push_token,
+    ROUND(
+        (COUNT(ephemeral_push_token) * 100.0 / COUNT(*)), 2
+    ) as push_token_coverage_percent
+FROM channel_participants
+GROUP BY channel_uuid;

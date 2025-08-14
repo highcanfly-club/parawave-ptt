@@ -694,9 +694,10 @@ export class ChannelService {
 	 * @param channelUuid Channel UUID
 	 * @param userId User ID joining the channel
 	 * @param userLocation Optional user location
+	 * @param ephemeralPushToken Optional ephemeral APNs PTT token
 	 * @returns Success status and participant info
 	 */
-	async joinChannel(channelUuid: string, userId: string, userLocation?: Coordinates): Promise<{success: boolean, participant?: ChannelParticipant, error?: string}> {
+	async joinChannel(channelUuid: string, userId: string, userLocation?: Coordinates, ephemeralPushToken?: string): Promise<{success: boolean, participant?: ChannelParticipant, error?: string}> {
 		   try {
 			   const uuidLower = channelUuid.toLowerCase();
 			   
@@ -727,53 +728,55 @@ export class ChannelService {
 				   WHERE channel_uuid = ? AND user_id = ?
 			   `).bind(uuidLower, userId).first() as any;
 
-			   if (existingParticipant) {
-				   // User is already in the channel, update last seen
-				   await this.db.prepare(`
-					   UPDATE channel_participants 
-					   SET last_seen = ?, location_lat = ?, location_lon = ?
-					   WHERE channel_uuid = ? AND user_id = ?
-				   `).bind(
-					   this.getCurrentTimestamp(),
-					   userLocation?.lat || null,
-					   userLocation?.lon || null,
-					   uuidLower,
-					   userId
-				   ).run();
+			if (existingParticipant) {
+				// User is already in the channel, update last seen, location and token
+				await this.db.prepare(`
+					UPDATE channel_participants 
+					SET last_seen = ?, location_lat = ?, location_lon = ?, ephemeral_push_token = ?
+					WHERE channel_uuid = ? AND user_id = ?
+				`).bind(
+					this.getCurrentTimestamp(),
+					userLocation?.lat || null,
+					userLocation?.lon || null,
+					ephemeralPushToken || null,
+					uuidLower,
+					userId
+				).run();
 
-				   const participant: ChannelParticipant = {
-					   user_id: userId,
-					   username: existingParticipant.username || userId,
-					   join_time: existingParticipant.join_time,
-					   last_seen: this.getCurrentTimestamp(),
-					   location: userLocation,
-					   connection_quality: 'good',
-					   is_transmitting: false
-				   };
-
-				   return { success: true, participant };
+				const participant: ChannelParticipant = {
+					user_id: userId,
+					username: existingParticipant.username || userId,
+					join_time: existingParticipant.join_time,
+					last_seen: this.getCurrentTimestamp(),
+					location: userLocation,
+					connection_quality: 'good',
+					is_transmitting: false,
+					ephemeral_push_token: ephemeralPushToken
+				};				   return { success: true, participant };
 			   }
 
-			   // Add user as new participant
-			   const joinTime = this.getCurrentTimestamp();
-			   const insertResult = await this.db.prepare(`
-				   INSERT INTO channel_participants (
-					   channel_uuid, user_id, username, join_time, last_seen, 
-					   location_lat, location_lon, connection_quality
-				   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			   `).bind(
-				   uuidLower,
-				   userId,
-				   userId, // Using userId as username for now
-				   joinTime,
-				   joinTime,
-				   userLocation?.lat || null,
-				   userLocation?.lon || null,
-				   'good'
-			   ).run();
-
-			   // Log join event
-			   await this.logChannelEvent(uuidLower, 'user_joined', userId, { location: userLocation });
+			// Add user as new participant
+			const joinTime = this.getCurrentTimestamp();
+			const insertResult = await this.db.prepare(`
+				INSERT INTO channel_participants (
+					channel_uuid, user_id, username, join_time, last_seen, 
+					location_lat, location_lon, connection_quality, ephemeral_push_token
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`).bind(
+				uuidLower,
+				userId,
+				userId, // Using userId as username for now
+				joinTime,
+				joinTime,
+				userLocation?.lat || null,
+				userLocation?.lon || null,
+				'good',
+				ephemeralPushToken || null
+			).run();			   // Log join event
+			   await this.logChannelEvent(uuidLower, 'user_joined', userId, { 
+				   location: userLocation,
+				   has_push_token: !!ephemeralPushToken 
+			   });
 
 			   const participant: ChannelParticipant = {
 				   user_id: userId,
@@ -782,7 +785,8 @@ export class ChannelService {
 				   last_seen: joinTime,
 				   location: userLocation,
 				   connection_quality: 'good',
-				   is_transmitting: false
+				   is_transmitting: false,
+				   ephemeral_push_token: ephemeralPushToken
 			   };
 
 			   // Invalidate cache
@@ -847,7 +851,7 @@ export class ChannelService {
 		   const results = await this.db.prepare(`
 			   SELECT 
 				   user_id, username, join_time, last_seen,
-				   location_lat, location_lon, connection_quality, is_transmitting
+				   location_lat, location_lon, connection_quality, is_transmitting, ephemeral_push_token
 			   FROM channel_participants 
 			   WHERE channel_uuid = ?
 			   ORDER BY join_time ASC
@@ -861,12 +865,54 @@ export class ChannelService {
 					   lon: row.location_lon as number
 				   } : undefined,
 				   connection_quality: (row.connection_quality as any) || 'good',
-				   is_transmitting: Boolean(row.is_transmitting)
+				   is_transmitting: Boolean(row.is_transmitting),
+				   ephemeral_push_token: row.ephemeral_push_token as string | undefined
 			   }));
 
 		   } catch (error) {
 			   console.error('Error getting channel participants:', error);
 			   return [];
+		   }
+	   }
+
+	/**
+	 * Update ephemeral push token for a channel participant
+	 * @param channelUuid Channel UUID
+	 * @param userId User ID
+	 * @param ephemeralPushToken New ephemeral APNs PTT token
+	 * @returns Success status
+	 */
+	async updateParticipantPushToken(channelUuid: string, userId: string, ephemeralPushToken: string): Promise<{success: boolean, error?: string}> {
+		   try {
+			   const uuidLower = channelUuid.toLowerCase();
+			   
+			   // Check if user is a participant
+			   const participant = await this.db.prepare(`
+				   SELECT * FROM channel_participants 
+				   WHERE channel_uuid = ? AND user_id = ?
+			   `).bind(uuidLower, userId).first() as any;
+
+			   if (!participant) {
+				   return { success: false, error: 'User is not a participant in this channel' };
+			   }
+
+			   // Update push token
+			   await this.db.prepare(`
+				   UPDATE channel_participants 
+				   SET ephemeral_push_token = ?, last_seen = ?
+				   WHERE channel_uuid = ? AND user_id = ?
+			   `).bind(
+				   ephemeralPushToken,
+				   this.getCurrentTimestamp(),
+				   uuidLower,
+				   userId
+			   ).run();
+
+			   return { success: true };
+
+		   } catch (error) {
+			   console.error('Error updating participant push token:', error);
+			   return { success: false, error: 'Failed to update push token' };
 		   }
 	   }
 
