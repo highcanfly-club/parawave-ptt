@@ -9,7 +9,7 @@ import { useAuth, useSecuredApi } from "@/authentication";
 export default function ApiPage() {
   const { t } = useTranslation();
   const { getJson } = useSecuredApi();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [apiResponse, setApiResponse] = useState("");
 
   useEffect(() => {
@@ -17,7 +17,7 @@ export default function ApiPage() {
       if (isAuthenticated) {
         try {
           const response = await getJson(
-            `${import.meta.env.API_BASE_URL}/get/${user?.sub}`,
+            `${import.meta.env.API_BASE_URL}/v1/channels`,
           );
 
           setApiResponse(response);
