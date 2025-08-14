@@ -237,52 +237,218 @@ graph TD
 
 ## Intégration Backend Spécialisée
 
-### Endpoint d'Authentification Auth0
+### Endpoints d'Authentification et Channels
+
+#### Authentification Auth0
 
 ```
-POST https://parawave-backend.highcanfly.club/api/v1/auth
+GET /api/v1/health
+- Vérification santé du service
+- Pas d'authentification requise
+
+POST /api/v1/channels
 Authorization: Bearer JWT_TOKEN_FROM_AUTH0
 Content-Type: application/json
-
-{
-  "location": {
-    "lat": 45.929681,
-    "lon": 6.876345
-  }
-}
+- Création d'un nouveau channel
+- Permissions requises: write:api
+- Permissions admin:api requises pour type 'emergency'
 ```
 
-### Format de Réponse Étendu
+#### Gestion des Channels (CRUD)
+
+```
+GET /api/v1/channels
+Authorization: Bearer JWT_TOKEN_FROM_AUTH0
+Parameters: ?type=site_local&active=true&lat=45.929681&lon=6.876345&radius=50
+- Liste des channels avec filtrage
+- Permissions requises: read:api
+
+GET /api/v1/channels/{uuid}
+Authorization: Bearer JWT_TOKEN_FROM_AUTH0
+- Détails d'un channel spécifique
+- Permissions requises: read:api
+- Admin obtient des statistiques supplémentaires
+
+POST /api/v1/channels/with-uuid
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+- Création avec UUID spécifique
+- Permissions requises: write:api
+- UUID normalisé en minuscules
+
+PUT /api/v1/channels/{uuid}
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+- Mise à jour d'un channel existant
+- Permissions requises: write:api
+- Admin requis pour modifier type 'emergency'
+
+DELETE /api/v1/channels/{uuid}?hard=true
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+- Suppression soft (is_active=false) ou hard (permanent)
+- Permissions requises: admin:api
+```
+
+#### Gestion des Participants (Join/Leave)
+
+```
+POST /api/v1/channels/{uuid}/join
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+- Rejoindre un channel
+- Permissions requises: access:{uuid} OU admin:api
+- Body optionnel: {"location": {"lat": 45.929681, "lon": 6.876345}}
+
+POST /api/v1/channels/{uuid}/leave
+DELETE /api/v1/channels/{uuid}/leave
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+- Quitter un channel
+- Permissions requises: access:{uuid} OU admin:api
+
+GET /api/v1/channels/{uuid}/participants
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+- Liste des participants actifs
+- Permissions requises: access:{uuid} OU admin:api
+```
+
+### Structure des Données Réelles
+
+#### Réponse Channel
 
 ```json
 {
   "success": true,
-  "user": {
-    "id": "auth0|507f1f77bcf86cd799439011",
-    "email": "pilot@example.com",
-    "name": "Jean Pilot",
-    "groups": ["parapente_chamonix", "instructeurs"]
-  },
-  "channels": [
-    {
-      "name": "Chamonix - Mont Blanc",
-      "uuid": "F4D667DB-2F17-4177-8D70-914024A7A5C1",
-      "type": "site_local",
-      "coordinates": {
-        "lat": 45.929681,
-        "lon": 6.876345
-      },
-      "radius_km": 50,
-      "frequency_vhf": "144.150",
-      "description": "Canal principal site Chamonix"
+  "data": {
+    "uuid": "chamonix-local-001",
+    "name": "Chamonix Local",
+    "type": "site_local",
+    "description": "Canal principal site Chamonix Mont-Blanc",
+    "coordinates": {
+      "lat": 45.929681,
+      "lon": 6.876345
     },
-    {
-      "name": "Urgence Alpes",
-      "uuid": "A1B2C3D4-5E6F-7G8H-9I0J-K1L2M3N4O5P6",
-      "type": "emergency",
-      "priority": 1,
-      "always_available": true
+    "radius_km": 50,
+    "vhf_frequency": "144.150",
+    "max_participants": 100,
+    "difficulty": "intermediate",
+    "is_active": true,
+    "created_at": "2025-08-14T10:30:00.000Z",
+    "created_by": "google-oauth2|117078313735521006596",
+    "updated_at": "2025-08-14T15:45:00.000Z",
+    "updated_by": "admin-user-123"
+  },
+  "timestamp": "2025-08-14T15:45:00.000Z",
+  "version": "1.0.0"
+}
+```
+
+#### Réponse Join Channel
+
+```json
+{
+  "success": true,
+  "participant": {
+    "user_id": "google-oauth2|117078313735521006596",
+    "username": "pilot123",
+    "join_time": "2025-08-14T15:30:00.000Z",
+    "last_seen": "2025-08-14T15:30:00.000Z",
+    "location": {
+      "lat": 45.929681,
+      "lon": 6.876345
+    },
+    "connection_quality": "good",
+    "is_transmitting": false
+  },
+  "channel_info": {
+    "name": "Chamonix Local",
+    "participants_count": 5,
+    "max_participants": 100
+  }
+}
+```
+
+#### Liste des Channels avec Statistiques
+
+````json
+{
+  "success": true,
+  "data": {
+    "channels": [
+      {
+        "uuid": "emergency-alpine-001",
+        "name": "Urgence Alpes",
+        "type": "emergency",
+        "current_participants": 0,
+        "total_participants_today": 3,
+        "total_transmissions_today": 12,
+        "avg_transmission_duration": 15.5,
+        "last_activity": "2025-08-14T14:22:00.000Z"
+      }
+    ],
+    "total_count": 15,
+    "active_count": 12,
+    "filters_applied": {
+      "type": "site_local",
+      "active_only": true,
+      "location": {"lat": 45.929681, "lon": 6.876345},
+      "radius_km": 50
     }
+  },
+  "timestamp": "2025-08-14T15:45:00.000Z",
+  "version": "1.0.0"
+}
+#### Gestion des Erreurs API
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CHANNEL_ACCESS_DENIED",
+    "message": "Access denied to channel chamonix-local-001",
+    "details": {
+      "required_permissions": ["access:chamonix-local-001"],
+      "user_permissions": ["read:api"],
+      "suggestion": "Contact admin for channel access"
+    },
+    "timestamp": "2025-08-14T15:45:00.000Z"
+  }
+}
+````
+
+### Gestion des Erreurs Robuste
+
+```swift
+enum ParapenteError: Error, LocalizedError {
+    case authenticationFailed(Error)
+    case insufficientPermissions
+    case channelLoadFailed(Error)
+    case channelJoinFailed(Error)
+    case accessDenied(String)
+    case networkError(Error)
+    case locationUnavailable
+    case emergencyChannelUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .authenticationFailed:
+            return "Échec de l'authentification Auth0"
+        case .insufficientPermissions:
+            return "Permissions insuffisantes pour accéder aux canaux"
+        case .channelLoadFailed:
+            return "Impossible de charger les canaux disponibles"
+        case .channelJoinFailed:
+            return "Impossible de rejoindre le canal"
+        case .accessDenied(let channelUUID):
+            return "Accès refusé au canal \(channelUUID)"
+        case .networkError:
+            return "Erreur de connexion réseau"
+        case .locationUnavailable:
+            return "Position GPS non disponible"
+        case .emergencyChannelUnavailable:
+            return "Canal d'urgence indisponible"
+        }
+    }
+}
   ],
   "permissions": ["read:api", "write:api", "admin:api"],
   "network_status": {
@@ -294,15 +460,118 @@ Content-Type: application/json
 }
 ```
 
-### Architecture Couche Réseau Améliorée
+### Gestion des Permissions Réelle
+
+#### Types de Permissions JWT
+
+- **`read:api`** : Lecture des channels et participants
+- **`write:api`** : Création et modification des channels
+- **`admin:api`** : Suppression, channels d'urgence, statistiques avancées
+- **`access:{uuid}`** : Accès spécifique à un channel (UUID en minuscules)
+
+#### Normalisation des UUID
+
+- Tous les UUID de channels sont **normalisés en minuscules** côté backend
+- Les permissions `access:UUID` dans le token JWT sont automatiquement normalisées
+- Recherche insensible à la casse mais stockage cohérent en minuscules
+
+#### Validation des Permissions
+
+```swift
+// Exemple de validation côté iOS
+struct ChannelPermission {
+    let channelUUID: String
+    let hasReadAccess: Bool
+    let hasWriteAccess: Bool
+    let hasAdminAccess: Bool
+    let hasChannelAccess: Bool // access:{uuid}
+
+    init(permissions: [String], channelUUID: String) {
+        let normalizedUUID = channelUUID.lowercased()
+        self.channelUUID = normalizedUUID
+        self.hasReadAccess = permissions.contains("read:api")
+        self.hasWriteAccess = permissions.contains("write:api")
+        self.hasAdminAccess = permissions.contains("admin:api")
+        self.hasChannelAccess = permissions.contains("access:\(normalizedUUID)") || permissions.contains("admin:api")
+    }
+}
+```
+
+### Architecture Couche Réseau Mise à Jour
 
 ```swift
 protocol ParapenteNetworkServiceProtocol {
-    func authenticateWithAuth0Token(_ token: String, location: CLLocation?) async throws -> ParapenteAuthResponse
-    func getChannelsForLocation(location: CLLocation, radius: Double) async throws -> [ParapenteChannel]
-    func joinChannel(channelUUID: String, userLocation: CLLocation?) async throws -> ChannelResponse
-    func reportNetworkQuality(latency: TimeInterval, signalStrength: Int) async throws -> Void
-    func sendEmergencyAlert(location: CLLocation, message: String) async throws -> Void
+    // Authentification et permissions
+    func validateAuth0Token(_ token: String) async throws -> AuthValidationResponse
+
+    // Gestion des channels
+    func getChannels(filter: ChannelFilter?) async throws -> ChannelsListResponse
+    func getChannel(uuid: String) async throws -> PTTChannel
+    func createChannel(_ request: CreateChannelRequest) async throws -> PTTChannel
+    func updateChannel(uuid: String, _ request: UpdateChannelRequest) async throws -> PTTChannel
+    func deleteChannel(uuid: String, hard: Bool) async throws -> Bool
+
+    // Gestion des participants
+    func joinChannel(uuid: String, location: CLLocation?) async throws -> JoinChannelResponse
+    func leaveChannel(uuid: String) async throws -> LeaveChannelResponse
+    func getChannelParticipants(uuid: String) async throws -> [ChannelParticipant]
+
+    // Monitoring réseau
+    func checkHealth() async throws -> HealthResponse
+}
+
+class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
+    private let baseURL: String = "https://ptt-backend.highcanfly.club/api/v1"
+    private let session = URLSession.shared
+    private var auth0Token: String?
+
+    // Implémentation avec gestion d'erreurs et retry logic
+    private func makeRequest<T: Codable>(
+        endpoint: String,
+        method: HTTPMethod = .GET,
+        body: Data? = nil,
+        responseType: T.Type
+    ) async throws -> T {
+        guard let token = auth0Token else {
+            throw NetworkError.noAuthToken
+        }
+
+        var request = URLRequest(url: URL(string: "\(baseURL)/\(endpoint)")!)
+        request.httpMethod = method.rawValue
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let body = body {
+            request.httpBody = body
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+
+        // Gestion des codes d'erreur spécifiques
+        switch httpResponse.statusCode {
+        case 200...299:
+            return try JSONDecoder().decode(T.self, from: data)
+        case 401:
+            throw NetworkError.unauthorized
+        case 403:
+            throw NetworkError.forbidden
+        case 404:
+            throw NetworkError.notFound
+        case 400:
+            // Décoder le message d'erreur
+            if let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+                throw NetworkError.badRequest(errorResponse.error)
+            }
+            throw NetworkError.badRequest("Unknown error")
+        default:
+            throw NetworkError.serverError(httpResponse.statusCode)
+        }
+    }
+}
     func refreshAuthToken() async throws -> String
 }
 
@@ -870,39 +1139,73 @@ class FlightVolumeButtonHandler {
 
 ## Gestion d'État Spécialisée Parapente
 
-### États de l'Application
+### États de l'Application Mis à Jour
 
 ```mermaid
 stateDiagram-v2
     [*] --> Lancement
     Lancement --> Authentification: Démarrage App
-    Authentification --> Authentifié: Succès
-    Authentification --> ConnexionRequise: Pas d'Identifiants
-    ConnexionRequise --> Authentification: Connexion Utilisateur
-    Authentifié --> SélectionCanal: Canaux Chargés
-    SélectionCanal --> Connecté: Canal Rejoint
+    Authentification --> Authentifié: Token JWT Valide
+    Authentification --> ConnexionRequise: Pas de Token
+    ConnexionRequise --> Authentification: Connexion Auth0
+    Authentifié --> SélectionCanal: Channels Chargés
+    SélectionCanal --> Connecté: Join Channel Réussi
     Connecté --> Transmission: PTT Pressé
     Transmission --> Connecté: PTT Relâché
-    Connecté --> SélectionCanal: Changement Canal
-    Connecté --> ModeDégradé: Perte Réseau
+    Connecté --> SélectionCanal: Leave Channel
+    Connecté --> ModeDégradé: Perte Réseau 4G/5G
     ModeDégradé --> Connecté: Réseau Restauré
     ModeDégradé --> ModeUrgence: Urgence Déclarée
     ModeUrgence --> Connecté: Urgence Résolue
     Connecté --> [*]: App Terminée
 ```
 
-### Architecture Gestion d'État
+### Architecture Gestion d'État Réelle
 
 ```swift
+// Structures de données basées sur l'API réelle
+struct PTTChannel: Codable, Identifiable {
+    let uuid: String           // UUID normalisé en minuscules
+    let name: String
+    let type: ChannelType     // site_local, emergency, general, cross_country, instructors
+    let description: String?
+    let coordinates: Coordinates?
+    let radiusKm: Double
+    let vhfFrequency: String?
+    let maxParticipants: Int
+    let difficulty: Difficulty?  // beginner, intermediate, advanced, expert
+    let isActive: Bool
+    let createdAt: Date
+    let createdBy: String
+    let updatedAt: Date?
+    let updatedBy: String?
+
+    // Statistiques temps réel (si disponibles)
+    var currentParticipants: Int?
+    var totalParticipantsToday: Int?
+    var lastActivity: Date?
+}
+
+struct ChannelParticipant: Codable, Identifiable {
+    let userId: String        // Auth0 user ID
+    let username: String
+    let joinTime: Date
+    let lastSeen: Date
+    let location: Coordinates?
+    let connectionQuality: ConnectionQuality  // poor, fair, good, excellent
+    let isTransmitting: Bool
+}
+
 enum ParapenteAppState {
     case lancement
     case authentification
     case connexionRequise
-    case authentifié(channels: [ParapenteChannel])
-    case connecté(channel: ParapenteChannel, participants: [User])
-    case transmission(channel: ParapenteChannel, isTransmitting: Bool)
-    case modeDégradé(lastChannel: ParapenteChannel, vhfFrequency: String?)
-    case modeUrgence(location: CLLocation, channel: ParapenteChannel)
+    case authentifié(permissions: [String])
+    case channelsChargés(channels: [PTTChannel], permissions: [String])
+    case connectéChannel(channel: PTTChannel, participant: ChannelParticipant, participants: [ChannelParticipant])
+    case transmissionActive(channel: PTTChannel, isTransmitting: Bool)
+    case modeDégradé(lastChannel: PTTChannel?, vhfFrequency: String?)
+    case modeUrgence(location: CLLocation, emergencyChannel: PTTChannel)
     case erreur(ParapenteError)
 }
 
@@ -910,18 +1213,133 @@ class ParapenteStateManager: ObservableObject {
     @Published var currentState: ParapenteAppState = .lancement
     @Published var networkStatus: NetworkStatus = .unknown
     @Published var currentLocation: CLLocation?
-    @Published var nearbyFlyingSites: [FlyingSite] = []
+    @Published var auth0Token: String?
+    @Published var userPermissions: [String] = []
+    @Published var availableChannels: [PTTChannel] = []
+    @Published var currentChannel: PTTChannel?
+    @Published var channelParticipants: [ChannelParticipant] = []
 
-    func transition(to newState: ParapenteAppState) {
-        // Validation des transitions d'état avec logique métier parapente
-        guard isValidTransition(from: currentState, to: newState) else {
-            Logger.warning("Transition d'état invalide tentée")
+    private let networkService: ParapenteNetworkServiceProtocol
+    private let locationManager = CLLocationManager()
+
+    init(networkService: ParapenteNetworkServiceProtocol) {
+        self.networkService = networkService
+        setupLocationManager()
+    }
+
+    // Actions basées sur l'API réelle
+    @MainActor
+    func authenticateWithAuth0(token: String) async {
+        transition(to: .authentification)
+
+        do {
+            // Valider le token et récupérer les permissions
+            let validation = try await networkService.validateAuth0Token(token)
+            self.auth0Token = token
+            self.userPermissions = validation.permissions
+
+            transition(to: .authentifié(permissions: validation.permissions))
+            await loadAvailableChannels()
+        } catch {
+            transition(to: .erreur(.authenticationFailed(error)))
+        }
+    }
+
+    @MainActor
+    func loadAvailableChannels() async {
+        guard userPermissions.contains("read:api") else {
+            transition(to: .erreur(.insufficientPermissions))
             return
         }
 
-        currentState = newState
-        handleStateTransition(newState)
+        do {
+            let response = try await networkService.getChannels(filter: createChannelFilter())
+            self.availableChannels = response.channels
+            transition(to: .channelsChargés(channels: response.channels, permissions: userPermissions))
+        } catch {
+            transition(to: .erreur(.channelLoadFailed(error)))
+        }
     }
+
+    @MainActor
+    func joinChannel(_ channel: PTTChannel) async {
+        guard hasChannelAccess(channel) else {
+            transition(to: .erreur(.accessDenied(channel.uuid)))
+            return
+        }
+
+        do {
+            let response = try await networkService.joinChannel(uuid: channel.uuid, location: currentLocation)
+            self.currentChannel = channel
+            self.channelParticipants = [response.participant]
+
+            transition(to: .connectéChannel(
+                channel: channel,
+                participant: response.participant,
+                participants: [response.participant]
+            ))
+
+            // Charger la liste complète des participants
+            await loadChannelParticipants(channel.uuid)
+        } catch {
+            transition(to: .erreur(.channelJoinFailed(error)))
+        }
+    }
+
+    @MainActor
+    func leaveChannel() async {
+        guard let channel = currentChannel else { return }
+
+        do {
+            _ = try await networkService.leaveChannel(uuid: channel.uuid)
+            self.currentChannel = nil
+            self.channelParticipants = []
+
+            transition(to: .channelsChargés(channels: availableChannels, permissions: userPermissions))
+        } catch {
+            // Log error but don't block UI - user might want to force leave
+            print("Error leaving channel: \(error)")
+            transition(to: .channelsChargés(channels: availableChannels, permissions: userPermissions))
+        }
+    }
+
+    private func hasChannelAccess(_ channel: PTTChannel) -> Bool {
+        return userPermissions.contains("admin:api") ||
+               userPermissions.contains("access:\(channel.uuid.lowercased())")
+    }
+
+    private func createChannelFilter() -> ChannelFilter? {
+        var filter = ChannelFilter()
+        filter.activeOnly = true
+
+        // Filtrage par localisation si disponible
+        if let location = currentLocation {
+            filter.location = Coordinates(lat: location.coordinate.latitude,
+                                        lon: location.coordinate.longitude)
+            filter.radiusKm = 100 // 100km radius
+        }
+
+        return filter
+    }
+
+    private func transition(to newState: ParapenteAppState) {
+        DispatchQueue.main.async {
+            self.currentState = newState
+            self.logStateTransition(newState)
+        }
+    }
+
+    private func logStateTransition(_ state: ParapenteAppState) {
+        switch state {
+        case .connectéChannel(let channel, _, let participants):
+            print("✅ Connecté au channel: \(channel.name) avec \(participants.count) participants")
+        case .erreur(let error):
+            print("❌ Erreur: \(error)")
+        default:
+            print("📱 Transition d'état: \(state)")
+        }
+    }
+}
 
     private func handleStateTransition(_ state: ParapenteAppState) {
         switch state {

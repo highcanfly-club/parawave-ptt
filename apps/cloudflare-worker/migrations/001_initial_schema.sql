@@ -136,7 +136,7 @@ INSERT OR IGNORE INTO channels (
     is_active,
     created_by
 ) VALUES (
-    'emergency-alpine-001',
+    '8a9a3d41-1e5d-4159-8f82-0e073bc9dc33',
     'Urgence Alpes',
     'emergency',
     'Canal d''urgence pour les Alpes françaises - Contact PGHM automatique',
@@ -174,11 +174,11 @@ INSERT OR IGNORE INTO channels (
     difficulty,
     created_by
 ) VALUES 
-    ('chamonix-local-001', 'Chamonix Local', 'site_local', 'Canal principal site Chamonix Mont-Blanc', 45.929681, 6.876345, 50, '144.150', 100, 'intermediate', 'system'),
-    ('annecy-debutants-001', 'Annecy Débutants', 'site_local', 'Canal débutants Annecy Forclaz', 45.773056, 6.196389, 35, '143.9875', 75, 'beginner', 'system'),
-    ('instructeurs-region-001', 'Instructeurs Région', 'instructors', 'Canal réservé instructeurs certifiés', NULL, NULL, NULL, '144.500', 50, NULL, 'system');
+    ('04b242cb-91b5-4e6d-a10a-27099fb6e866', 'Chamonix Local', 'site_local', 'Canal principal site Chamonix Mont-Blanc', 45.929681, 6.876345, 50, '144.150', 100, 'intermediate', 'system'),
+    ('74250fc5-4569-49b1-a5f3-b3abeec34ef2', 'Annecy Débutants', 'site_local', 'Canal débutants Annecy Forclaz', 45.773056, 6.196389, 35, '143.9875', 75, 'beginner', 'system'),
+    ('0cca8e49-c261-4fbb-959f-ef0f846faa5d', 'Instructeurs Région', 'instructors', 'Canal réservé instructeurs certifiés', NULL, NULL, NULL, '144.500', 50, NULL, 'system');
 
 -- Associate channels with sites
 INSERT OR IGNORE INTO site_channels (site_id, channel_uuid, is_primary) VALUES 
-    ('chamonix-planpraz', 'chamonix-local-001', TRUE),
-    ('annecy-forclaz', 'annecy-debutants-001', TRUE);
+    ('chamonix-planpraz', '04b242cb-91b5-4e6d-a10a-27099fb6e866', TRUE),
+    ('annecy-forclaz', '74250fc5-4569-49b1-a5f3-b3abeec34ef2', TRUE);
