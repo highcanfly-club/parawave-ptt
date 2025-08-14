@@ -37,7 +37,7 @@ const options = {
     openapi: "3.0.0",
     info: {
       title: "Parawave-PTT API",
-      version: "1.1.0",
+      version: "1.0.0",
     },
   }, // You can move properties from definition here if needed
   apis: ["../cloudflare-worker/src/handlers/api-handler.ts"], // Path to the API docs

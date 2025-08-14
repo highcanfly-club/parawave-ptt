@@ -47,5 +47,6 @@
   "no-permissions": "Sin permisos",
   "permissions": "permisos",
   "token": "simbólico",
-  "user": "usuario"
+  "user": "usuario",
+  "parawave-ptt": "Parawave PTT"
 }

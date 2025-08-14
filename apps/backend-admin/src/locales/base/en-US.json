@@ -48,5 +48,6 @@
   "no-permissions": "no permissions",
   "token": "token",
   "user": "user",
-  "api-server": "api server"
+  "api-server": "api server",
+  "parawave-ptt": "Parawave PTT"
 }
