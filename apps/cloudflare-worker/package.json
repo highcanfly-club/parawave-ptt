@@ -18,7 +18,7 @@
     "cf-typegen": "wrangler types",
     "d1:create": "npx wrangler d1 execute --local --file migrations/001_initial_schema.sql ptt-parapente-dev",
     "d1:delete": "npx wrangler d1 execute --local --file migrations/000_reset_and_init.sql ptt-parapente-dev",
-    "d1:reset" : "npm run d1:delete && npm run d1:create",
+    "d1:reset": "npm run d1:delete && npm run d1:create",
     "d1:create:remote": "npx wrangler d1 execute --remote --file migrations/001_initial_schema.sql ptt-parapente-dev"
   },
   "devDependencies": {
