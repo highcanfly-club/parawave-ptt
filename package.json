@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.18",
-    "turbo": "^2.2.0",
+    "turbo": "2.5.6",
     "typescript": "^5.9.2"
   },
   "engines": {
