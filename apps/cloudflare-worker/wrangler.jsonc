@@ -46,7 +46,7 @@
 		{
 			"tag": "v1",
 			"new_classes": [
-				"ChannelDurableObject"
+				"new_sqlite_classes"
 			]
 		}
 	],
