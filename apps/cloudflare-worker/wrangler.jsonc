@@ -24,14 +24,14 @@
 	"d1_databases": [
 		{
 			"binding": "PTT_DB",
-			"database_name": "ptt-parapente-dev",
-			"database_id": "00000000-0000-0000-0000-000000000000"
+			"database_name": "ptt-parapente",
+			"database_id": "adad3086-6db8-4a58-9232-01e51997321a"
 		}
 	],
 	"kv_namespaces": [
 		{
 			"binding": "PTT_CACHE",
-			"id": "00000000000000000000000000000000"
+			"id": "eff465367e324d9089a31bf88402a398"
 		}
 	],
 	"durable_objects": {
