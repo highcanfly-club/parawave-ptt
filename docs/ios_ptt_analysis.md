@@ -313,6 +313,344 @@ Authorization: Bearer JWT_TOKEN_FROM_Auth0
 - Permissions requises: admin:api
 ```
 
+## Architecture PTT Audio Temps Réel Implémentée
+
+### Vue d'ensemble de l'Architecture
+
+Le système PTT utilise **Cloudflare Workers avec Durable Objects** pour assurer une transmission audio temps réel ultra-rapide (latence <100ms) entre les participants d'un canal.
+
+### Composants Clés
+
+#### 1. Durable Objects PTT
+
+- **PTTChannelDurableObject** : Un objet durable par canal pour la gestion temps réel
+- **Gestion des sessions** : Sessions PTT éphémères (30 secondes maximum)
+- **WebSocket broadcasting** : Diffusion live des chunks audio aux participants connectés
+- **Mémoire partagée** : Stockage temporaire des chunks audio en mémoire (auto-nettoyage)
+
+#### 2. Service PTT Audio
+
+```typescript
+export class PTTAudioService {
+  async startTransmission(
+    request: PTTStartTransmissionRequest,
+    userId: string,
+    username: string
+  ) {
+    // Routage vers le Durable Object du canal
+    const durableObjectId = this.env.PTT_CHANNEL_DO.idFromString(channelUuid);
+    const durableObject = this.env.PTT_CHANNEL_DO.get(durableObjectId);
+
+    return await durableObject.startAudioTransmission(
+      request,
+      userId,
+      username
+    );
+  }
+
+  async receiveAudioChunk(chunk: PTTAudioChunkRequest) {
+    // Diffusion temps réel du chunk aux participants via WebSocket
+    const durableObjectId = this.getDurableObjectForSession(chunk.session_id);
+    return await durableObjectId.receiveAudioChunk(chunk);
+  }
+}
+```
+
+### API Endpoints PTT Réels
+
+#### Démarrage de Transmission
+
+```
+POST /api/v1/transmissions/start
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+
+{
+  "channel_uuid": "chamonix-local-001",
+  "audio_format": "aac-lc",  // "aac-lc" | "opus" | "pcm"
+  "device_info": {
+    "model": "iPhone 15 Pro",
+    "os_version": "17.2"
+  },
+  "expected_duration": 15  // secondes, max 30
+}
+
+Response 200:
+{
+  "success": true,
+  "session_id": "ptt_chamonix-local-001_user123_1755610794821_abc123",
+  "channel_uuid": "chamonix-local-001",
+  "max_duration": 30,
+  "websocket_url": "wss://ptt-backend.highcanfly.club/api/v1/transmissions/ws/chamonix-local-001"
+}
+```
+
+#### Envoi de Chunks Audio
+
+```
+POST /api/v1/transmissions/{session_id}/chunk
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+
+{
+  "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+  "sequence_number": 0,
+  "timestamp": 1640995200.123,
+  "duration_ms": 100
+}
+
+Response 200:
+{
+  "success": true,
+  "sequence_number": 0,
+  "total_chunks": 1,
+  "duration_so_far": 0.1
+}
+```
+
+#### Fin de Transmission
+
+```
+POST /api/v1/transmissions/{session_id}/end
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Content-Type: application/json
+
+{
+  "reason": "completed"  // "completed" | "cancelled" | "timeout" | "error"
+}
+
+Response 200:
+{
+  "success": true,
+  "total_duration": 5.2,
+  "total_chunks": 52,
+  "participants_reached": 3
+}
+```
+
+#### Consultation des Transmissions Actives
+
+```
+GET /api/v1/transmissions/active/{channel_uuid}
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+
+Response 200:
+{
+  "success": true,
+  "transmission": {
+    "session_id": "ptt_chamonix-local-001_user123_1755610794821_abc123",
+    "user_id": "auth0|user123",
+    "username": "Pilot Alpha",
+    "started_at": "2024-01-15T10:30:00Z",
+    "duration": 5.2,
+    "audio_format": "aac-lc",
+    "channel_uuid": "chamonix-local-001"
+  }
+}
+```
+
+#### WebSocket pour Réception Temps Réel
+
+```
+GET /api/v1/transmissions/ws/{channel_uuid}
+Authorization: Bearer JWT_TOKEN_FROM_Auth0
+Upgrade: websocket
+Connection: Upgrade
+
+// Messages WebSocket reçus :
+{
+  "type": "transmission_start",
+  "session_id": "ptt_...",
+  "data": {
+    "sessionId": "ptt_...",
+    "userId": "auth0|user123",
+    "username": "Pilot Alpha",
+    "audioFormat": "aac-lc"
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+
+{
+  "type": "audio_chunk",
+  "session_id": "ptt_...",
+  "data": {
+    "sequenceNumber": 0,
+    "audioData": "UklGRiQA...",
+    "timestamp": 1640995200.123
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+
+{
+  "type": "transmission_end",
+  "session_id": "ptt_...",
+  "data": {
+    "reason": "completed",
+    "totalDuration": 5.2,
+    "totalChunks": 52
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+### Types TypeScript PTT Implémentés
+
+```typescript
+export type AudioFormat = "aac-lc" | "opus" | "pcm";
+
+export interface PTTTransmissionSession {
+  sessionId: string;
+  channelUuid: string;
+  userId: string;
+  username: string;
+  audioFormat: AudioFormat;
+  startTime: Date;
+  maxDurationMs: number;
+  deviceInfo?: {
+    model?: string;
+    os_version?: string;
+  };
+}
+
+export interface AudioChunk {
+  sessionId: string;
+  sequenceNumber: number;
+  audioData: string; // base64
+  timestamp: number;
+  durationMs?: number;
+}
+
+export interface LiveTransmission {
+  sessionId: string;
+  channelUuid: string;
+  userId: string;
+  username: string;
+  startTime: Date;
+  audioFormat: AudioFormat;
+  chunksReceived: number;
+  totalDurationMs: number;
+}
+
+export interface PTTWebSocketMessage {
+  type: "transmission_start" | "audio_chunk" | "transmission_end";
+  sessionId: string;
+  data: AudioChunk | LiveTransmission | TransmissionEndData;
+  timestamp: Date;
+}
+```
+
+### Intégration iOS avec PTT Framework
+
+#### Configuration WebSocket iOS
+
+```swift
+import PushToTalk
+import Starscream
+
+class PTTWebSocketManager: WebSocketDelegate {
+    private var socket: WebSocket?
+    private let channelUuid: String
+    private var activeTransmission: LiveTransmission?
+
+    init(channelUuid: String, authToken: String) {
+        self.channelUuid = channelUuid
+
+        var request = URLRequest(url: URL(string: "wss://ptt-backend.highcanfly.club/api/v1/transmissions/ws/\(channelUuid)")!)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+
+        socket = WebSocket(request: request)
+        socket?.delegate = self
+        socket?.connect()
+    }
+
+    func websocketDidReceiveMessage(socket: WebSocketClient, text: String) {
+        guard let data = text.data(using: .utf8),
+              let message = try? JSONDecoder().decode(PTTWebSocketMessage.self, from: data) else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            switch message.type {
+            case "transmission_start":
+                self.handleTransmissionStart(message)
+            case "audio_chunk":
+                self.handleAudioChunk(message)
+            case "transmission_end":
+                self.handleTransmissionEnd(message)
+            }
+        }
+    }
+
+    private func handleAudioChunk(_ message: PTTWebSocketMessage) {
+        guard let chunkData = message.data as? AudioChunk,
+              let audioData = Data(base64Encoded: chunkData.audioData) else {
+            return
+        }
+
+        // Décoder et jouer l'audio reçu
+        AudioPlaybackManager.shared.playAudioChunk(audioData, format: activeTransmission?.audioFormat ?? .aacLc)
+    }
+}
+```
+
+#### Envoi de Chunks Audio iOS
+
+```swift
+class PTTTransmissionManager {
+    private var currentSession: PTTSession?
+    private let networkService: ParapenteNetworkService
+
+    func startTransmission(channelUuid: String, audioFormat: AudioFormat) async throws {
+        let request = PTTStartTransmissionRequest(
+            channelUuid: channelUuid,
+            audioFormat: audioFormat,
+            deviceInfo: DeviceInfo(
+                model: UIDevice.current.model,
+                osVersion: UIDevice.current.systemVersion
+            )
+        )
+
+        let response = try await networkService.startPTTTransmission(request)
+        currentSession = PTTSession(
+            sessionId: response.sessionId,
+            channelUuid: channelUuid,
+            maxDuration: response.maxDuration
+        )
+
+        // Démarrer enregistrement audio
+        try AudioRecordingManager.shared.startRecording(format: audioFormat) { [weak self] audioChunk in
+            Task {
+                try await self?.sendAudioChunk(audioChunk)
+            }
+        }
+    }
+
+    private func sendAudioChunk(_ audioData: Data) async throws {
+        guard let session = currentSession else { return }
+
+        let chunk = PTTAudioChunkRequest(
+            audioData: audioData.base64EncodedString(),
+            sequenceNumber: session.nextSequenceNumber(),
+            timestamp: Date().timeIntervalSince1970,
+            durationMs: 100
+        )
+
+        try await networkService.sendAudioChunk(sessionId: session.sessionId, chunk: chunk)
+    }
+
+    func endTransmission(reason: String = "completed") async throws {
+        guard let session = currentSession else { return }
+
+        AudioRecordingManager.shared.stopRecording()
+
+        let endRequest = PTTEndTransmissionRequest(reason: reason)
+        try await networkService.endPTTTransmission(sessionId: session.sessionId, request: endRequest)
+
+        currentSession = nil
+    }
+}
+```
+
 #### Gestion des Participants (Join/Leave)
 
 ```
@@ -529,11 +867,11 @@ struct ChannelPermission {
 }
 ```
 
-### Architecture Couche Réseau Mise à Jour
+### Architecture Réseau iOS pour PTT Temps Réel
 
 ```swift
 protocol ParapenteNetworkServiceProtocol {
-    // Authentification et permissions
+    // Authentification
     func validateAuth0Token(_ token: String) async throws -> AuthValidationResponse
 
     // Gestion des channels
@@ -547,20 +885,73 @@ protocol ParapenteNetworkServiceProtocol {
     func joinChannel(uuid: String, location: CLLocation?, ephemeralPushToken: String?) async throws -> JoinChannelResponse
     func leaveChannel(uuid: String) async throws -> LeaveChannelResponse
     func getChannelParticipants(uuid: String) async throws -> [ChannelParticipant]
-
-    // Gestion du token éphémère PTT
     func updateParticipantPushToken(channelUuid: String, ephemeralPushToken: String) async throws -> Bool
 
-    // Monitoring réseau
+    // PTT Audio Transmission - NOUVELLES MÉTHODES
+    func startPTTTransmission(_ request: PTTStartTransmissionRequest) async throws -> PTTStartTransmissionResponse
+    func sendAudioChunk(sessionId: String, chunk: PTTAudioChunkRequest) async throws -> PTTAudioChunkResponse
+    func endPTTTransmission(sessionId: String, request: PTTEndTransmissionRequest) async throws -> PTTEndTransmissionResponse
+    func getActiveTransmission(channelUuid: String) async throws -> PTTActiveTransmissionResponse
+
+    // WebSocket pour réception temps réel
+    func connectPTTWebSocket(channelUuid: String) -> PTTWebSocketManager
+
+    // Monitoring
     func checkHealth() async throws -> HealthResponse
 }
 
 class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
-    private let baseURL: String = "https://ptt-backend.highcanfly.club/api/v1"
+    private let baseURL = "https://ptt-backend.highcanfly.club/api/v1"
+    private let websocketURL = "wss://ptt-backend.highcanfly.club/api/v1"
     private let session = URLSession.shared
     private var auth0Token: String?
+    private var webSocketManager: PTTWebSocketManager?
 
-    // Implémentation avec gestion d'erreurs et retry logic
+    // IMPLÉMENTATION PTT AUDIO
+    func startPTTTransmission(_ request: PTTStartTransmissionRequest) async throws -> PTTStartTransmissionResponse {
+        let body = try JSONEncoder().encode(request)
+        return try await makeRequest(
+            endpoint: "transmissions/start",
+            method: .POST,
+            body: body,
+            responseType: PTTStartTransmissionResponse.self
+        )
+    }
+
+    func sendAudioChunk(sessionId: String, chunk: PTTAudioChunkRequest) async throws -> PTTAudioChunkResponse {
+        let body = try JSONEncoder().encode(chunk)
+        return try await makeRequest(
+            endpoint: "transmissions/\(sessionId)/chunk",
+            method: .POST,
+            body: body,
+            responseType: PTTAudioChunkResponse.self
+        )
+    }
+
+    func endPTTTransmission(sessionId: String, request: PTTEndTransmissionRequest) async throws -> PTTEndTransmissionResponse {
+        let body = try JSONEncoder().encode(request)
+        return try await makeRequest(
+            endpoint: "transmissions/\(sessionId)/end",
+            method: .POST,
+            body: body,
+            responseType: PTTEndTransmissionResponse.self
+        )
+    }
+
+    func getActiveTransmission(channelUuid: String) async throws -> PTTActiveTransmissionResponse {
+        return try await makeRequest(
+            endpoint: "transmissions/active/\(channelUuid)",
+            method: .GET,
+            responseType: PTTActiveTransmissionResponse.self
+        )
+    }
+
+    func connectPTTWebSocket(channelUuid: String) -> PTTWebSocketManager {
+        let wsURL = "\(websocketURL)/transmissions/ws/\(channelUuid)"
+        return PTTWebSocketManager(url: wsURL, authToken: auth0Token ?? "")
+    }
+
+    // GESTION DES REQUÊTES AVEC RETRY LOGIC
     private func makeRequest<T: Codable>(
         endpoint: String,
         method: HTTPMethod = .GET,
@@ -576,6 +967,13 @@ class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        // Timeout spécialisé pour PTT (plus court pour temps réel)
+        if endpoint.contains("transmissions/") {
+            request.timeoutInterval = 5.0 // 5 secondes pour PTT
+        } else {
+            request.timeoutInterval = 15.0 // 15 secondes pour operations normales
+        }
+
         if let body = body {
             request.httpBody = body
         }
@@ -586,18 +984,28 @@ class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
             throw NetworkError.invalidResponse
         }
 
-        // Gestion des codes d'erreur spécifiques
+        // Gestion spécialisée des erreurs PTT
         switch httpResponse.statusCode {
         case 200...299:
             return try JSONDecoder().decode(T.self, from: data)
         case 401:
             throw NetworkError.unauthorized
         case 403:
+            // Pour PTT, 403 peut signifier transmission déjà active
+            if endpoint.contains("transmissions/start") {
+                if let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data),
+                   errorResponse.error.contains("already active") {
+                    throw PTTError.transmissionAlreadyActive
+                }
+            }
             throw NetworkError.forbidden
         case 404:
+            // Pour PTT, 404 peut signifier session expirée
+            if endpoint.contains("transmissions/") {
+                throw PTTError.sessionNotFound
+            }
             throw NetworkError.notFound
         case 400:
-            // Décoder le message d'erreur
             if let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
                 throw NetworkError.badRequest(errorResponse.error)
             }
@@ -607,25 +1015,441 @@ class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
         }
     }
 }
-    func refreshAuthToken() async throws -> String
+
+// ERREURS SPÉCIALISÉES PTT
+enum PTTError: Error, LocalizedError {
+    case transmissionAlreadyActive
+    case sessionNotFound
+    case audioChunkSequenceError
+    case webSocketConnectionFailed
+    case audioEncodingFailed
+    case transmissionTimeout
+
+    var errorDescription: String? {
+        switch self {
+        case .transmissionAlreadyActive:
+            return "Une transmission est déjà active sur ce canal"
+        case .sessionNotFound:
+            return "Session PTT non trouvée ou expirée"
+        case .audioChunkSequenceError:
+            return "Erreur de séquence dans les chunks audio"
+        case .webSocketConnectionFailed:
+            return "Impossible de se connecter au WebSocket PTT"
+        case .audioEncodingFailed:
+            return "Échec d'encodage audio"
+        case .transmissionTimeout:
+            return "Timeout de transmission (max 30 secondes)"
+        }
+    }
 }
 
-class ParapenteNetworkService: ParapenteNetworkServiceProtocol {
-    private let session = URLSession.shared
-    private let baseURL = "https://parawave-backend.highcanfly.club"
-    private var networkMonitor = NWPathMonitor()
-    private var currentJWTToken: String?
+// MODÈLES DE DONNÉES PTT
+struct PTTStartTransmissionRequest: Codable {
+    let channelUuid: String
+    let audioFormat: AudioFormat
+    let deviceInfo: DeviceInfo?
+    let expectedDuration: TimeInterval?
 
-    func authenticateWithAuth0Token(_ token: String, location: CLLocation?) async throws -> ParapenteAuthResponse {
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/v1/auth")!)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    enum CodingKeys: String, CodingKey {
+        case channelUuid = "channel_uuid"
+        case audioFormat = "audio_format"
+        case deviceInfo = "device_info"
+        case expectedDuration = "expected_duration"
+    }
+}
 
-        if let location = location {
-            let payload = ["location": ["lat": location.coordinate.latitude, "lon": location.coordinate.longitude]]
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+struct PTTStartTransmissionResponse: Codable {
+    let success: Bool
+    let sessionId: String?
+    let channelUuid: String?
+    let maxDuration: Int?
+    let websocketUrl: String?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case sessionId = "session_id"
+        case channelUuid = "channel_uuid"
+        case maxDuration = "max_duration"
+        case websocketUrl = "websocket_url"
+        case error
+    }
+}
+
+struct PTTAudioChunkRequest: Codable {
+    let audioData: String // base64
+    let sequenceNumber: Int
+    let timestamp: TimeInterval
+    let durationMs: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case audioData = "audio_data"
+        case sequenceNumber = "sequence_number"
+        case timestamp
+        case durationMs = "duration_ms"
+    }
+}
+
+struct PTTAudioChunkResponse: Codable {
+    let success: Bool
+    let sequenceNumber: Int?
+    let totalChunks: Int?
+    let durationSoFar: TimeInterval?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case sequenceNumber = "sequence_number"
+        case totalChunks = "total_chunks"
+        case durationSoFar = "duration_so_far"
+        case error
+    }
+}
+
+struct PTTEndTransmissionRequest: Codable {
+    let reason: String // "completed", "cancelled", "timeout", "error"
+}
+
+struct PTTEndTransmissionResponse: Codable {
+    let success: Bool
+    let totalDuration: TimeInterval?
+    let totalChunks: Int?
+    let participantsReached: Int?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case totalDuration = "total_duration"
+        case totalChunks = "total_chunks"
+        case participantsReached = "participants_reached"
+        case error
+    }
+}
+
+struct PTTActiveTransmissionResponse: Codable {
+    let success: Bool
+    let transmission: ActiveTransmission?
+    let error: String?
+}
+
+struct ActiveTransmission: Codable {
+    let sessionId: String
+    let userId: String
+    let username: String
+    let startedAt: String
+    let duration: TimeInterval
+    let audioFormat: AudioFormat
+    let channelUuid: String
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case userId = "user_id"
+        case username
+        case startedAt = "started_at"
+        case duration
+        case audioFormat = "audio_format"
+        case channelUuid = "channel_uuid"
+    }
+}
+
+enum AudioFormat: String, Codable, CaseIterable {
+    case aacLc = "aac-lc"
+    case opus = "opus"
+    case pcm = "pcm"
+}
+
+struct DeviceInfo: Codable {
+    let model: String?
+    let osVersion: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case osVersion = "os_version"
+    }
+}
+```
+
+### Implémentation WebSocket PTT Temps Réel
+
+```swift
+import Starscream
+import AVFoundation
+
+// GESTIONNAIRE WEBSOCKET PTT
+class PTTWebSocketManager: WebSocketDelegate {
+    private var socket: WebSocket?
+    private let channelUuid: String
+    private var isConnected = false
+    private var activeTransmission: ActiveTransmission?
+
+    // Callbacks pour l'interface utilisateur
+    var onTransmissionStart: ((ActiveTransmission) -> Void)?
+    var onAudioChunk: ((Data, AudioFormat) -> Void)?
+    var onTransmissionEnd: ((String, TimeInterval, Int) -> Void)?
+    var onConnectionStatusChanged: ((Bool) -> Void)?
+
+    init(url: String, authToken: String) {
+        var request = URLRequest(url: URL(string: url)!)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+
+        socket = WebSocket(request: request)
+        socket?.delegate = self
+    }
+
+    func connect() {
+        socket?.connect()
+    }
+
+    func disconnect() {
+        socket?.disconnect()
+        isConnected = false
+        onConnectionStatusChanged?(false)
+    }
+
+    // WEBSOCKET DELEGATE METHODS
+    func didReceive(event: WebSocketEvent, client: WebSocket) {
+        switch event {
+        case .connected(let headers):
+            isConnected = true
+            onConnectionStatusChanged?(true)
+            print("WebSocket PTT connecté: \(headers)")
+
+        case .disconnected(let reason, let code):
+            isConnected = false
+            activeTransmission = nil
+            onConnectionStatusChanged?(false)
+            print("WebSocket PTT déconnecté: \(reason) code: \(code)")
+
+        case .text(let text):
+            handleWebSocketMessage(text)
+
+        case .binary(let data):
+            print("Données binaires WebSocket reçues: \(data.count) bytes")
+
+        case .error(let error):
+            print("Erreur WebSocket PTT: \(error?.localizedDescription ?? "Unknown error")")
+            isConnected = false
+            onConnectionStatusChanged?(false)
+
+        default:
+            break
         }
+    }
+
+    private func handleWebSocketMessage(_ text: String) {
+        guard let data = text.data(using: .utf8),
+              let message = try? JSONDecoder().decode(PTTWebSocketMessage.self, from: data) else {
+            print("Impossible de décoder le message WebSocket PTT")
+            return
+        }
+
+        DispatchQueue.main.async {
+            switch message.type {
+            case "transmission_start":
+                self.handleTransmissionStart(message)
+            case "audio_chunk":
+                self.handleAudioChunk(message)
+            case "transmission_end":
+                self.handleTransmissionEnd(message)
+            }
+        }
+    }
+
+    private func handleTransmissionStart(_ message: PTTWebSocketMessage) {
+        guard let transmissionData = message.data as? [String: Any],
+              let sessionId = transmissionData["sessionId"] as? String,
+              let userId = transmissionData["userId"] as? String,
+              let username = transmissionData["username"] as? String,
+              let audioFormatString = transmissionData["audioFormat"] as? String,
+              let audioFormat = AudioFormat(rawValue: audioFormatString) else {
+            return
+        }
+
+        activeTransmission = ActiveTransmission(
+            sessionId: sessionId,
+            userId: userId,
+            username: username,
+            startedAt: ISO8601DateFormatter().string(from: Date()),
+            duration: 0,
+            audioFormat: audioFormat,
+            channelUuid: channelUuid
+        )
+
+        onTransmissionStart?(activeTransmission!)
+    }
+
+    private func handleAudioChunk(_ message: PTTWebSocketMessage) {
+        guard let chunkData = message.data as? [String: Any],
+              let audioDataBase64 = chunkData["audioData"] as? String,
+              let audioData = Data(base64Encoded: audioDataBase64),
+              let transmission = activeTransmission else {
+            return
+        }
+
+        onAudioChunk?(audioData, transmission.audioFormat)
+    }
+
+    private func handleTransmissionEnd(_ message: PTTWebSocketMessage) {
+        guard let endData = message.data as? [String: Any],
+              let reason = endData["reason"] as? String,
+              let totalDuration = endData["totalDuration"] as? TimeInterval,
+              let totalChunks = endData["totalChunks"] as? Int else {
+            return
+        }
+
+        onTransmissionEnd?(reason, totalDuration, totalChunks)
+        activeTransmission = nil
+    }
+}
+
+// MODÈLES WEBSOCKET
+struct PTTWebSocketMessage: Codable {
+    let type: String
+    let sessionId: String?
+    let data: [String: Any]
+    let timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case sessionId = "session_id"
+        case data
+        case timestamp
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+        timestamp = try container.decode(String.self, forKey: .timestamp)
+
+        // Décoder data comme dictionnaire générique
+        data = try container.decode([String: Any].self, forKey: .data)
+    }
+}
+
+// GESTIONNAIRE AUDIO POUR PTT
+class PTTAudioManager {
+    private var audioEngine = AVAudioEngine()
+    private var audioPlayerNode = AVAudioPlayerNode()
+    private var audioRecorder: AVAudioRecorder?
+    private var currentSession: PTTSession?
+
+    // Configuration audio pour PTT
+    func setupAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+        try session.setActive(true)
+
+        // Configuration du moteur audio
+        audioEngine.attach(audioPlayerNode)
+        audioEngine.connect(audioPlayerNode, to: audioEngine.mainMixerNode, format: nil)
+
+        try audioEngine.start()
+    }
+
+    // Lecture des chunks audio reçus via WebSocket
+    func playAudioChunk(_ audioData: Data, format: AudioFormat) {
+        do {
+            let audioFile = try AVAudioFile(forReading: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("temp_audio"))
+            audioPlayerNode.scheduleFile(audioFile, at: nil)
+
+            if !audioPlayerNode.isPlaying {
+                audioPlayerNode.play()
+            }
+        } catch {
+            print("Erreur lecture audio PTT: \(error)")
+        }
+    }
+
+    // Démarrage enregistrement pour transmission
+    func startRecording(format: AudioFormat, onChunk: @escaping (Data) -> Void) throws {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audioURL = documentsPath.appendingPathComponent("ptt_recording.m4a")
+
+        let settings: [String: Any]
+        switch format {
+        case .aacLc:
+            settings = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 22050.0,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
+            ]
+        case .opus:
+            settings = [
+                AVFormatIDKey: Int(kAudioFormatOpus),
+                AVSampleRateKey: 16000.0,
+                AVNumberOfChannelsKey: 1
+            ]
+        case .pcm:
+            settings = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 16000.0,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false
+            ]
+        }
+
+        audioRecorder = try AVAudioRecorder(url: audioURL, settings: settings)
+        audioRecorder?.record()
+
+        // Timer pour envoyer des chunks audio périodiquement (100ms)
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
+            if let recorder = self?.audioRecorder, recorder.isRecording {
+                // Ici, on devrait extraire le chunk audio et l'envoyer
+                // Cette implémentation simplifiée nécessite une logique plus complexe
+                // pour extraire les chunks en temps réel
+                if let audioData = self?.extractCurrentAudioChunk() {
+                    onChunk(audioData)
+                }
+            } else {
+                timer.invalidate()
+            }
+        }
+    }
+
+    func stopRecording() {
+        audioRecorder?.stop()
+        audioRecorder = nil
+    }
+
+    private func extractCurrentAudioChunk() -> Data? {
+        // Implémentation pour extraire un chunk de 100ms de l'enregistrement en cours
+        // Cette méthode nécessiterait une implémentation plus sophistiquée
+        // utilisant AVAudioEngine avec des taps audio pour capturer les chunks temps réel
+        return nil
+    }
+}
+
+// SESSION PTT POUR SUIVI LOCAL
+class PTTSession {
+    let sessionId: String
+    let channelUuid: String
+    let startTime: Date
+    let maxDuration: TimeInterval
+    private var sequenceNumber = 0
+
+    init(sessionId: String, channelUuid: String, maxDuration: TimeInterval) {
+        self.sessionId = sessionId
+        self.channelUuid = channelUuid
+        self.maxDuration = maxDuration
+        self.startTime = Date()
+    }
+
+    func nextSequenceNumber() -> Int {
+        sequenceNumber += 1
+        return sequenceNumber - 1
+    }
+
+    var isExpired: Bool {
+        return Date().timeIntervalSince(startTime) >= maxDuration
+    }
+
+    var remainingTime: TimeInterval {
+        return max(0, maxDuration - Date().timeIntervalSince(startTime))
+    }
+}
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
