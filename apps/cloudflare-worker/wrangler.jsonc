@@ -25,13 +25,13 @@
 		{
 			"binding": "PTT_DB",
 			"database_name": "ptt-parapente",
-			"database_id": "adad3086-6db8-4a58-9232-01e51997321a"
+			"database_id": "696b9407-c543-4f49-9868-976a236859e1"
 		}
 	],
 	"kv_namespaces": [
 		{
 			"binding": "PTT_CACHE",
-			"id": "eff465367e324d9089a31bf88402a398"
+			"id": "381f8f8a87a64dcdb41c9b6b49447148"
 		}
 	],
 	"durable_objects": {
