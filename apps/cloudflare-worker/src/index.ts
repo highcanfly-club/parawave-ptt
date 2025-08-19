@@ -101,9 +101,9 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 			}),
 			{
 				status: 401,
-				headers: { 
-					...corsHeaders(env), 
-					'Content-Type': 'application/json' 
+				headers: {
+					...corsHeaders(env),
+					'Content-Type': 'application/json'
 				},
 			}
 		);
@@ -134,9 +134,9 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 					}
 				}),
 				{
-					headers: { 
-						...corsHeaders(env), 
-						'Content-Type': 'application/json' 
+					headers: {
+						...corsHeaders(env),
+						'Content-Type': 'application/json'
 					},
 				}
 			);
@@ -149,9 +149,9 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 			}),
 			{
 				status: 403,
-				headers: { 
-					...corsHeaders(env), 
-					'Content-Type': 'application/json' 
+				headers: {
+					...corsHeaders(env),
+					'Content-Type': 'application/json'
 				},
 			}
 		);
@@ -165,13 +165,45 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 			}),
 			{
 				status: 401,
-				headers: { 
-					...corsHeaders(env), 
-					'Content-Type': 'application/json' 
+				headers: {
+					...corsHeaders(env),
+					'Content-Type': 'application/json'
 				},
 			}
 		);
 	}
+}
+
+/**
+ * Handle PTT WebSocket connections
+ * Routes WebSocket connections for PTT audio transmission to appropriate channel Durable Objects
+ */
+async function handlePTTWebSocketRequest(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const pathParts = url.pathname.split('/');
+
+	// Expected path: /ptt/channel/{channelId}
+	if (pathParts.length < 4 || pathParts[1] !== 'ptt' || pathParts[2] !== 'channel') {
+		return new Response('Invalid PTT WebSocket path', { status: 400 });
+	}
+
+	const channelId = pathParts[3];
+
+	if (!channelId) {
+		return new Response('Channel ID required', { status: 400 });
+	}
+
+	// Validate WebSocket upgrade
+	if (request.headers.get('Upgrade') !== 'websocket') {
+		return new Response('WebSocket upgrade required', { status: 400 });
+	}
+
+	// Get the channel Durable Object
+	const channelId32 = env.CHANNEL_OBJECTS.idFromName(channelId);
+	const channelObj = env.CHANNEL_OBJECTS.get(channelId32);
+
+	// Forward WebSocket connection to the channel Durable Object
+	return channelObj.fetch(request);
 }
 
 /**
@@ -192,7 +224,7 @@ export default {
 				}),
 				{
 					status: 429,
-					headers: { 
+					headers: {
 						...corsHeaders(env),
 						'Content-Type': 'application/json'
 					},
@@ -214,13 +246,18 @@ export default {
 		try {
 			// Route API requests to dedicated handler
 			if (pathname.startsWith('/api/v1/')) {
-				const apiHandler = new PTTAPIHandler(env.PTT_DB, env.PTT_CACHE, env.CORS_ORIGIN);
+				const apiHandler = new PTTAPIHandler(env.PTT_DB, env.PTT_CACHE, env, env.CORS_ORIGIN);
 				return await apiHandler.handleAPIRequest(request, env);
 			}
 
 			// Route channel real-time operations to Durable Objects
 			if (pathname.startsWith('/channel/')) {
 				return await handleChannelDurableObjectRequest(request, env);
+			}
+
+			// Route PTT WebSocket connections directly to channel Durable Objects
+			if (pathname.startsWith('/ptt/channel/') && request.headers.get('Upgrade') === 'websocket') {
+				return await handlePTTWebSocketRequest(request, env);
 			}
 
 			// Legacy endpoint for backward compatibility
@@ -244,9 +281,9 @@ export default {
 						}
 					}),
 					{
-						headers: { 
-							...corsHeaders(env), 
-							'Content-Type': 'application/json' 
+						headers: {
+							...corsHeaders(env),
+							'Content-Type': 'application/json'
 						},
 					}
 				);
@@ -256,12 +293,12 @@ export default {
 				JSON.stringify({
 					error: "Endpoint not found",
 					code: 'NOT_FOUND'
-				}), 
+				}),
 				{
 					status: 404,
-					headers: { 
-						...corsHeaders(env), 
-						'Content-Type': 'application/json' 
+					headers: {
+						...corsHeaders(env),
+						'Content-Type': 'application/json'
 					},
 				}
 			);
@@ -275,9 +312,9 @@ export default {
 				}),
 				{
 					status: 500,
-					headers: { 
-						...corsHeaders(env), 
-						'Content-Type': 'application/json' 
+					headers: {
+						...corsHeaders(env),
+						'Content-Type': 'application/json'
 					},
 				}
 			);

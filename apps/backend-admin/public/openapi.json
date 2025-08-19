@@ -7,7 +7,7 @@
   "paths": {
     "info": {
       "title": "ParaWave PTT API",
-      "description": "API for managing PTT channels for paragliding pilots",
+      "description": "API for managing PTT channels and real-time audio transmissions for paragliding pilots",
       "version": "1.0.0",
       "contact": {
         "name": "ParaWave Team",
@@ -1382,6 +1382,609 @@
           }
         }
       }
+    },
+    "/api/v1/transmissions/start": {
+      "post": {
+        "summary": "Start PTT transmission",
+        "description": "Initiate a new PTT audio transmission in a channel. Maximum transmission duration is 30 seconds.",
+        "tags": [
+          "Transmissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PTTStartTransmissionRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Basic transmission request",
+                  "value": {
+                    "channel_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                    "audio_format": "aac-lc"
+                  }
+                },
+                "with_device_info": {
+                  "summary": "With device information",
+                  "value": {
+                    "channel_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                    "audio_format": "opus",
+                    "device_info": {
+                      "model": "iPhone 15 Pro",
+                      "os_version": "17.2"
+                    },
+                    "expected_duration": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transmission started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PTTStartTransmissionResponse"
+                },
+                "examples": {
+                  "success": {
+                    "value": {
+                      "success": true,
+                      "session_id": "123e4567-e89b-12d3-a456-426614174000",
+                      "channel_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                      "max_duration": 30,
+                      "websocket_url": "wss://your-worker.your-subdomain.workers.dev/api/v1/transmissions/ws/550e8400-e29b-41d4-a716-446655440000"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_channel": {
+                    "value": {
+                      "success": false,
+                      "error": "channel_uuid is required"
+                    }
+                  },
+                  "invalid_format": {
+                    "value": {
+                      "success": false,
+                      "error": "Valid audio_format is required (aac-lc, opus, pcm)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Channel access denied or already transmitting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "access_denied": {
+                    "value": {
+                      "success": false,
+                      "error": "Channel access denied"
+                    }
+                  },
+                  "already_transmitting": {
+                    "value": {
+                      "success": false,
+                      "error": "Another transmission is already active"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transmissions/{session_id}/chunk": {
+      "post": {
+        "summary": "Send audio chunk",
+        "description": "Send a chunk of audio data for an active transmission. Chunks must be sent in sequential order.",
+        "tags": [
+          "Transmissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The transmission session ID returned from start transmission"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PTTAudioChunkRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Basic audio chunk",
+                  "value": {
+                    "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+                    "sequence_number": 0,
+                    "timestamp": 1640995200.123,
+                    "duration_ms": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Audio chunk processed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PTTAudioChunkResponse"
+                },
+                "examples": {
+                  "success": {
+                    "value": {
+                      "success": true,
+                      "sequence_number": 0,
+                      "total_chunks": 1,
+                      "duration_so_far": 0.1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_data": {
+                    "value": {
+                      "success": false,
+                      "error": "audio_data (base64) is required"
+                    }
+                  },
+                  "invalid_sequence": {
+                    "value": {
+                      "success": false,
+                      "error": "Invalid sequence_number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "success": false,
+                      "error": "Transmission session not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transmissions/{session_id}/end": {
+      "post": {
+        "summary": "End PTT transmission",
+        "description": "End an active PTT transmission and get transmission statistics.",
+        "tags": [
+          "Transmissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The transmission session ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PTTEndTransmissionRequest"
+              },
+              "examples": {
+                "completed": {
+                  "summary": "Normal completion",
+                  "value": {
+                    "reason": "completed"
+                  }
+                },
+                "cancelled": {
+                  "summary": "User cancelled",
+                  "value": {
+                    "reason": "cancelled"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transmission ended successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PTTEndTransmissionResponse"
+                },
+                "examples": {
+                  "success": {
+                    "value": {
+                      "success": true,
+                      "total_duration": 5.2,
+                      "total_chunks": 52,
+                      "participants_reached": 3
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "session_mismatch": {
+                    "value": {
+                      "success": false,
+                      "error": "session_id mismatch"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found or already ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "success": false,
+                      "error": "Transmission session not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transmissions/active/{channel_uuid}": {
+      "get": {
+        "summary": "Get active transmission",
+        "description": "Get details about the currently active transmission in a channel, if any.",
+        "tags": [
+          "Transmissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "channel_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The channel UUID to check for active transmissions"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active transmission details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PTTActiveTransmissionResponse"
+                },
+                "examples": {
+                  "with_transmission": {
+                    "summary": "Channel has active transmission",
+                    "value": {
+                      "success": true,
+                      "transmission": {
+                        "session_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "user_id": "auth0|user123",
+                        "username": "John Pilot",
+                        "started_at": "2025-08-19T10:30:00.000Z",
+                        "duration": 5.2,
+                        "audio_format": "aac-lc"
+                      }
+                    }
+                  },
+                  "no_transmission": {
+                    "summary": "No active transmission",
+                    "value": {
+                      "success": true,
+                      "transmission": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "value": {
+                      "success": false,
+                      "error": "Channel not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transmissions/ws/{channel_uuid}": {
+      "get": {
+        "summary": "WebSocket upgrade for real-time PTT",
+        "description": "Upgrade HTTP connection to WebSocket for real-time PTT audio transmission.\nUsed for receiving live audio chunks from active transmissions.\n\n**WebSocket Protocol:**\n- Client sends: `{\"type\": \"join\", \"channel_uuid\": \"uuid\"}`\n- Server sends: `{\"type\": \"audio_chunk\", \"session_id\": \"uuid\", \"audio_data\": \"base64\", \"sequence\": 0}`\n- Server sends: `{\"type\": \"transmission_start\", \"session_id\": \"uuid\", \"user_id\": \"string\", \"username\": \"string\"}`\n- Server sends: `{\"type\": \"transmission_end\", \"session_id\": \"uuid\", \"duration\": 5.2}`\n",
+        "tags": [
+          "Transmissions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "channel_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The channel UUID to listen for transmissions"
+          },
+          {
+            "name": "Upgrade",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "websocket"
+              ]
+            },
+            "description": "Must be \"websocket\""
+          },
+          {
+            "name": "Connection",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Upgrade"
+              ]
+            },
+            "description": "Must be \"Upgrade\""
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "WebSocket connection established",
+            "headers": {
+              "Upgrade": {
+                "schema": {
+                  "type": "string",
+                  "example": "websocket"
+                }
+              },
+              "Connection": {
+                "schema": {
+                  "type": "string",
+                  "example": "Upgrade"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid WebSocket upgrade request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Channel access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1620,6 +2223,220 @@
             "description": "Error message if success is false"
           }
         }
+      },
+      "PTTStartTransmissionRequest": {
+        "type": "object",
+        "required": [
+          "channel_uuid",
+          "audio_format"
+        ],
+        "properties": {
+          "channel_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the channel to transmit in"
+          },
+          "audio_format": {
+            "type": "string",
+            "enum": [
+              "aac-lc",
+              "opus",
+              "pcm"
+            ],
+            "description": "Audio encoding format"
+          },
+          "device_info": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "description": "Device model"
+              },
+              "os_version": {
+                "type": "string",
+                "description": "Operating system version"
+              }
+            },
+            "description": "Optional device information"
+          },
+          "expected_duration": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 30,
+            "description": "Expected transmission duration in seconds (max 30s)"
+          }
+        }
+      },
+      "PTTStartTransmissionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique transmission session ID"
+          },
+          "channel_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Channel UUID"
+          },
+          "max_duration": {
+            "type": "integer",
+            "example": 30,
+            "description": "Maximum transmission duration in seconds"
+          },
+          "websocket_url": {
+            "type": "string",
+            "description": "WebSocket URL for real-time audio streaming"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false"
+          }
+        }
+      },
+      "PTTAudioChunkRequest": {
+        "type": "object",
+        "required": [
+          "audio_data",
+          "sequence_number"
+        ],
+        "properties": {
+          "audio_data": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64-encoded audio chunk data"
+          },
+          "sequence_number": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sequential chunk number starting from 0"
+          },
+          "timestamp": {
+            "type": "number",
+            "description": "Unix timestamp when audio was recorded"
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Duration of this audio chunk in milliseconds"
+          }
+        }
+      },
+      "PTTAudioChunkResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "sequence_number": {
+            "type": "integer",
+            "description": "Acknowledged sequence number"
+          },
+          "total_chunks": {
+            "type": "integer",
+            "description": "Total chunks received so far"
+          },
+          "duration_so_far": {
+            "type": "number",
+            "description": "Total transmission duration so far in seconds"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false"
+          }
+        }
+      },
+      "PTTEndTransmissionRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "cancelled",
+              "timeout",
+              "error"
+            ],
+            "default": "completed",
+            "description": "Reason for ending the transmission"
+          }
+        }
+      },
+      "PTTEndTransmissionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "total_duration": {
+            "type": "number",
+            "description": "Total transmission duration in seconds"
+          },
+          "total_chunks": {
+            "type": "integer",
+            "description": "Total number of audio chunks received"
+          },
+          "participants_reached": {
+            "type": "integer",
+            "description": "Number of participants who received the transmission"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false"
+          }
+        }
+      },
+      "PTTActiveTransmissionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "transmission": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "user_id": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "duration": {
+                "type": "number",
+                "description": "Current duration in seconds"
+              },
+              "audio_format": {
+                "type": "string",
+                "enum": [
+                  "aac-lc",
+                  "opus",
+                  "pcm"
+                ]
+              }
+            },
+            "description": "Active transmission details, null if none active"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false"
+          }
+        }
       }
     }
   },
@@ -1627,6 +2444,10 @@
     {
       "name": "Channels",
       "description": "PTT channel management operations"
+    },
+    {
+      "name": "Transmissions",
+      "description": "Real-time PTT audio transmission operations"
     },
     {
       "name": "System",

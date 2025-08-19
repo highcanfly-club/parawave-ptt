@@ -23,6 +23,16 @@
  */
 
 import { ChannelParticipant, NetworkQuality, Coordinates } from '../types/ptt';
+import {
+	LiveTransmission,
+	AudioChunk,
+	PTTWebSocketMessage,
+	PTTStartTransmissionRequest,
+	PTTAudioChunkRequest,
+	PTTEndTransmissionRequest,
+	TransmissionAuditLog,
+	AudioFormat
+} from '../types/ptt-audio';
 
 /**
  * Channel state for real-time PTT operations
@@ -36,6 +46,9 @@ interface ChannelState {
 	maxParticipants: number;
 	isActive: boolean;
 	createdAt: number;
+
+	// PTT Audio transmission state
+	activeAudioTransmission: LiveTransmission | null;
 }
 
 /**
@@ -70,7 +83,8 @@ export class ChannelDurableObject implements DurableObject {
 			transmissionStartTime: null,
 			maxParticipants: 50,
 			isActive: true,
-			createdAt: Date.now()
+			createdAt: Date.now(),
+			activeAudioTransmission: null
 		};
 
 		// Initialize channel state from storage
@@ -103,9 +117,13 @@ export class ChannelDurableObject implements DurableObject {
 				case '/leave':
 					return method === 'POST' ? this.handleLeaveChannel(request) : this.methodNotAllowed();
 				case '/ptt/start':
-					return method === 'POST' ? this.handleStartTransmission(request) : this.methodNotAllowed();
+					return method === 'POST' ? this.handleStartAudioTransmission(request) : this.methodNotAllowed();
+				case '/ptt/chunk':
+					return method === 'POST' ? this.handleAudioChunk(request) : this.methodNotAllowed();
 				case '/ptt/end':
-					return method === 'POST' ? this.handleEndTransmission(request) : this.methodNotAllowed();
+					return method === 'POST' ? this.handleEndAudioTransmission(request) : this.methodNotAllowed();
+				case '/ptt/status':
+					return method === 'GET' ? this.handleGetAudioStatus() : this.methodNotAllowed();
 				case '/participants':
 					return method === 'GET' ? this.handleGetParticipants() : this.methodNotAllowed();
 				case '/status':
@@ -128,11 +146,11 @@ export class ChannelDurableObject implements DurableObject {
 		try {
 			const requestData = await request.json() as any;
 			const { uuid, name, maxParticipants } = requestData;
-			
+
 			this.channelState.uuid = uuid;
 			this.channelState.name = name;
 			this.channelState.maxParticipants = maxParticipants || 50;
-			
+
 			await this.persistState();
 
 			return new Response(JSON.stringify({
@@ -369,7 +387,7 @@ export class ChannelDurableObject implements DurableObject {
 	 */
 	private async handleGetParticipants(): Promise<Response> {
 		const participants = Array.from(this.channelState.participants.values());
-		
+
 		return new Response(JSON.stringify({
 			success: true,
 			participants: participants,
@@ -525,7 +543,7 @@ export class ChannelDurableObject implements DurableObject {
 		const participant = this.channelState.participants.get(userId);
 		if (!participant) return 0;
 
-		const duration = this.channelState.transmissionStartTime ? 
+		const duration = this.channelState.transmissionStartTime ?
 			Math.round((Date.now() - this.channelState.transmissionStartTime) / 1000) : 0;
 
 		// Reset transmission state
@@ -625,7 +643,8 @@ export class ChannelDurableObject implements DurableObject {
 		if (stored) {
 			this.channelState = {
 				...stored,
-				participants: new Map(stored.participants || [])
+				participants: new Map(stored.participants || []),
+				activeAudioTransmission: stored.activeAudioTransmission || null
 			};
 		}
 	}
@@ -659,6 +678,417 @@ export class ChannelDurableObject implements DurableObject {
 		} catch (error) {
 			console.error('Error logging channel event:', error);
 		}
+	}
+
+	/**
+	 * Handle PTT audio transmission start
+	 */
+	private async handleStartAudioTransmission(request: Request): Promise<Response> {
+		try {
+			const body = await request.json() as PTTStartTransmissionRequest & {
+				user_id: string;
+				username: string;
+			};
+
+			// Validate that no audio transmission is currently active
+			if (this.channelState.activeAudioTransmission) {
+				return new Response(JSON.stringify({
+					success: false,
+					error: 'Another audio transmission is already active in this channel'
+				}), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			// Generate session ID
+			const sessionId = this.generateSessionId(body.user_id, body.channel_uuid);
+
+			// Create live audio transmission
+			const audioTransmission: LiveTransmission = {
+				sessionId,
+				channelUuid: body.channel_uuid,
+				userId: body.user_id,
+				username: body.username,
+				startTime: Date.now(),
+				audioFormat: body.audio_format,
+				sampleRate: body.sample_rate,
+				bitrate: body.bitrate,
+				networkQuality: body.network_quality,
+				location: body.location,
+				isEmergency: body.is_emergency || false,
+				audioChunks: new Map(),
+				participants: new Set(),
+				expectedSequence: 1,
+				totalBytes: 0
+			};
+
+			this.channelState.activeAudioTransmission = audioTransmission;
+
+			// Set auto-cleanup after 30 seconds
+			setTimeout(() => {
+				this.forceEndAudioTransmission('Maximum duration exceeded');
+			}, 30000);
+
+			// Broadcast start to all connected participants
+			this.broadcastPTTMessage({
+				type: 'transmission_start',
+				sessionId,
+				userId: body.user_id,
+				username: body.username,
+				audioFormat: body.audio_format,
+				isEmergency: body.is_emergency || false,
+				timestamp: Date.now()
+			});
+
+			// Save state
+			await this.persistState();
+
+			return new Response(JSON.stringify({
+				success: true,
+				session_id: sessionId,
+				max_duration_ms: 30000,
+				chunk_size_limit_bytes: 64 * 1024
+			}), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+
+		} catch (error) {
+			console.error('Error starting audio transmission:', error);
+			return new Response(JSON.stringify({
+				success: false,
+				error: 'Invalid request body'
+			}), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+	}
+
+	/**
+	 * Handle audio chunk reception and real-time broadcast
+	 */
+	private async handleAudioChunk(request: Request): Promise<Response> {
+		try {
+			const body = await request.json() as PTTAudioChunkRequest;
+
+			// Validate active transmission
+			if (!this.channelState.activeAudioTransmission ||
+				this.channelState.activeAudioTransmission.sessionId !== body.session_id) {
+				return new Response(JSON.stringify({
+					success: false,
+					chunk_received: false,
+					error: 'Invalid or expired session'
+				}), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			const transmission = this.channelState.activeAudioTransmission;
+
+			// Validate chunk sequence
+			if (body.chunk_sequence !== transmission.expectedSequence) {
+				return new Response(JSON.stringify({
+					success: false,
+					chunk_received: false,
+					error: `Invalid chunk sequence. Expected ${transmission.expectedSequence}, got ${body.chunk_sequence}`
+				}), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			// Validate chunk size
+			if (body.chunk_size_bytes > 64 * 1024) {
+				return new Response(JSON.stringify({
+					success: false,
+					chunk_received: false,
+					error: 'Chunk size exceeds 64KB limit'
+				}), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			const audioChunk: AudioChunk = {
+				sequence: body.chunk_sequence,
+				data: body.audio_data,
+				timestamp: body.timestamp_ms,
+				sizeBytes: body.chunk_size_bytes
+			};
+
+			// Store chunk temporarily for late joiners (5 seconds)
+			const expiresAt = Date.now() + 5000;
+			transmission.audioChunks.set(body.chunk_sequence, {
+				chunk: audioChunk,
+				expires: expiresAt
+			});
+
+			// Update transmission stats
+			transmission.expectedSequence++;
+			transmission.totalBytes += body.chunk_size_bytes;
+
+			// Broadcast immediately to all connected participants
+			this.broadcastPTTMessage({
+				type: 'audio_chunk',
+				sessionId: body.session_id,
+				sequence: body.chunk_sequence,
+				audioData: body.audio_data,
+				timestamp: body.timestamp_ms,
+				sizeBytes: body.chunk_size_bytes
+			});
+
+			// Clean up expired chunks
+			this.cleanupExpiredChunks();
+
+			return new Response(JSON.stringify({
+				success: true,
+				chunk_received: true,
+				next_expected_sequence: transmission.expectedSequence
+			}), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+
+		} catch (error) {
+			console.error('Error handling audio chunk:', error);
+			return new Response(JSON.stringify({
+				success: false,
+				chunk_received: false,
+				error: 'Invalid request body'
+			}), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+	}
+
+	/**
+	 * Handle end of PTT audio transmission
+	 */
+	private async handleEndAudioTransmission(request: Request): Promise<Response> {
+		try {
+			const body = await request.json() as PTTEndTransmissionRequest;
+
+			if (!this.channelState.activeAudioTransmission ||
+				this.channelState.activeAudioTransmission.sessionId !== body.session_id) {
+				return new Response(JSON.stringify({
+					success: false,
+					error: 'Invalid or expired session'
+				}), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			const transmission = this.channelState.activeAudioTransmission;
+			const duration = body.total_duration_ms;
+			const chunksReceived = transmission.expectedSequence - 1;
+			const participantsCount = this.websocketConnections.size;
+
+			// Broadcast end to participants
+			this.broadcastPTTMessage({
+				type: 'transmission_end',
+				sessionId: transmission.sessionId,
+				userId: transmission.userId,
+				duration: duration,
+				totalChunks: chunksReceived,
+				totalBytes: transmission.totalBytes,
+				timestamp: Date.now()
+			});
+
+			// Log transmission for audit
+			await this.logTransmissionAudit(transmission, duration, participantsCount);
+
+			// Clear transmission state
+			this.channelState.activeAudioTransmission = null;
+			await this.persistState();
+
+			return new Response(JSON.stringify({
+				success: true,
+				session_summary: {
+					total_duration_ms: duration,
+					chunks_received: chunksReceived,
+					total_bytes: transmission.totalBytes,
+					participants_notified: participantsCount
+				}
+			}), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+
+		} catch (error) {
+			console.error('Error ending audio transmission:', error);
+			return new Response(JSON.stringify({
+				success: false,
+				error: 'Invalid request body'
+			}), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+	}
+
+	/**
+	 * Get current audio transmission status
+	 */
+	private async handleGetAudioStatus(): Promise<Response> {
+		return new Response(JSON.stringify({
+			success: true,
+			active_transmission: this.channelState.activeAudioTransmission ? {
+				session_id: this.channelState.activeAudioTransmission.sessionId,
+				user_id: this.channelState.activeAudioTransmission.userId,
+				username: this.channelState.activeAudioTransmission.username,
+				start_time: this.channelState.activeAudioTransmission.startTime,
+				audio_format: this.channelState.activeAudioTransmission.audioFormat,
+				is_emergency: this.channelState.activeAudioTransmission.isEmergency,
+				chunks_count: this.channelState.activeAudioTransmission.expectedSequence - 1,
+				total_bytes: this.channelState.activeAudioTransmission.totalBytes
+			} : null,
+			connected_participants: this.websocketConnections.size,
+			timestamp: Date.now()
+		}), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+
+	/**
+	 * Force end audio transmission (timeout or error)
+	 */
+	private forceEndAudioTransmission(reason: string) {
+		if (!this.channelState.activeAudioTransmission) return;
+
+		const transmission = this.channelState.activeAudioTransmission;
+		const duration = Date.now() - transmission.startTime;
+
+		// Broadcast forced end
+		this.broadcastPTTMessage({
+			type: 'transmission_end',
+			sessionId: transmission.sessionId,
+			userId: transmission.userId,
+			duration: duration,
+			totalChunks: transmission.expectedSequence - 1,
+			totalBytes: transmission.totalBytes,
+			timestamp: Date.now()
+		});
+
+		// Log forced end
+		this.logTransmissionAudit(transmission, duration, this.websocketConnections.size);
+
+		// Clear state
+		this.channelState.activeAudioTransmission = null;
+		this.persistState();
+
+		console.log(`PTT audio transmission force ended: ${reason}`);
+	}
+
+	/**
+	 * Clean up expired audio chunks
+	 */
+	private cleanupExpiredChunks() {
+		if (!this.channelState.activeAudioTransmission) return;
+
+		const now = Date.now();
+		const expiredSequences: number[] = [];
+
+		for (const [sequence, bufferedChunk] of this.channelState.activeAudioTransmission.audioChunks) {
+			if (now >= bufferedChunk.expires) {
+				expiredSequences.push(sequence);
+			}
+		}
+
+		expiredSequences.forEach(sequence => {
+			this.channelState.activeAudioTransmission?.audioChunks.delete(sequence);
+		});
+	}
+
+	/**
+	 * Broadcast PTT message to all participants
+	 */
+	private broadcastPTTMessage(message: PTTWebSocketMessage, excludeUsers: string[] = []) {
+		const payload = JSON.stringify(message);
+		const excludeSet = new Set(excludeUsers);
+
+		for (const [userId, websocket] of this.websocketConnections) {
+			if (excludeSet.has(userId)) continue;
+
+			try {
+				websocket.send(payload);
+			} catch (error) {
+				console.error(`Failed to send PTT message to participant ${userId}:`, error);
+				// Remove broken connection
+				this.websocketConnections.delete(userId);
+			}
+		}
+	}
+
+	/**
+	 * Log audio transmission metadata for audit
+	 */
+	private async logTransmissionAudit(
+		transmission: LiveTransmission,
+		duration: number,
+		participantCount: number
+	) {
+		try {
+			const auditLog: TransmissionAuditLog = {
+				sessionId: transmission.sessionId,
+				channelUuid: transmission.channelUuid,
+				userId: transmission.userId,
+				username: transmission.username,
+				startTime: new Date(transmission.startTime).toISOString(),
+				endTime: new Date().toISOString(),
+				duration: Math.floor(duration / 1000),
+				audioFormat: transmission.audioFormat,
+				chunksCount: transmission.expectedSequence - 1,
+				totalBytes: transmission.totalBytes,
+				participantCount: participantCount,
+				isEmergency: transmission.isEmergency,
+				networkQuality: transmission.networkQuality,
+				location: transmission.location
+			};
+
+			// Store minimal audit log in D1 database
+			await this.env.PTT_DB.prepare(`
+				INSERT INTO transmission_history (
+					session_id, channel_uuid, user_id, username, start_time, end_time,
+					duration_seconds, audio_format, chunks_count, total_bytes, 
+					participant_count, is_emergency, network_quality,
+					location_lat, location_lon
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`).bind(
+				auditLog.sessionId,
+				auditLog.channelUuid,
+				auditLog.userId,
+				auditLog.username,
+				auditLog.startTime,
+				auditLog.endTime,
+				auditLog.duration,
+				auditLog.audioFormat,
+				auditLog.chunksCount,
+				auditLog.totalBytes,
+				auditLog.participantCount,
+				auditLog.isEmergency ? 1 : 0,
+				auditLog.networkQuality,
+				auditLog.location?.lat || null,
+				auditLog.location?.lon || null
+			).run();
+
+		} catch (error) {
+			console.error('Failed to log audio transmission audit:', error);
+		}
+	}
+
+	/**
+	 * Generate unique session ID for audio transmission
+	 */
+	private generateSessionId(userId: string, channelUuid: string): string {
+		const timestamp = Date.now();
+		const random = Math.random().toString(36).substring(2);
+		return `ptt_${channelUuid}_${userId}_${timestamp}_${random}`;
 	}
 
 	/**

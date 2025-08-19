@@ -24,10 +24,11 @@
 
 import { checkPermissions } from '../auth0';
 import { ChannelService } from '../services/channel-service';
-import { 
+import { PTTAudioService } from '../services/ptt-audio-service';
+import {
 	CreateChannelRequest,
-	CreateChannelWithUuidRequest, 
-	UpdateChannelRequest, 
+	CreateChannelWithUuidRequest,
+	UpdateChannelRequest,
 	APIResponse,
 	ChannelsListResponse,
 	JoinChannelRequest,
@@ -35,6 +36,14 @@ import {
 	LeaveChannelResponse,
 	ChannelParticipant
 } from '../types/ptt';
+import {
+	PTTStartTransmissionRequest,
+	PTTStartTransmissionResponse,
+	PTTAudioChunkRequest,
+	PTTAudioChunkResponse,
+	PTTEndTransmissionRequest,
+	PTTEndTransmissionResponse
+} from '../types/ptt-audio';
 
 /**
  * @openapi
@@ -195,10 +204,157 @@ import {
  *         error:
  *           type: string
  *           description: Error message if success is false
+ *     PTTStartTransmissionRequest:
+ *       type: object
+ *       required:
+ *         - channel_uuid
+ *         - audio_format
+ *       properties:
+ *         channel_uuid:
+ *           type: string
+ *           format: uuid
+ *           description: UUID of the channel to transmit in
+ *         audio_format:
+ *           type: string
+ *           enum: [aac-lc, opus, pcm]
+ *           description: Audio encoding format
+ *         device_info:
+ *           type: object
+ *           properties:
+ *             model:
+ *               type: string
+ *               description: Device model
+ *             os_version:
+ *               type: string
+ *               description: Operating system version
+ *           description: Optional device information
+ *         expected_duration:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 30
+ *           description: Expected transmission duration in seconds (max 30s)
+ *     PTTStartTransmissionResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: true
+ *         session_id:
+ *           type: string
+ *           format: uuid
+ *           description: Unique transmission session ID
+ *         channel_uuid:
+ *           type: string
+ *           format: uuid
+ *           description: Channel UUID
+ *         max_duration:
+ *           type: integer
+ *           example: 30
+ *           description: Maximum transmission duration in seconds
+ *         websocket_url:
+ *           type: string
+ *           description: WebSocket URL for real-time audio streaming
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
+ *     PTTAudioChunkRequest:
+ *       type: object
+ *       required:
+ *         - audio_data
+ *         - sequence_number
+ *       properties:
+ *         audio_data:
+ *           type: string
+ *           format: byte
+ *           description: Base64-encoded audio chunk data
+ *         sequence_number:
+ *           type: integer
+ *           minimum: 0
+ *           description: Sequential chunk number starting from 0
+ *         timestamp:
+ *           type: number
+ *           description: Unix timestamp when audio was recorded
+ *         duration_ms:
+ *           type: number
+ *           minimum: 0
+ *           description: Duration of this audio chunk in milliseconds
+ *     PTTAudioChunkResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: true
+ *         sequence_number:
+ *           type: integer
+ *           description: Acknowledged sequence number
+ *         total_chunks:
+ *           type: integer
+ *           description: Total chunks received so far
+ *         duration_so_far:
+ *           type: number
+ *           description: Total transmission duration so far in seconds
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
+ *     PTTEndTransmissionRequest:
+ *       type: object
+ *       properties:
+ *         reason:
+ *           type: string
+ *           enum: [completed, cancelled, timeout, error]
+ *           default: completed
+ *           description: Reason for ending the transmission
+ *     PTTEndTransmissionResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: true
+ *         total_duration:
+ *           type: number
+ *           description: Total transmission duration in seconds
+ *         total_chunks:
+ *           type: integer
+ *           description: Total number of audio chunks received
+ *         participants_reached:
+ *           type: integer
+ *           description: Number of participants who received the transmission
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
+ *     PTTActiveTransmissionResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: true
+ *         transmission:
+ *           type: object
+ *           properties:
+ *             session_id:
+ *               type: string
+ *               format: uuid
+ *             user_id:
+ *               type: string
+ *             username:
+ *               type: string
+ *             started_at:
+ *               type: string
+ *               format: date-time
+ *             duration:
+ *               type: number
+ *               description: Current duration in seconds
+ *             audio_format:
+ *               type: string
+ *               enum: [aac-lc, opus, pcm]
+ *           description: Active transmission details, null if none active
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
  * 
  * info:
  *   title: ParaWave PTT API
- *   description: API for managing PTT channels for paragliding pilots
+ *   description: API for managing PTT channels and real-time audio transmissions for paragliding pilots
  *   version: 1.0.0
  *   contact:
  *     name: ParaWave Team
@@ -215,6 +371,8 @@ import {
  * tags:
  *   - name: Channels
  *     description: PTT channel management operations
+ *   - name: Transmissions
+ *     description: Real-time PTT audio transmission operations
  *   - name: System
  *     description: System health and status endpoints
  */
@@ -225,10 +383,12 @@ import {
  */
 export class PTTAPIHandler {
 	private channelService: ChannelService;
+	private audioService: PTTAudioService;
 	private corsHeaders: Record<string, string>;
 
-	constructor(db: D1Database, kv: KVNamespace, corsOrigin: string = '*') {
+	constructor(db: D1Database, kv: KVNamespace, env: Env, corsOrigin: string = '*') {
 		this.channelService = new ChannelService(db, kv);
+		this.audioService = new PTTAudioService(env);
 		this.corsHeaders = {
 			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
 			'Access-Control-Allow-Origin': corsOrigin,
@@ -274,6 +434,8 @@ export class PTTAPIHandler {
 			switch (resource) {
 				case 'channels':
 					return await this.handleChannelsAPI(request, env, resourceId, subResource);
+				case 'transmissions':
+					return await this.handleTransmissionsAPI(request, env, resourceId, subResource);
 				case 'health':
 					return await this.handleHealthCheck(request);
 				default:
@@ -349,7 +511,7 @@ export class PTTAPIHandler {
 			// Handle regular channel CRUD operations
 			switch (method) {
 				case 'GET':
-					return resourceId ? 
+					return resourceId ?
 						await this.getChannel(resourceId, permissions) :
 						await this.getChannels(request, permissions);
 
@@ -495,7 +657,7 @@ export class PTTAPIHandler {
 		const radiusKm = radius ? parseFloat(radius) : undefined;
 
 		const result = await this.channelService.getChannels(type, activeOnly, location, radiusKm);
-		
+
 		return this.successResponse<ChannelsListResponse>(result);
 	}
 
@@ -1174,7 +1336,7 @@ export class PTTAPIHandler {
 			return this.errorResponse('Failed to delete channel', 500);
 		}
 
-		return this.successResponse({ 
+		return this.successResponse({
 			message: `Channel ${hardDelete ? 'permanently deleted' : 'deactivated'}`,
 			uuid,
 			hard_delete: hardDelete
@@ -1275,14 +1437,14 @@ export class PTTAPIHandler {
 		try {
 			// Use the existing checkPermissions function with minimal permissions
 			const { access, payload } = await checkPermissions(token, 'read:api', env);
-			
+
 			if (!access) {
 				return { success: false, error: 'Invalid token or insufficient permissions' };
 			}
 
 			const userId = payload.sub as string;
 			const rawPermissions = payload.permissions as string[] || [];
-			
+
 			// Normalize permissions: convert access:UUID permissions to lowercase
 			const permissions = rawPermissions.map(permission => {
 				if (permission.startsWith('access:')) {
@@ -1399,8 +1561,8 @@ export class PTTAPIHandler {
 
 			// Join channel using service
 			const result = await this.channelService.joinChannel(
-				channelUuid.toLowerCase(), 
-				userId, 
+				channelUuid.toLowerCase(),
+				userId,
 				joinRequest.location,
 				joinRequest.ephemeral_push_token
 			);
@@ -1689,7 +1851,7 @@ export class PTTAPIHandler {
 		try {
 			// Parse request body
 			const body = await request.json() as { ephemeral_push_token?: string };
-			
+
 			if (!body.ephemeral_push_token) {
 				return this.errorResponse('Missing ephemeral_push_token in request body', 400);
 			}
@@ -1720,6 +1882,638 @@ export class PTTAPIHandler {
 		} catch (error) {
 			console.error('Update participant token error:', error);
 			return this.errorResponse('Invalid request body', 400);
+		}
+	}
+
+	/**
+	 * Handle PTT audio transmissions API endpoints
+	 * Supports:
+	 * POST /api/v1/transmissions/start - Start PTT transmission
+	 * POST /api/v1/transmissions/{session_id}/chunk - Send audio chunk
+	 * POST /api/v1/transmissions/{session_id}/end - End transmission
+	 * GET /api/v1/transmissions/active/{channel_uuid} - Get active transmission
+	 * GET /api/v1/transmissions/ws/{channel_uuid} - WebSocket for real-time
+	 */
+	private async handleTransmissionsAPI(request: Request, env: Env, resourceId?: string, subResource?: string): Promise<Response> {
+		const method = request.method;
+
+		// Authentication required for all transmission operations
+		const authResult = await this.authenticateRequest(request, env);
+		if (!authResult.success || !authResult.userId) {
+			return this.errorResponse(authResult.error || 'Authentication required', 401);
+		}
+
+		const userId = authResult.userId;
+
+		// Extract username from JWT payload
+		let username = 'Unknown User';
+		try {
+			const authHeader = request.headers.get('Authorization');
+			if (authHeader) {
+				const token = authHeader.substring(7);
+				const payload = JSON.parse(atob(token.split('.')[1]));
+				username = payload.name || payload.email || payload.nickname || 'Unknown User';
+			}
+		} catch (error) {
+			username = 'Unknown User';
+		}
+
+		try {
+			if (method === 'POST') {
+				// Handle transmission actions
+				if (resourceId === 'start') {
+					return await this.handleStartTransmission(request, userId, username);
+				} else if (resourceId && subResource === 'chunk') {
+					return await this.handleAudioChunk(request, resourceId);
+				} else if (resourceId && subResource === 'end') {
+					return await this.handleEndTransmission(request, resourceId);
+				} else {
+					return this.errorResponse('Invalid transmission endpoint', 400);
+				}
+			} else if (method === 'GET') {
+				// Handle transmission queries
+				if (resourceId === 'active' && subResource) {
+					return await this.handleGetActiveTransmission(subResource);
+				} else if (resourceId === 'ws' && subResource) {
+					return await this.handleWebSocketUpgrade(request, subResource, userId, username);
+				} else {
+					return this.errorResponse('Invalid transmission query endpoint', 400);
+				}
+			} else {
+				return this.errorResponse('Method not allowed', 405);
+			}
+		} catch (error) {
+			console.error('Transmission API error:', error);
+			return this.errorResponse('Internal server error', 500);
+		}
+	}
+
+	/**
+	 * @openapi
+	 * /api/v1/transmissions/start:
+	 *   post:
+	 *     summary: Start PTT transmission
+	 *     description: Initiate a new PTT audio transmission in a channel. Maximum transmission duration is 30 seconds.
+	 *     tags:
+	 *       - Transmissions
+	 *     security:
+	 *       - bearerAuth: []
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             $ref: '#/components/schemas/PTTStartTransmissionRequest'
+	 *           examples:
+	 *             basic:
+	 *               summary: Basic transmission request
+	 *               value:
+	 *                 channel_uuid: "550e8400-e29b-41d4-a716-446655440000"
+	 *                 audio_format: "aac-lc"
+	 *             with_device_info:
+	 *               summary: With device information
+	 *               value:
+	 *                 channel_uuid: "550e8400-e29b-41d4-a716-446655440000"
+	 *                 audio_format: "opus"
+	 *                 device_info:
+	 *                   model: "iPhone 15 Pro"
+	 *                   os_version: "17.2"
+	 *                 expected_duration: 15
+	 *     responses:
+	 *       200:
+	 *         description: Transmission started successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/PTTStartTransmissionResponse'
+	 *             examples:
+	 *               success:
+	 *                 value:
+	 *                   success: true
+	 *                   session_id: "123e4567-e89b-12d3-a456-426614174000"
+	 *                   channel_uuid: "550e8400-e29b-41d4-a716-446655440000"
+	 *                   max_duration: 30
+	 *                   websocket_url: "wss://your-worker.your-subdomain.workers.dev/api/v1/transmissions/ws/550e8400-e29b-41d4-a716-446655440000"
+	 *       400:
+	 *         description: Invalid request parameters
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               missing_channel:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "channel_uuid is required"
+	 *               invalid_format:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Valid audio_format is required (aac-lc, opus, pcm)"
+	 *       401:
+	 *         description: Authentication required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Channel access denied or already transmitting
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               access_denied:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Channel access denied"
+	 *               already_transmitting:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Another transmission is already active"
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async handleStartTransmission(request: Request, userId: string, username: string): Promise<Response> {
+		try {
+			const body = await request.json() as PTTStartTransmissionRequest;
+
+			// Validate required fields
+			if (!body.channel_uuid) {
+				return this.errorResponse('channel_uuid is required', 400);
+			}
+
+			if (!body.audio_format || !['aac-lc', 'opus', 'pcm'].includes(body.audio_format)) {
+				return this.errorResponse('Valid audio_format is required (aac-lc, opus, pcm)', 400);
+			}
+
+			if (!body.sample_rate || body.sample_rate <= 0) {
+				return this.errorResponse('Valid sample_rate is required', 400);
+			}
+
+			if (!body.network_quality || !['excellent', 'good', 'fair', 'poor'].includes(body.network_quality)) {
+				return this.errorResponse('Valid network_quality is required', 400);
+			}
+
+			// Validate channel access
+			const accessResult = await this.audioService.validateChannelAccess(body.channel_uuid, userId);
+			if (!accessResult.valid) {
+				return this.errorResponse(accessResult.error || 'Channel access denied', 403);
+			}
+
+			// Start transmission via audio service
+			const result = await this.audioService.startTransmission(body, userId, username);
+
+			if (result.success) {
+				return new Response(JSON.stringify(result), {
+					status: 200,
+					headers: this.corsHeaders
+				});
+			} else {
+				return this.errorResponse(result.error || 'Failed to start transmission', 400);
+			}
+
+		} catch (error) {
+			console.error('Start transmission error:', error);
+			return this.errorResponse('Invalid request body', 400);
+		}
+	}
+
+	/**
+	 * @openapi
+	 * /api/v1/transmissions/{session_id}/chunk:
+	 *   post:
+	 *     summary: Send audio chunk
+	 *     description: Send a chunk of audio data for an active transmission. Chunks must be sent in sequential order.
+	 *     tags:
+	 *       - Transmissions
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - name: session_id
+	 *         in: path
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: The transmission session ID returned from start transmission
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             $ref: '#/components/schemas/PTTAudioChunkRequest'
+	 *           examples:
+	 *             basic:
+	 *               summary: Basic audio chunk
+	 *               value:
+	 *                 audio_data: "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="
+	 *                 sequence_number: 0
+	 *                 timestamp: 1640995200.123
+	 *                 duration_ms: 100
+	 *     responses:
+	 *       200:
+	 *         description: Audio chunk processed successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/PTTAudioChunkResponse'
+	 *             examples:
+	 *               success:
+	 *                 value:
+	 *                   success: true
+	 *                   sequence_number: 0
+	 *                   total_chunks: 1
+	 *                   duration_so_far: 0.1
+	 *       400:
+	 *         description: Invalid request parameters
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               missing_data:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "audio_data (base64) is required"
+	 *               invalid_sequence:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Invalid sequence_number"
+	 *       401:
+	 *         description: Authentication required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       404:
+	 *         description: Session not found or expired
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               not_found:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Transmission session not found"
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async handleAudioChunk(request: Request, sessionId: string): Promise<Response> {
+		try {
+			const body = await request.json() as PTTAudioChunkRequest;
+
+			// Validate required fields
+			if (!body.session_id || body.session_id !== sessionId) {
+				return this.errorResponse('session_id mismatch', 400);
+			}
+
+			if (!body.audio_data || typeof body.audio_data !== 'string') {
+				return this.errorResponse('audio_data (base64) is required', 400);
+			}
+
+			if (typeof body.chunk_sequence !== 'number' || body.chunk_sequence <= 0) {
+				return this.errorResponse('Valid chunk_sequence is required', 400);
+			}
+
+			if (typeof body.chunk_size_bytes !== 'number' || body.chunk_size_bytes <= 0) {
+				return this.errorResponse('Valid chunk_size_bytes is required', 400);
+			}
+
+			if (typeof body.timestamp_ms !== 'number' || body.timestamp_ms <= 0) {
+				return this.errorResponse('Valid timestamp_ms is required', 400);
+			}
+
+			// Validate base64 audio data
+			try {
+				atob(body.audio_data);
+			} catch (error) {
+				return this.errorResponse('Invalid base64 audio_data', 400);
+			}
+
+			// Process audio chunk via audio service
+			const result = await this.audioService.receiveAudioChunk(body);
+
+			if (result.success) {
+				return new Response(JSON.stringify(result), {
+					status: 200,
+					headers: this.corsHeaders
+				});
+			} else {
+				return this.errorResponse(result.error || 'Failed to process audio chunk', 400);
+			}
+
+		} catch (error) {
+			console.error('Audio chunk error:', error);
+			return this.errorResponse('Invalid request body', 400);
+		}
+	}
+
+	/**
+	 * @openapi
+	 * /api/v1/transmissions/{session_id}/end:
+	 *   post:
+	 *     summary: End PTT transmission
+	 *     description: End an active PTT transmission and get transmission statistics.
+	 *     tags:
+	 *       - Transmissions
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - name: session_id
+	 *         in: path
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: The transmission session ID
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             $ref: '#/components/schemas/PTTEndTransmissionRequest'
+	 *           examples:
+	 *             completed:
+	 *               summary: Normal completion
+	 *               value:
+	 *                 reason: "completed"
+	 *             cancelled:
+	 *               summary: User cancelled
+	 *               value:
+	 *                 reason: "cancelled"
+	 *     responses:
+	 *       200:
+	 *         description: Transmission ended successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/PTTEndTransmissionResponse'
+	 *             examples:
+	 *               success:
+	 *                 value:
+	 *                   success: true
+	 *                   total_duration: 5.2
+	 *                   total_chunks: 52
+	 *                   participants_reached: 3
+	 *       400:
+	 *         description: Invalid request parameters
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               session_mismatch:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "session_id mismatch"
+	 *       401:
+	 *         description: Authentication required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       404:
+	 *         description: Session not found or already ended
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               not_found:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Transmission session not found"
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async handleEndTransmission(request: Request, sessionId: string): Promise<Response> {
+		try {
+			const body = await request.json() as PTTEndTransmissionRequest;
+
+			// Validate required fields
+			if (!body.session_id || body.session_id !== sessionId) {
+				return this.errorResponse('session_id mismatch', 400);
+			}
+
+			if (typeof body.total_duration_ms !== 'number' || body.total_duration_ms <= 0) {
+				return this.errorResponse('Valid total_duration_ms is required', 400);
+			}
+
+			// End transmission via audio service
+			const result = await this.audioService.endTransmission(body);
+
+			if (result.success) {
+				return new Response(JSON.stringify(result), {
+					status: 200,
+					headers: this.corsHeaders
+				});
+			} else {
+				return this.errorResponse(result.error || 'Failed to end transmission', 400);
+			}
+
+		} catch (error) {
+			console.error('End transmission error:', error);
+			return this.errorResponse('Invalid request body', 400);
+		}
+	}
+
+	/**
+	 * @openapi
+	 * /api/v1/transmissions/active/{channel_uuid}:
+	 *   get:
+	 *     summary: Get active transmission
+	 *     description: Get details about the currently active transmission in a channel, if any.
+	 *     tags:
+	 *       - Transmissions
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - name: channel_uuid
+	 *         in: path
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: The channel UUID to check for active transmissions
+	 *     responses:
+	 *       200:
+	 *         description: Active transmission details retrieved successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/PTTActiveTransmissionResponse'
+	 *             examples:
+	 *               with_transmission:
+	 *                 summary: Channel has active transmission
+	 *                 value:
+	 *                   success: true
+	 *                   transmission:
+	 *                     session_id: "123e4567-e89b-12d3-a456-426614174000"
+	 *                     user_id: "auth0|user123"
+	 *                     username: "John Pilot"
+	 *                     started_at: "2025-08-19T10:30:00.000Z"
+	 *                     duration: 5.2
+	 *                     audio_format: "aac-lc"
+	 *               no_transmission:
+	 *                 summary: No active transmission
+	 *                 value:
+	 *                   success: true
+	 *                   transmission: null
+	 *       401:
+	 *         description: Authentication required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       404:
+	 *         description: Channel not found
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               not_found:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Channel not found"
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async handleGetActiveTransmission(channelUuid: string): Promise<Response> {
+		try {
+			const activeTransmission = await this.audioService.getActiveTransmission(channelUuid);
+
+			return new Response(JSON.stringify({
+				success: true,
+				active_transmission: activeTransmission,
+				timestamp: new Date().toISOString(),
+				version: '1.0.0'
+			}), {
+				status: 200,
+				headers: this.corsHeaders
+			});
+
+		} catch (error) {
+			console.error('Get active transmission error:', error);
+			return this.errorResponse('Failed to get active transmission', 500);
+		}
+	}
+
+	/**
+	 * @openapi
+	 * /api/v1/transmissions/ws/{channel_uuid}:
+	 *   get:
+	 *     summary: WebSocket upgrade for real-time PTT
+	 *     description: |
+	 *       Upgrade HTTP connection to WebSocket for real-time PTT audio transmission.
+	 *       Used for receiving live audio chunks from active transmissions.
+	 *       
+	 *       **WebSocket Protocol:**
+	 *       - Client sends: `{"type": "join", "channel_uuid": "uuid"}`
+	 *       - Server sends: `{"type": "audio_chunk", "session_id": "uuid", "audio_data": "base64", "sequence": 0}`
+	 *       - Server sends: `{"type": "transmission_start", "session_id": "uuid", "user_id": "string", "username": "string"}`
+	 *       - Server sends: `{"type": "transmission_end", "session_id": "uuid", "duration": 5.2}`
+	 *     tags:
+	 *       - Transmissions
+	 *     security:
+	 *       - bearerAuth: []
+	 *     parameters:
+	 *       - name: channel_uuid
+	 *         in: path
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *         description: The channel UUID to listen for transmissions
+	 *       - name: Upgrade
+	 *         in: header
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           enum: [websocket]
+	 *         description: Must be "websocket"
+	 *       - name: Connection
+	 *         in: header
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           enum: [Upgrade]
+	 *         description: Must be "Upgrade"
+	 *     responses:
+	 *       101:
+	 *         description: WebSocket connection established
+	 *         headers:
+	 *           Upgrade:
+	 *             schema:
+	 *               type: string
+	 *               example: websocket
+	 *           Connection:
+	 *             schema:
+	 *               type: string
+	 *               example: Upgrade
+	 *       400:
+	 *         description: Invalid WebSocket upgrade request
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       401:
+	 *         description: Authentication required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Channel access denied
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Internal server error
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async handleWebSocketUpgrade(request: Request, channelUuid: string, userId: string, username: string): Promise<Response> {
+		try {
+			// Validate channel access
+			const accessResult = await this.audioService.validateChannelAccess(channelUuid, userId);
+			if (!accessResult.valid) {
+				return this.errorResponse(accessResult.error || 'Channel access denied', 403);
+			}
+
+			// Create new request with user info in query params for Durable Object
+			const url = new URL(request.url);
+			url.searchParams.set('userId', userId);
+			url.searchParams.set('username', username);
+
+			const newRequest = new Request(url.toString(), request);
+
+			// Forward WebSocket upgrade to PTT audio service
+			return await this.audioService.getChannelWebSocket(channelUuid, newRequest);
+
+		} catch (error) {
+			console.error('WebSocket upgrade error:', error);
+			return this.errorResponse('Failed to establish WebSocket connection', 500);
 		}
 	}
 

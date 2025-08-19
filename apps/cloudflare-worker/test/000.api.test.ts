@@ -95,7 +95,7 @@ describe('Parawave-PTT API', () => {
   let createdChannelUuid: string;
   let testChannelCreated = false;
   const testChannelUuid = '8879F616-D468-4793-AFCD-D66F0CEA4651'.toLowerCase();
-  
+
   beforeAll(async () => {
     // Extract the user ID (sub) from the JWT token
     const JWKS = jose.createRemoteJWKSet(
@@ -127,7 +127,7 @@ describe('Parawave-PTT API', () => {
   });
 
   afterAll(async () => {
-    console.log('Cleaning up test resources...'); 
+    console.log('Cleaning up test resources...');
     if (createdChannelUuid) {
       try {
         await api.delete(`/v1/channels/${createdChannelUuid}?hard=true`);
@@ -162,11 +162,11 @@ describe('Parawave-PTT API', () => {
   test('20. Should get channels list successfully', async () => {
     const response = await api.get('/v1/channels');
     console.log('GET /v1/channels response:', JSON.stringify(response.data, null, 2));
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(response.data.data).toBeDefined();
-    
+
     // More flexible check - the response might be an array or an object with channels
     if (Array.isArray(response.data.data)) {
       // If data is directly an array
@@ -175,7 +175,7 @@ describe('Parawave-PTT API', () => {
       // If data has a channels property
       expect(response.data.data.channels).toBeDefined();
       expect(Array.isArray(response.data.data.channels)).toBe(true);
-      
+
       // Only check total if it exists
       if (response.data.data.total !== undefined) {
         expect(typeof response.data.data.total).toBe('number');
@@ -190,11 +190,11 @@ describe('Parawave-PTT API', () => {
   test('30. Should get channels with type filter', async () => {
     const response = await api.get('/v1/channels?type=general');
     console.log('GET /v1/channels?type=general response:', JSON.stringify(response.data, null, 2));
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(response.data.data).toBeDefined();
-    
+
     // More flexible check for filters_applied
     if (response.data.data.filters_applied !== undefined) {
       expect(response.data.data.filters_applied).toBeDefined();
@@ -233,19 +233,19 @@ describe('Parawave-PTT API', () => {
     try {
       const response = await api.post('/v1/channels', channelData);
       console.log('POST /v1/channels response:', JSON.stringify(response.data, null, 2));
-      
+
       if (response.status === 500) {
         console.error('Server error during channel creation. This might indicate:');
         console.error('1. Database not initialized or accessible');
         console.error('2. Missing environment variables');
         console.error('3. Service implementation issue');
         console.error('Response:', response.data);
-        
+
         // Mark test as skipped rather than failed for 500 errors
         expect(response.status).toBeGreaterThanOrEqual(500);
         return;
       }
-      
+
       expect(response.status).toBe(201);
       expect(response.data.success).toBe(true);
       expect(response.data.data.uuid).toBeDefined();
@@ -261,7 +261,7 @@ describe('Parawave-PTT API', () => {
     } catch (error: any) {
       console.error('❌ Error during channel creation:', error.response?.data || error.message);
       console.error('This might indicate backend service issues');
-      
+
       // Re-throw for test failure, but with context
       throw new Error(`Channel creation failed: ${error.response?.status} - ${error.response?.data?.error || error.message}`);
     }
@@ -275,7 +275,7 @@ describe('Parawave-PTT API', () => {
     try {
       const response = await api.post('/v1/channels', incompleteData);
       console.log('POST /v1/channels (invalid) response:', JSON.stringify(response.data, null, 2));
-      
+
       expect(response.status).toBe(400);
       expect(response.data.success).toBe(false);
       expect(response.data.error).toContain('required');
@@ -299,7 +299,7 @@ describe('Parawave-PTT API', () => {
     try {
       const response = await api.post('/v1/channels', emergencyChannelData);
       console.log('POST /v1/channels (emergency) response:', JSON.stringify(response.data, null, 2));
-      
+
       // This might return 403 if the test user doesn't have admin permissions, or 201 if they do
       expect([201, 403, 500]).toContain(response.status);
       if (response.status === 403) {
@@ -336,7 +336,7 @@ describe('Parawave-PTT API', () => {
 
     const response = await api.get(`/v1/channels/${createdChannelUuid}`);
     console.log('GET /v1/channels/:uuid response:', JSON.stringify(response.data, null, 2));
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(response.data.data.uuid).toBe(createdChannelUuid);
@@ -370,7 +370,7 @@ describe('Parawave-PTT API', () => {
     try {
       const response = await api.put(`/v1/channels/${createdChannelUuid}`, updateData);
       console.log('PUT /v1/channels/:uuid response:', JSON.stringify(response.data, null, 2));
-      
+
       expect(response.status).toBe(200);
       expect(response.data.success).toBe(true);
       expect(response.data.data.name).toBe(updateData.name);
@@ -412,9 +412,9 @@ describe('Parawave-PTT API', () => {
     try {
       const malformedPayload = '{name: "test", "description": incomplete'; // Missing closing quote and brace
       console.log('Sending malformed JSON:', malformedPayload);
-      
+
       const response = await axios.put(
-        `${API_BASE_URL}/v1/channels/${createdChannelUuid}`, 
+        `${API_BASE_URL}/v1/channels/${createdChannelUuid}`,
         malformedPayload,
         {
           headers: {
@@ -426,15 +426,15 @@ describe('Parawave-PTT API', () => {
           }
         }
       );
-      
+
       console.log('Malformed JSON response status:', response.status);
       console.log('Malformed JSON response data:', JSON.stringify(response.data, null, 2));
-      
+
       if (response.status === 200) {
         console.log('❌ API incorrectly accepted malformed JSON');
         // Try a different approach - send binary data
         console.log('=== Testing with binary data as JSON ===');
-        
+
         const binaryResponse = await axios.put(
           `${API_BASE_URL}/v1/channels/${createdChannelUuid}`,
           Buffer.from([0x00, 0x01, 0x02, 0xFF]), // Binary data
@@ -448,10 +448,10 @@ describe('Parawave-PTT API', () => {
             }
           }
         );
-        
+
         console.log('Binary data response status:', binaryResponse.status);
         console.log('Binary data response:', JSON.stringify(binaryResponse.data, null, 2));
-        
+
         if (binaryResponse.status === 400) {
           console.log('✅ API correctly rejected binary data as JSON');
           expect(binaryResponse.status).toBe(400);
@@ -466,10 +466,10 @@ describe('Parawave-PTT API', () => {
         console.log('✅ API correctly rejected malformed JSON');
         expect(response.status).toBe(400);
       }
-      
+
     } catch (error: any) {
       console.log('Caught error during malformed JSON test:', error.message);
-      
+
       if (error.response?.status === 400) {
         console.log('✅ API/Axios correctly rejected malformed JSON with 400');
         expect(error.response.status).toBe(400);
@@ -531,10 +531,10 @@ describe('Parawave-PTT API', () => {
     try {
       const response = await api.delete(`/v1/channels/${createdChannelUuid}`);
       console.log('DELETE /v1/channels/:uuid response:', JSON.stringify(response.data, null, 2));
-      
+
       // This might return 403 if the test user doesn't have admin permissions
       expect([200, 403, 500]).toContain(response.status);
-      
+
       if (response.status === 200) {
         expect(response.data.success).toBe(true);
         expect(response.data.data.message).toContain('deactivated');
@@ -564,10 +564,10 @@ describe('Parawave-PTT API', () => {
     try {
       const response = await api.delete(`/v1/channels/${createdChannelUuid}?hard=true`);
       console.log('DELETE /v1/channels/:uuid?hard=true response:', JSON.stringify(response.data, null, 2));
-      
+
       // This might return 403 if the test user doesn't have admin permissions
       expect([200, 403, 500]).toContain(response.status);
-      
+
       if (response.status === 200) {
         expect(response.data.success).toBe(true);
         expect(response.data.data.message).toContain('permanently deleted');
@@ -648,7 +648,7 @@ describe('Parawave-PTT API', () => {
   test('222. Should create channel with uppercase UUID and store it in lowercase', async () => {
     const uppercaseUuid = 'AA11BB22-CC33-4444-A555-FF6677889900';
     const lowercaseUuid = uppercaseUuid.toLowerCase();
-    
+
     const channelData = {
       uuid: uppercaseUuid,
       name: 'Test Channel UUID Normalization',
@@ -679,7 +679,7 @@ describe('Parawave-PTT API', () => {
   test('224. Should find channel when searching with uppercase UUID', async () => {
     const uppercaseUuid = 'BB22CC33-DD44-4555-A666-77889900AA11';
     const lowercaseUuid = uppercaseUuid.toLowerCase();
-    
+
     // First, create a channel with lowercase UUID
     const channelData = {
       uuid: lowercaseUuid,
@@ -730,7 +730,7 @@ describe('Parawave-PTT API', () => {
 
   test('230. Should create test channel for join/leave operations', async () => {
     // Create a test channel with the specific UUID that the user has access to
-    
+
     const channelData = {
       uuid: testChannelUuid,
       name: 'Test Channel for Join/Leave',
@@ -749,14 +749,14 @@ describe('Parawave-PTT API', () => {
       // Try to create the test channel with specific UUID using the new endpoint
       const response = await api.post(`/v1/channels/with-uuid`, channelData);
       console.log('Created test channel with UUID:', response.data);
-      
+
       expect(response.status).toBe(201);
       expect(response.data.success).toBe(true);
       expect(response.data.data.uuid).toBe(testChannelUuid);
       expect(response.data.data.name).toBe(channelData.name);
-      
+
       testChannelCreated = true;
-      
+
     } catch (error: any) {
       // Channel might already exist, which is fine for testing
       if (error.response?.status === 400 && error.response.data.error?.includes('already exists')) {
@@ -786,7 +786,7 @@ describe('Parawave-PTT API', () => {
         max_participants: 10,
         difficulty: 'beginner'
       };
-      
+
       try {
         await api.post(`/v1/channels/with-uuid`, channelData);
         testChannelCreated = true;
@@ -798,7 +798,7 @@ describe('Parawave-PTT API', () => {
         }
       }
     }
-    
+
     // First, verify the channel exists
     try {
       await api.get(`/v1/channels/${testChannelUuid}`);
@@ -822,7 +822,7 @@ describe('Parawave-PTT API', () => {
         console.log('Recreated test channel');
       }
     }
-    
+
     const joinRequest = {
       location: {
         lat: 45.929681,
@@ -831,13 +831,13 @@ describe('Parawave-PTT API', () => {
     };
 
     const response = await api.post(`/v1/channels/${testChannelUuid}/join`, joinRequest);
-    
+
     // Add debug logging for failed responses
     if (response.status !== 200) {
       console.log('Join request failed with status:', response.status);
       console.log('Response data:', JSON.stringify(response.data, null, 2));
     }
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(response.data.participant).toBeDefined();
@@ -853,24 +853,24 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     const response = await api.get(`/v1/channels/${testChannelUuid}/participants`);
-    
+
     // Add debug logging
     if (response.status !== 200) {
       console.log('Get participants failed with status:', response.status);
       console.log('Response data:', JSON.stringify(response.data, null, 2));
     }
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(Array.isArray(response.data.data)).toBe(true);
-    
+
     // Only check for participants if join worked in previous test
     if (response.data.data.length > 0) {
       expect(response.data.data.length).toBeGreaterThan(0);
       expect(response.data.total_count).toBe(response.data.data.length);
-      
+
       // Check participant structure
       const participant = response.data.data[0];
       expect(participant.user_id).toBeDefined();
@@ -888,10 +888,10 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     // Use a different channel UUID that the user doesn't have access to
     const unauthorizedChannelUuid = '12345678-1234-1234-1234-123456789012';
-    
+
     const response = await api.post(`/v1/channels/${unauthorizedChannelUuid}/join`, {});
     // The API currently returns 400 with "Channel not found" for non-existent channels
     // This is the expected behavior since the channel doesn't exist
@@ -904,9 +904,9 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     const nonExistentChannelUuid = '99999999-9999-9999-9999-999999999999';
-    
+
     const response = await api.post(`/v1/channels/${nonExistentChannelUuid}/join`, {});
     // The API correctly returns 400 with "Channel not found" for non-existent channels
     expect(response.status).toBe(400);
@@ -918,7 +918,7 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     const joinRequest = {
       location: {
         lat: 46.000000,
@@ -927,12 +927,12 @@ describe('Parawave-PTT API', () => {
     };
 
     const response = await api.post(`/v1/channels/${testChannelUuid}/join`, joinRequest);
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
     expect(response.data.participant).toBeDefined();
     expect(response.data.participant.user_id).toBe(testerId);
-    
+
     // Location should be updated
     expect(response.data.participant.location).toBeDefined();
   });
@@ -941,9 +941,9 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     const response = await api.post(`/v1/channels/${testChannelUuid}/leave`, {});
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
   });
@@ -952,7 +952,7 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     try {
       const response = await api.post(`/v1/channels/${testChannelUuid}/leave`, {});
       expect(response.status).toBe(400);
@@ -967,13 +967,13 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     // Join first
     await api.post(`/v1/channels/${testChannelUuid}/join`, {});
-    
+
     // Then leave with DELETE method
     const response = await api.delete(`/v1/channels/${testChannelUuid}/leave`);
-    
+
     expect(response.status).toBe(200);
     expect(response.data.success).toBe(true);
   });
@@ -982,7 +982,7 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     try {
       const response = await api.get(`/v1/channels/${testChannelUuid}/join`);
       expect(response.status).toBe(405);
@@ -997,7 +997,7 @@ describe('Parawave-PTT API', () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 23)');
     }
-    
+
     try {
       const response = await api.post(`/v1/channels/${testChannelUuid}/unknown`, {});
       expect(response.status).toBe(404);
@@ -1005,6 +1005,444 @@ describe('Parawave-PTT API', () => {
       expect(error.response.status).toBe(404);
       expect(error.response.data.success).toBe(false);
       expect(error.response.data.error).toContain('Unknown sub-resource');
+    }
+  });
+
+  // PTT Audio Transmissions Tests
+  test('400. Should start PTT audio transmission successfully', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 230)');
+    }
+
+    // First join the channel
+    await api.post(`/v1/channels/${testChannelUuid}/join`, {});
+
+    const startRequest = {
+      channel_uuid: testChannelUuid,
+      audio_format: 'aac-lc' as const,
+      sample_rate: 48000,
+      bitrate: 128000,
+      network_quality: 'good' as const,
+      location: {
+        lat: 45.929681,
+        lon: 6.876345,
+        accuracy: 10.0,
+        altitude: 1000.0
+      },
+      is_emergency: false
+    };
+
+    const response = await api.post('/v1/transmissions/start', startRequest);
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.session_id).toBeDefined();
+    expect(response.data.max_duration_ms).toBe(30000);
+    expect(response.data.websocket_url).toBeDefined();
+
+    console.log('Started PTT transmission with session:', response.data.session_id);
+
+    // Store session ID for other tests
+    (global as any).testSessionId = response.data.session_id;
+  });
+
+  test('401. Should reject PTT transmission start with invalid audio format', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 230)');
+    }
+
+    const startRequest = {
+      channel_uuid: testChannelUuid,
+      audio_format: 'invalid-format' as any,
+      sample_rate: 48000,
+      bitrate: 128000,
+      network_quality: 'good' as const
+    };
+
+    try {
+      const response = await api.post('/v1/transmissions/start', startRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('audio_format');
+    }
+  });
+
+  test('402. Should reject PTT transmission start with missing required fields', async () => {
+    const incompleteRequest = {
+      channel_uuid: testChannelUuid
+      // Missing audio_format, sample_rate, etc.
+    };
+
+    try {
+      const response = await api.post('/v1/transmissions/start', incompleteRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toBeDefined();
+    }
+  });
+
+  test('403. Should reject concurrent PTT transmissions in same channel', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 230)');
+    }
+
+    // Try to start another transmission while one is active
+    const startRequest = {
+      channel_uuid: testChannelUuid,
+      audio_format: 'opus' as const,
+      sample_rate: 48000,
+      bitrate: 64000,
+      network_quality: 'excellent' as const
+    };
+
+    try {
+      const response = await api.post('/v1/transmissions/start', startRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('already active');
+    }
+  });
+
+  test('410. Should send audio chunk successfully', async () => {
+    const sessionId = (global as any).testSessionId;
+    if (!sessionId) {
+      throw new Error('PTT transmission must be started first (test 400)');
+    }
+
+    // Generate test audio data (base64 encoded silence)
+    const testAudioData = btoa(new Array(1024).fill(0).map(() => String.fromCharCode(0)).join(''));
+
+    const chunkRequest = {
+      session_id: sessionId,
+      chunk_sequence: 1,
+      audio_data: testAudioData,
+      chunk_size_bytes: 1024,
+      timestamp_ms: Date.now()
+    };
+
+    const response = await api.post(`/v1/transmissions/${sessionId}/chunk`, chunkRequest);
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.chunk_received).toBe(true);
+    expect(response.data.next_expected_sequence).toBe(2);
+  });
+
+  test('411. Should send multiple audio chunks in sequence', async () => {
+    const sessionId = (global as any).testSessionId;
+    if (!sessionId) {
+      throw new Error('PTT transmission must be started first (test 400)');
+    }
+
+    const testAudioData = btoa(new Array(1024).fill(0).map(() => String.fromCharCode(0)).join(''));
+
+    // Send chunks 2 and 3
+    for (let i = 2; i <= 3; i++) {
+      const chunkRequest = {
+        session_id: sessionId,
+        chunk_sequence: i,
+        audio_data: testAudioData,
+        chunk_size_bytes: 1024,
+        timestamp_ms: Date.now() + (i * 100)
+      };
+
+      const response = await api.post(`/v1/transmissions/${sessionId}/chunk`, chunkRequest);
+
+      expect(response.status).toBe(200);
+      expect(response.data.success).toBe(true);
+      expect(response.data.chunk_received).toBe(true);
+      expect(response.data.next_expected_sequence).toBe(i + 1);
+    }
+  });
+
+  test('412. Should reject audio chunk with invalid session ID', async () => {
+    const chunkRequest = {
+      session_id: 'invalid-session-id',
+      chunk_sequence: 1,
+      audio_data: 'VGVzdCBhdWRpbyBkYXRh', // "Test audio data" in base64
+      chunk_size_bytes: 12,
+      timestamp_ms: Date.now()
+    };
+
+    try {
+      const response = await api.post('/v1/transmissions/invalid-session/chunk', chunkRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Invalid or expired session');
+    }
+  });
+
+  test('413. Should reject audio chunk with invalid base64 data', async () => {
+    const sessionId = (global as any).testSessionId;
+    if (!sessionId) {
+      throw new Error('PTT transmission must be started first (test 400)');
+    }
+
+    const chunkRequest = {
+      session_id: sessionId,
+      chunk_sequence: 4,
+      audio_data: 'invalid-base64-data!!!',
+      chunk_size_bytes: 100,
+      timestamp_ms: Date.now()
+    };
+
+    try {
+      const response = await api.post(`/v1/transmissions/${sessionId}/chunk`, chunkRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Invalid base64');
+    }
+  });
+
+  test('414. Should reject audio chunk with wrong sequence number', async () => {
+    const sessionId = (global as any).testSessionId;
+    if (!sessionId) {
+      throw new Error('PTT transmission must be started first (test 400)');
+    }
+
+    const testAudioData = btoa('test audio data');
+
+    const chunkRequest = {
+      session_id: sessionId,
+      chunk_sequence: 2, // Wrong sequence (should be 4 after previous tests)
+      audio_data: testAudioData,
+      chunk_size_bytes: 15,
+      timestamp_ms: Date.now()
+    };
+
+    try {
+      const response = await api.post(`/v1/transmissions/${sessionId}/chunk`, chunkRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Invalid chunk sequence');
+    }
+  });
+
+  test('420. Should get active transmission for channel', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 230)');
+    }
+
+    const response = await api.get(`/v1/transmissions/active/${testChannelUuid}`);
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.active_transmission).toBeDefined();
+
+    if (response.data.active_transmission) {
+      expect(response.data.active_transmission.session_id).toBeDefined();
+      expect(response.data.active_transmission.channel_uuid).toBe(testChannelUuid);
+      expect(response.data.active_transmission.user_id).toBe(testerId);
+      expect(response.data.active_transmission.audio_format).toBeDefined();
+    }
+  });
+
+  test('421. Should return null for channel with no active transmission', async () => {
+    // Create a temporary channel for this test
+    const tempChannelData = {
+      name: 'Temp Channel - No Transmission',
+      description: 'Temporary channel for testing',
+      type: 'general',
+      vhf_frequency: '145.750'
+    };
+
+    const createResponse = await api.post('/v1/channels', tempChannelData);
+    expect(createResponse.status).toBe(201);
+
+    const tempChannelUuid = createResponse.data.data.uuid;
+
+    const response = await api.get(`/v1/transmissions/active/${tempChannelUuid}`);
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.active_transmission).toBeNull();
+
+    // Clean up temporary channel
+    await api.delete(`/v1/channels/${tempChannelUuid}?hard=true`);
+  });
+
+  test('430. Should end PTT transmission successfully', async () => {
+    const sessionId = (global as any).testSessionId;
+    if (!sessionId) {
+      throw new Error('PTT transmission must be started first (test 400)');
+    }
+
+    const endRequest = {
+      session_id: sessionId,
+      total_duration_ms: 5000,
+      final_location: {
+        lat: 45.929681,
+        lon: 6.876345,
+        accuracy: 10.0,
+        altitude: 1000.0
+      }
+    };
+
+    const response = await api.post(`/v1/transmissions/${sessionId}/end`, endRequest);
+
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.session_summary).toBeDefined();
+    expect(response.data.session_summary.total_duration_ms).toBe(5000);
+    expect(response.data.session_summary.chunks_received).toBeGreaterThan(0);
+    expect(response.data.session_summary.total_bytes).toBeGreaterThan(0);
+
+    // Clear session ID
+    (global as any).testSessionId = null;
+  });
+
+  test('431. Should reject end transmission with invalid session ID', async () => {
+    const endRequest = {
+      session_id: 'invalid-session-id',
+      total_duration_ms: 5000
+    };
+
+    try {
+      const response = await api.post('/v1/transmissions/invalid-session/end', endRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('Invalid or expired session');
+    }
+  });
+
+  test('432. Should reject end transmission with invalid duration', async () => {
+    // Start a new transmission for this test
+    const startRequest = {
+      channel_uuid: testChannelUuid,
+      audio_format: 'aac-lc' as const,
+      sample_rate: 48000,
+      bitrate: 128000,
+      network_quality: 'good' as const
+    };
+
+    const startResponse = await api.post('/v1/transmissions/start', startRequest);
+    expect(startResponse.status).toBe(200);
+
+    const sessionId = startResponse.data.session_id;
+
+    const endRequest = {
+      session_id: sessionId,
+      total_duration_ms: -100 // Invalid negative duration
+    };
+
+    try {
+      const response = await api.post(`/v1/transmissions/${sessionId}/end`, endRequest);
+      expect(response.status).toBe(400);
+    } catch (error: any) {
+      expect(error.response.status).toBe(400);
+      expect(error.response.data.success).toBe(false);
+      expect(error.response.data.error).toContain('total_duration_ms');
+    }
+
+    // Clean up - end the transmission properly
+    const cleanupRequest = {
+      session_id: sessionId,
+      total_duration_ms: 1000
+    };
+    await api.post(`/v1/transmissions/${sessionId}/end`, cleanupRequest);
+  });
+
+  test('440. Should handle transmission API without authentication', async () => {
+    const startRequest = {
+      channel_uuid: testChannelUuid,
+      audio_format: 'aac-lc',
+      sample_rate: 48000,
+      network_quality: 'good'
+    };
+
+    const response = await axios.post(`${API_BASE_URL}/v1/transmissions/start`, startRequest, {
+      headers: {
+        'Content-Type': 'application/json'
+        // No Authorization header
+      },
+      validateStatus: () => true // Accept all status codes
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.data.success).toBe(false);
+    expect(response.data.error).toContain('Authorization header');
+  });
+
+  test('441. Should reject transmission API with invalid HTTP methods', async () => {
+    // Test PUT on start endpoint (should be POST only)
+    const response = await axios.put(`${API_BASE_URL}/v1/transmissions/start`, {}, {
+      headers: {
+        'Authorization': `Bearer ${AUTH0_TOKEN}`
+      },
+      validateStatus: () => true // Accept all status codes to avoid throwing
+    });
+
+    expect(response.status).toBe(405);
+    expect(response.data.success).toBe(false);
+    expect(response.data.error).toContain('Method not allowed');
+  });
+
+  test('450. Should handle complete PTT transmission workflow with different audio formats', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 230)');
+    }
+
+    const audioFormats: Array<'aac-lc' | 'opus' | 'pcm'> = ['opus', 'pcm']; // Skip aac-lc as it was tested earlier
+
+    for (const format of audioFormats) {
+      // Start transmission
+      const startRequest = {
+        channel_uuid: testChannelUuid,
+        audio_format: format,
+        sample_rate: format === 'opus' ? 48000 : (format === 'pcm' ? 44100 : 48000),
+        bitrate: format === 'opus' ? 64000 : (format === 'pcm' ? 1411200 : 128000),
+        network_quality: 'excellent' as const,
+        location: {
+          lat: 45.929681,
+          lon: 6.876345
+        }
+      };
+
+      const startResponse = await api.post('/v1/transmissions/start', startRequest);
+      expect(startResponse.status).toBe(200);
+
+      const sessionId = startResponse.data.session_id;
+
+      // Send audio chunk
+      const testAudioData = btoa(new Array(512).fill(0).map(() => String.fromCharCode(0)).join(''));
+      const chunkRequest = {
+        session_id: sessionId,
+        chunk_sequence: 1,
+        audio_data: testAudioData,
+        chunk_size_bytes: 512,
+        timestamp_ms: Date.now()
+      };
+
+      const chunkResponse = await api.post(`/v1/transmissions/${sessionId}/chunk`, chunkRequest);
+      expect(chunkResponse.status).toBe(200);
+      expect(chunkResponse.data.chunk_received).toBe(true);
+
+      // End transmission
+      const endRequest = {
+        session_id: sessionId,
+        total_duration_ms: 2000
+      };
+
+      const endResponse = await api.post(`/v1/transmissions/${sessionId}/end`, endRequest);
+      expect(endResponse.status).toBe(200);
+      expect(endResponse.data.session_summary.total_duration_ms).toBe(2000);
+
+      // Small delay between formats to avoid race conditions
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
   });
 });
