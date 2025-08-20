@@ -44,7 +44,7 @@
 	},
 	"migrations": [
 		{
-			"tag": "v1",
+			"tag": "v2025-08-20-device-info",
 			"new_sqlite_classes": [
 				"PTTChannelDurableObject"
 			]
