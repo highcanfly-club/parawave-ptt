@@ -55,12 +55,19 @@ CREATE TABLE IF NOT EXISTS channel_messages (
 -- Transmission history - Detailed PTT transmission logs
 CREATE TABLE IF NOT EXISTS transmission_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
     channel_uuid TEXT NOT NULL,
     user_id TEXT NOT NULL,
     username TEXT NOT NULL,
     start_time DATETIME NOT NULL,
     end_time DATETIME,
     duration_seconds INTEGER,
+    audio_format TEXT CHECK (audio_format IN ('aac-lc', 'opus', 'pcm')),
+    chunks_count INTEGER DEFAULT 0,
+    total_bytes INTEGER DEFAULT 0,
+    participant_count INTEGER DEFAULT 0,
+    is_emergency BOOLEAN DEFAULT FALSE,
+    network_quality TEXT CHECK (network_quality IN ('excellent', 'good', 'fair', 'poor')),
     quality_score REAL CHECK (quality_score >= 0 AND quality_score <= 1),
     network_type TEXT, -- '2G', '3G', '4G', '5G', 'WiFi'
     signal_strength INTEGER, -- Signal strength in dBm
@@ -125,6 +132,8 @@ CREATE INDEX IF NOT EXISTS idx_channel_messages_type ON channel_messages(message
 CREATE INDEX IF NOT EXISTS idx_transmission_history_channel ON transmission_history(channel_uuid);
 CREATE INDEX IF NOT EXISTS idx_transmission_history_user ON transmission_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_transmission_history_start_time ON transmission_history(start_time);
+CREATE INDEX IF NOT EXISTS idx_transmission_history_session_id ON transmission_history(session_id);
+CREATE INDEX IF NOT EXISTS idx_transmission_history_channel_start_time ON transmission_history(channel_uuid, start_time);
 CREATE INDEX IF NOT EXISTS idx_flying_sites_coordinates ON flying_sites(coordinates_lat, coordinates_lon);
 CREATE INDEX IF NOT EXISTS idx_flying_sites_active ON flying_sites(is_active);
 

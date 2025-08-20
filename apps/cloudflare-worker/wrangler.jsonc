@@ -38,7 +38,7 @@
 		"bindings": [
 			{
 				"name": "CHANNEL_OBJECTS",
-				"class_name": "ChannelDurableObject"
+				"class_name": "PTTChannelDurableObject"
 			}
 		]
 	},
@@ -46,7 +46,7 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": [
-				"ChannelDurableObject"
+				"PTTChannelDurableObject"
 			]
 		}
 	],

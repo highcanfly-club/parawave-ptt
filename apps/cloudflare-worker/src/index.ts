@@ -24,10 +24,10 @@
 
 import { checkPermissions } from "./auth0";
 import { PTTAPIHandler } from "./handlers/api-handler";
-import { ChannelDurableObject } from "./durable-objects/channel-durable-object";
+import { PTTChannelDurableObject } from "./durable-objects/ptt-channel-do";
 
 // Export Durable Object class
-export { ChannelDurableObject };
+export { PTTChannelDurableObject };
 
 /**
  * CORS headers configuration

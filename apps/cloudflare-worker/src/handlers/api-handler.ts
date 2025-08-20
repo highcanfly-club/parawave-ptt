@@ -2036,6 +2036,7 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 * Handle POST /api/v1/transmissions/start
 	 */
 	private async handleStartTransmission(request: Request, userId: string, username: string): Promise<Response> {
 		try {
@@ -2166,6 +2167,7 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 * Handle POST /api/v1/transmissions/{session_id}/chunk
 	 */
 	private async handleAudioChunk(request: Request, sessionId: string): Promise<Response> {
 		try {
@@ -2298,6 +2300,7 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 * Handle POST /api/v1/transmissions/{session_id}/end
 	 */
 	private async handleEndTransmission(request: Request, sessionId: string): Promise<Response> {
 		try {
@@ -2335,7 +2338,7 @@ export class PTTAPIHandler {
 	 * /api/v1/transmissions/active/{channel_uuid}:
 	 *   get:
 	 *     summary: Get active transmission
-	 *     description: Get details about the currently active transmission in a channel, if any.
+	 *     description: Get information about the currently active transmission in a channel, if any.
 	 *     tags:
 	 *       - Transmissions
 	 *     security:
@@ -2350,24 +2353,24 @@ export class PTTAPIHandler {
 	 *         description: The channel UUID to check for active transmissions
 	 *     responses:
 	 *       200:
-	 *         description: Active transmission details retrieved successfully
+	 *         description: Active transmission information retrieved successfully
 	 *         content:
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/PTTActiveTransmissionResponse'
 	 *             examples:
-	 *               with_transmission:
+	 *               with_active:
 	 *                 summary: Channel has active transmission
 	 *                 value:
 	 *                   success: true
 	 *                   transmission:
 	 *                     session_id: "123e4567-e89b-12d3-a456-426614174000"
 	 *                     user_id: "auth0|user123"
-	 *                     username: "John Pilot"
-	 *                     started_at: "2025-08-19T10:30:00.000Z"
+	 *                     username: "Pilot Alpha"
+	 *                     started_at: "2024-01-15T10:30:00Z"
 	 *                     duration: 5.2
 	 *                     audio_format: "aac-lc"
-	 *               no_transmission:
+	 *               no_active:
 	 *                 summary: No active transmission
 	 *                 value:
 	 *                   success: true
@@ -2378,23 +2381,25 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Channel access denied
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 *       404:
 	 *         description: Channel not found
 	 *         content:
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
-	 *             examples:
-	 *               not_found:
-	 *                 value:
-	 *                   success: false
-	 *                   error: "Channel not found"
 	 *       500:
 	 *         description: Internal server error
 	 *         content:
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 * Handle GET /api/v1/transmissions/active/{channel_uuid}
 	 */
 	private async handleGetActiveTransmission(channelUuid: string): Promise<Response> {
 		try {
@@ -2421,15 +2426,7 @@ export class PTTAPIHandler {
 	 * /api/v1/transmissions/ws/{channel_uuid}:
 	 *   get:
 	 *     summary: WebSocket upgrade for real-time PTT
-	 *     description: |
-	 *       Upgrade HTTP connection to WebSocket for real-time PTT audio transmission.
-	 *       Used for receiving live audio chunks from active transmissions.
-	 *       
-	 *       **WebSocket Protocol:**
-	 *       - Client sends: `{"type": "join", "channel_uuid": "uuid"}`
-	 *       - Server sends: `{"type": "audio_chunk", "session_id": "uuid", "audio_data": "base64", "sequence": 0}`
-	 *       - Server sends: `{"type": "transmission_start", "session_id": "uuid", "user_id": "string", "username": "string"}`
-	 *       - Server sends: `{"type": "transmission_end", "session_id": "uuid", "duration": 5.2}`
+	 *     description: Upgrade HTTP connection to WebSocket for real-time PTT audio transmission. Used for receiving live audio broadcasts.
 	 *     tags:
 	 *       - Transmissions
 	 *     security:
@@ -2441,24 +2438,10 @@ export class PTTAPIHandler {
 	 *         schema:
 	 *           type: string
 	 *           format: uuid
-	 *         description: The channel UUID to listen for transmissions
-	 *       - name: Upgrade
-	 *         in: header
-	 *         required: true
-	 *         schema:
-	 *           type: string
-	 *           enum: [websocket]
-	 *         description: Must be "websocket"
-	 *       - name: Connection
-	 *         in: header
-	 *         required: true
-	 *         schema:
-	 *           type: string
-	 *           enum: [Upgrade]
-	 *         description: Must be "Upgrade"
+	 *         description: The channel UUID for real-time PTT communication
 	 *     responses:
 	 *       101:
-	 *         description: WebSocket connection established
+	 *         description: WebSocket connection upgraded successfully
 	 *         headers:
 	 *           Upgrade:
 	 *             schema:
@@ -2468,12 +2451,21 @@ export class PTTAPIHandler {
 	 *             schema:
 	 *               type: string
 	 *               example: Upgrade
+	 *           Sec-WebSocket-Accept:
+	 *             schema:
+	 *               type: string
+	 *               description: WebSocket handshake response
 	 *       400:
-	 *         description: Invalid WebSocket upgrade request
+	 *         description: Invalid WebSocket request
 	 *         content:
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *             examples:
+	 *               not_websocket:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "WebSocket upgrade required"
 	 *       401:
 	 *         description: Authentication required
 	 *         content:
@@ -2486,12 +2478,20 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       404:
+	 *         description: Channel not found
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 *       500:
 	 *         description: Internal server error
 	 *         content:
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
+	 * Handle WebSocket upgrade for real-time PTT communication
+	 * GET /api/v1/transmissions/ws/{channel_uuid}
 	 */
 	private async handleWebSocketUpgrade(request: Request, channelUuid: string, userId: string, username: string): Promise<Response> {
 		try {

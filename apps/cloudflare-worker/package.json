@@ -16,31 +16,31 @@
     "lint": "eslint ./src/**/*.{ts,tsx} --fix",
     "clean": "rm -rf .wrangler .dev.vars .turbo",
     "cf-typegen": "wrangler types",
-    "d1:create": "npx wrangler d1 execute --local --file migrations/001_initial_schema.sql ptt-parapente-dev",
-    "d1:delete": "npx wrangler d1 execute --local --file migrations/000_reset_and_init.sql ptt-parapente-dev",
+    "d1:create": "npx wrangler d1 execute --local --file migrations/001_initial_schema.sql ptt-parapente",
+    "d1:delete": "npx wrangler d1 execute --local --file migrations/000_reset_and_init.sql ptt-parapente",
     "d1:reset": "npm run d1:delete && npm run d1:create",
-    "d1:create:remote": "npx wrangler d1 execute --remote --file migrations/001_initial_schema.sql ptt-parapente-dev"
+    "d1:create:remote": "npx wrangler d1 execute --remote --file migrations/001_initial_schema.sql ptt-parapente"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.61",
-    "@cloudflare/workers-types": "^4.20250809.0",
+    "@cloudflare/vitest-pool-workers": "0.8.65",
+    "@cloudflare/workers-types": "4.20250820.0",
     "@jest/globals": "^30.0.5",
     "@types/jest": "^30.0.0",
     "@types/node": "22.17.1",
-    "@typescript-eslint/eslint-plugin": "^8.39.0",
-    "@typescript-eslint/parser": "^8.39.0",
+    "@typescript-eslint/eslint-plugin": "8.40.0",
+    "@typescript-eslint/parser": "8.40.0",
     "eslint": "^9.33.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-prettier": "^5.5.4",
-    "eslint-plugin-unused-imports": "^4.1.4",
+    "eslint-plugin-unused-imports": "4.2.0",
     "jest": "^30.0.5",
     "jiti": "^2.5.1",
     "ts-jest": "^29.4.1",
     "typescript": "^5.9.2",
     "vitest": "~3.2.4",
-    "wrangler": "^4.28.1"
+    "wrangler": "4.31.0"
   },
   "dependencies": {
     "jose": "^6.0.12"
