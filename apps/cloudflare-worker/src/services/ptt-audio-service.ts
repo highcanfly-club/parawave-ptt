@@ -23,261 +23,304 @@
  */
 
 import {
-    PTTStartTransmissionRequest,
-    PTTStartTransmissionResponse,
-    PTTAudioChunkRequest,
-    PTTAudioChunkResponse,
-    PTTEndTransmissionRequest,
-    PTTEndTransmissionResponse
-} from '../types/ptt-audio';
+	PTTStartTransmissionRequest,
+	PTTStartTransmissionResponse,
+	PTTAudioChunkRequest,
+	PTTAudioChunkResponse,
+	PTTEndTransmissionRequest,
+	PTTEndTransmissionResponse,
+} from "../types/ptt-audio";
 
 /**
  * Service for managing PTT audio transmissions via Durable Objects
  * Provides high-level API for real-time audio communication
  */
 export class PTTAudioService {
-    private env: Env;
+	private env: Env;
 
-    constructor(env: Env) {
-        this.env = env;
-    }
+	constructor(env: Env) {
+		this.env = env;
+	}
 
-    /**
-     * Start a new PTT transmission session
-     * Routes to the appropriate channel Durable Object
-     */
-    async startTransmission(
-        request: PTTStartTransmissionRequest,
-        userId: string,
-        username: string
-    ): Promise<PTTStartTransmissionResponse> {
-        try {
-            const channelUuid = request.channel_uuid.toLowerCase();
+	/**
+	 * Start a new PTT transmission session
+	 * Routes to the appropriate channel Durable Object
+	 */
+	async startTransmission(
+		request: PTTStartTransmissionRequest,
+		userId: string,
+		username: string,
+	): Promise<PTTStartTransmissionResponse> {
+		try {
+			const channelUuid = request.channel_uuid.toLowerCase();
 
-            // Get the Durable Object for this channel
-            const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
-            const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+			// Get the Durable Object for this channel
+			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
+			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-            // Forward request to Durable Object
-            const response = await durableObject.fetch('https://dummy/ptt/start', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ...request,
-                    user_id: userId,
-                    username: username
-                })
-            });
+			// Forward request to Durable Object
+			const response = await durableObject.fetch("https://dummy/ptt/start", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					...request,
+					user_id: userId,
+					username: username,
+				}),
+			});
 
-            const result = await response.json() as PTTStartTransmissionResponse;
+			const result = (await response.json()) as PTTStartTransmissionResponse;
 
-            // Add WebSocket URL for real-time communication
-            if (result.success && result.session_id) {
-                result.websocket_url = this.generateWebSocketURL(channelUuid, userId, username);
-            }
+			// Add WebSocket URL for real-time communication
+			if (result.success && result.session_id) {
+				result.websocket_url = this.generateWebSocketURL(
+					channelUuid,
+					userId,
+					username,
+				);
+			}
 
-            return result;
+			return result;
+		} catch (error) {
+			console.error("Error starting PTT transmission:", error);
 
-        } catch (error) {
-            console.error('Error starting PTT transmission:', error);
-            return {
-                success: false,
-                error: 'Failed to start transmission'
-            };
-        }
-    }
+			return {
+				success: false,
+				error: "Failed to start transmission",
+			};
+		}
+	}
 
-    /**
-     * Send audio chunk to active transmission
-     */
-    async receiveAudioChunk(request: PTTAudioChunkRequest): Promise<PTTAudioChunkResponse> {
-        try {
-            // Extract channel UUID from session ID
-            const channelUuid = this.extractChannelFromSessionId(request.session_id);
-            if (!channelUuid) {
-                return {
-                    success: false,
-                    chunk_received: false,
-                    error: 'Invalid session ID format'
-                };
-            }
+	/**
+	 * Send audio chunk to active transmission
+	 */
+	async receiveAudioChunk(
+		request: PTTAudioChunkRequest,
+	): Promise<PTTAudioChunkResponse> {
+		try {
+			// Extract channel UUID from session ID
+			const channelUuid = this.extractChannelFromSessionId(request.session_id);
 
-            // Get the Durable Object for this channel
-            const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
-            const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+			if (!channelUuid) {
+				return {
+					success: false,
+					chunk_received: false,
+					error: "Invalid session ID format",
+				};
+			}
 
-            // Forward request to Durable Object
-            const response = await durableObject.fetch('https://dummy/ptt/chunk', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(request)
-            });
+			// Get the Durable Object for this channel
+			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
+			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-            return await response.json() as PTTAudioChunkResponse;
+			// Forward request to Durable Object
+			const response = await durableObject.fetch("https://dummy/ptt/chunk", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(request),
+			});
 
-        } catch (error) {
-            console.error('Error receiving audio chunk:', error);
-            return {
-                success: false,
-                chunk_received: false,
-                error: 'Failed to process audio chunk'
-            };
-        }
-    }
+			return (await response.json()) as PTTAudioChunkResponse;
+		} catch (error) {
+			console.error("Error receiving audio chunk:", error);
 
-    /**
-     * End PTT transmission session
-     */
-    async endTransmission(request: PTTEndTransmissionRequest): Promise<PTTEndTransmissionResponse> {
-        try {
-            // Extract channel UUID from session ID
-            const channelUuid = this.extractChannelFromSessionId(request.session_id);
-            if (!channelUuid) {
-                return {
-                    success: false,
-                    error: 'Invalid session ID format'
-                };
-            }
+			return {
+				success: false,
+				chunk_received: false,
+				error: "Failed to process audio chunk",
+			};
+		}
+	}
 
-            // Get the Durable Object for this channel
-            const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
-            const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+	/**
+	 * End PTT transmission session
+	 */
+	async endTransmission(
+		request: PTTEndTransmissionRequest,
+	): Promise<PTTEndTransmissionResponse> {
+		try {
+			// Extract channel UUID from session ID
+			const channelUuid = this.extractChannelFromSessionId(request.session_id);
 
-            // Forward request to Durable Object
-            const response = await durableObject.fetch('https://dummy/ptt/end', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(request)
-            });
+			if (!channelUuid) {
+				return {
+					success: false,
+					error: "Invalid session ID format",
+				};
+			}
 
-            return await response.json() as PTTEndTransmissionResponse;
+			// Get the Durable Object for this channel
+			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
+			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-        } catch (error) {
-            console.error('Error ending PTT transmission:', error);
-            return {
-                success: false,
-                error: 'Failed to end transmission'
-            };
-        }
-    }
+			// Forward request to Durable Object
+			const response = await durableObject.fetch("https://dummy/ptt/end", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(request),
+			});
 
-    /**
-     * Get active transmission for a channel
-     */
-    async getActiveTransmission(channelUuid: string): Promise<any> {
-        try {
-            const normalizedChannelUuid = channelUuid.toLowerCase();
+			return (await response.json()) as PTTEndTransmissionResponse;
+		} catch (error) {
+			console.error("Error ending PTT transmission:", error);
 
-            // Get the Durable Object for this channel
-            const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(normalizedChannelUuid);
-            const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+			return {
+				success: false,
+				error: "Failed to end transmission",
+			};
+		}
+	}
 
-            // Request status from Durable Object
-            const response = await durableObject.fetch('https://dummy/ptt/status', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
+	/**
+	 * Get active transmission for a channel
+	 */
+	async getActiveTransmission(channelUuid: string): Promise<any> {
+		try {
+			const normalizedChannelUuid = channelUuid.toLowerCase();
 
-            const result = await response.json() as any;
-            return result.success ? result.active_transmission : null;
+			// Get the Durable Object for this channel
+			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(
+				normalizedChannelUuid,
+			);
+			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-        } catch (error) {
-            console.error('Error getting active transmission:', error);
-            return null;
-        }
-    }
+			// Request status from Durable Object
+			const response = await durableObject.fetch("https://dummy/ptt/status", {
+				method: "GET",
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
 
-    /**
-     * Generate WebSocket URL for real-time communication
-     */
-    private generateWebSocketURL(channelUuid: string, userId: string, username: string): string {
-        // In production, this would be the actual worker URL
-        const baseUrl = this.env.API_BASE_URL?.replace('https://', 'wss://') || 'wss://your-worker.workers.dev';
-        const params = new URLSearchParams({
-            userId,
-            username,
-            token: 'temp-token' // TODO: Generate proper token
-        });
+			const result = (await response.json()) as any;
 
-        return `${baseUrl}/ptt/channel/${channelUuid}/ws?${params.toString()}`;
-    }
+			return result.success ? result.active_transmission : null;
+		} catch (error) {
+			console.error("Error getting active transmission:", error);
 
-    /**
-     * Extract channel UUID from session ID
-     * Session ID format: ptt_{channelUuid}_{userId}_{timestamp}_{random}
-     */
-    private extractChannelFromSessionId(sessionId: string): string | null {
-        try {
-            const parts = sessionId.split('_');
-            if (parts.length >= 5 && parts[0] === 'ptt') {
-                return parts[1]; // Channel UUID is the second part
-            }
-            return null;
-        } catch (error) {
-            return null;
-        }
-    }
+			return null;
+		}
+	}
 
-    /**
-     * Get WebSocket connection for a channel (used by the main handler)
-     */
-    async getChannelWebSocket(channelUuid: string, request: Request): Promise<Response> {
-        try {
-            const normalizedChannelUuid = channelUuid.toLowerCase();
+	/**
+	 * Generate WebSocket URL for real-time communication
+	 */
+	private generateWebSocketURL(
+		channelUuid: string,
+		userId: string,
+		username: string,
+	): string {
+		// In production, this would be the actual worker URL
+		const baseUrl =
+			this.env.API_BASE_URL?.replace("https://", "wss://") ||
+			"wss://your-worker.workers.dev";
+		const params = new URLSearchParams({
+			userId,
+			username,
+			token: "temp-token", // TODO: Generate proper token
+		});
 
-            // Get the Durable Object for this channel
-            const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(normalizedChannelUuid);
-            const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+		return `${baseUrl}/ptt/channel/${channelUuid}/ws?${params.toString()}`;
+	}
 
-            // Forward WebSocket upgrade to Durable Object
-            return await durableObject.fetch(request.url, request);
+	/**
+	 * Extract channel UUID from session ID
+	 * Session ID format: ptt_{channelUuid}_{userId}_{timestamp}_{random}
+	 */
+	private extractChannelFromSessionId(sessionId: string): string | null {
+		try {
+			const parts = sessionId.split("_");
 
-        } catch (error) {
-            console.error('Error getting channel WebSocket:', error);
-            return new Response('Failed to establish WebSocket connection', { status: 500 });
-        }
-    }
+			if (parts.length >= 5 && parts[0] === "ptt") {
+				return parts[1]; // Channel UUID is the second part
+			}
 
-    /**
-     * Validate that user has access to channel
-     */
-    async validateChannelAccess(channelUuid: string, userId: string): Promise<{ valid: boolean, error?: string }> {
-        try {
-            // Check if channel exists and is active
-            const channel = await this.env.PTT_DB.prepare(`
+			return null;
+		} catch (error) {
+			return null;
+		}
+	}
+
+	/**
+	 * Get WebSocket connection for a channel (used by the main handler)
+	 */
+	async getChannelWebSocket(
+		channelUuid: string,
+		request: Request,
+	): Promise<Response> {
+		try {
+			const normalizedChannelUuid = channelUuid.toLowerCase();
+
+			// Get the Durable Object for this channel
+			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(
+				normalizedChannelUuid,
+			);
+			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+
+			// Forward WebSocket upgrade to Durable Object
+			return await durableObject.fetch(request.url, request);
+		} catch (error) {
+			console.error("Error getting channel WebSocket:", error);
+
+			return new Response("Failed to establish WebSocket connection", {
+				status: 500,
+			});
+		}
+	}
+
+	/**
+	 * Validate that user has access to channel
+	 */
+	async validateChannelAccess(
+		channelUuid: string,
+		userId: string,
+	): Promise<{ valid: boolean; error?: string }> {
+		try {
+			// Check if channel exists and is active
+			const channel = (await this.env.PTT_DB.prepare(
+				`
         SELECT uuid, is_active FROM channels WHERE uuid = ?
-      `).bind(channelUuid.toLowerCase()).first() as any;
+      `,
+			)
+				.bind(channelUuid.toLowerCase())
+				.first()) as any;
 
-            if (!channel) {
-                return { valid: false, error: 'Channel not found' };
-            }
+			if (!channel) {
+				return { valid: false, error: "Channel not found" };
+			}
 
-            if (!channel.is_active) {
-                return { valid: false, error: 'Channel is not active' };
-            }
+			if (!channel.is_active) {
+				return { valid: false, error: "Channel is not active" };
+			}
 
-            // Check if user is a participant in the channel
-            const participant = await this.env.PTT_DB.prepare(`
+			// Check if user is a participant in the channel
+			const participant = (await this.env.PTT_DB.prepare(
+				`
         SELECT user_id FROM channel_participants 
         WHERE channel_uuid = ? AND user_id = ?
-      `).bind(channelUuid.toLowerCase(), userId).first() as any;
+      `,
+			)
+				.bind(channelUuid.toLowerCase(), userId)
+				.first()) as any;
 
-            if (!participant) {
-                return { valid: false, error: 'User is not a participant in this channel' };
-            }
+			if (!participant) {
+				return {
+					valid: false,
+					error: "User is not a participant in this channel",
+				};
+			}
 
-            return { valid: true };
-        } catch (error) {
-            console.error('Error validating channel access:', error);
-            return { valid: false, error: 'Failed to validate channel access' };
-        }
-    }
+			return { valid: true };
+		} catch (error) {
+			console.error("Error validating channel access:", error);
+
+			return { valid: false, error: "Failed to validate channel access" };
+		}
+	}
 }

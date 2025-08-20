@@ -22,9 +22,9 @@
  * SOFTWARE.
  */
 
-import { checkPermissions } from '../auth0';
-import { ChannelService } from '../services/channel-service';
-import { PTTAudioService } from '../services/ptt-audio-service';
+import { checkPermissions } from "../auth0";
+import { ChannelService } from "../services/channel-service";
+import { PTTAudioService } from "../services/ptt-audio-service";
 import {
 	CreateChannelRequest,
 	CreateChannelWithUuidRequest,
@@ -34,16 +34,13 @@ import {
 	JoinChannelRequest,
 	JoinChannelResponse,
 	LeaveChannelResponse,
-	ChannelParticipant
-} from '../types/ptt';
+	ChannelParticipant,
+} from "../types/ptt";
 import {
 	PTTStartTransmissionRequest,
-	PTTStartTransmissionResponse,
 	PTTAudioChunkRequest,
-	PTTAudioChunkResponse,
 	PTTEndTransmissionRequest,
-	PTTEndTransmissionResponse
-} from '../types/ptt-audio';
+} from "../types/ptt-audio";
 
 /**
  * @openapi
@@ -351,7 +348,7 @@ import {
  *         error:
  *           type: string
  *           description: Error message if success is false
- * 
+ *
  * info:
  *   title: ParaWave PTT API
  *   description: API for managing PTT channels and real-time audio transmissions for paragliding pilots
@@ -361,13 +358,13 @@ import {
  *     email: support@parawave.com
  *   license:
  *     name: MIT
- * 
+ *
  * servers:
  *   - url: https://your-worker.your-subdomain.workers.dev
  *     description: Production server
  *   - url: http://localhost:8787
  *     description: Development server
- * 
+ *
  * tags:
  *   - name: Channels
  *     description: PTT channel management operations
@@ -386,15 +383,20 @@ export class PTTAPIHandler {
 	private audioService: PTTAudioService;
 	private corsHeaders: Record<string, string>;
 
-	constructor(db: D1Database, kv: KVNamespace, env: Env, corsOrigin: string = '*') {
+	constructor(
+		db: D1Database,
+		kv: KVNamespace,
+		env: Env,
+		corsOrigin: string = "*",
+	) {
 		this.channelService = new ChannelService(db, kv);
 		this.audioService = new PTTAudioService(env);
 		this.corsHeaders = {
-			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-			'Access-Control-Allow-Origin': corsOrigin,
-			'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-			'Access-Control-Max-Age': '86400',
-			'Content-Type': 'application/json'
+			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+			"Access-Control-Allow-Origin": corsOrigin,
+			"Access-Control-Allow-Headers": "Content-Type, Authorization",
+			"Access-Control-Max-Age": "86400",
+			"Content-Type": "application/json",
 		};
 	}
 
@@ -409,21 +411,26 @@ export class PTTAPIHandler {
 		const pathname = url.pathname;
 
 		// Handle CORS preflight requests
-		if (request.method === 'OPTIONS') {
+		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
 				headers: {
 					...this.corsHeaders,
-					'Access-Control-Allow-Credentials': 'true'
-				}
+					"Access-Control-Allow-Credentials": "true",
+				},
 			});
 		}
 
 		try {
 			// Parse API path
-			const pathParts = pathname.split('/').filter(Boolean);
-			if (pathParts.length < 2 || pathParts[0] !== 'api' || pathParts[1] !== 'v1') {
-				return this.errorResponse('Invalid API path', 404);
+			const pathParts = pathname.split("/").filter(Boolean);
+
+			if (
+				pathParts.length < 2 ||
+				pathParts[0] !== "api" ||
+				pathParts[1] !== "v1"
+			) {
+				return this.errorResponse("Invalid API path", 404);
 			}
 
 			const resource = pathParts[2];
@@ -432,18 +439,29 @@ export class PTTAPIHandler {
 
 			// Route to appropriate handler
 			switch (resource) {
-				case 'channels':
-					return await this.handleChannelsAPI(request, env, resourceId, subResource);
-				case 'transmissions':
-					return await this.handleTransmissionsAPI(request, env, resourceId, subResource);
-				case 'health':
+				case "channels":
+					return await this.handleChannelsAPI(
+						request,
+						env,
+						resourceId,
+						subResource,
+					);
+				case "transmissions":
+					return await this.handleTransmissionsAPI(
+						request,
+						env,
+						resourceId,
+						subResource,
+					);
+				case "health":
 					return await this.handleHealthCheck(request);
 				default:
 					return this.errorResponse(`Unknown resource: ${resource}`, 404);
 			}
 		} catch (error) {
-			console.error('API error:', error);
-			return this.errorResponse('Internal server error', 500);
+			console.error("API error:", error);
+
+			return this.errorResponse("Internal server error", 500);
 		}
 	}
 
@@ -455,13 +473,22 @@ export class PTTAPIHandler {
 	 * @param subResource Sub-resource like 'join', 'leave', 'participants'
 	 * @returns HTTP response
 	 */
-	private async handleChannelsAPI(request: Request, env: Env, resourceId?: string, subResource?: string): Promise<Response> {
+	private async handleChannelsAPI(
+		request: Request,
+		env: Env,
+		resourceId?: string,
+		subResource?: string,
+	): Promise<Response> {
 		const method = request.method;
 
 		// Authentication required for all channel operations
 		const authResult = await this.authenticateRequest(request, env);
+
 		if (!authResult.success) {
-			return this.errorResponse(authResult.error || 'Authentication failed', 401);
+			return this.errorResponse(
+				authResult.error || "Authentication failed",
+				401,
+			);
 		}
 
 		const userId = authResult.userId!;
@@ -469,79 +496,133 @@ export class PTTAPIHandler {
 
 		try {
 			// Special handling for /channels/with-uuid endpoint
-			if (resourceId === 'with-uuid' && !subResource) {
-				if (method === 'POST') {
+			if (resourceId === "with-uuid" && !subResource) {
+				if (method === "POST") {
 					return await this.createChannelWithUuid(request, userId, permissions);
 				}
-				return this.errorResponse(`Method ${method} not allowed for with-uuid endpoint`, 405);
+
+				return this.errorResponse(
+					`Method ${method} not allowed for with-uuid endpoint`,
+					405,
+				);
 			}
 
 			// Handle sub-resources for specific channels
 			if (resourceId && subResource) {
 				switch (subResource) {
-					case 'join':
-						if (method === 'POST') {
-							return await this.joinChannel(request, resourceId, userId, permissions);
+					case "join":
+						if (method === "POST") {
+							return await this.joinChannel(
+								request,
+								resourceId,
+								userId,
+								permissions,
+							);
 						}
-						return this.errorResponse(`Method ${method} not allowed for join operation`, 405);
 
-					case 'leave':
-						if (method === 'POST' || method === 'DELETE') {
-							return await this.leaveChannel(request, resourceId, userId, permissions);
+						return this.errorResponse(
+							`Method ${method} not allowed for join operation`,
+							405,
+						);
+
+					case "leave":
+						if (method === "POST" || method === "DELETE") {
+							return await this.leaveChannel(
+								request,
+								resourceId,
+								userId,
+								permissions,
+							);
 						}
-						return this.errorResponse(`Method ${method} not allowed for leave operation`, 405);
 
-					case 'participants':
-						if (method === 'GET') {
+						return this.errorResponse(
+							`Method ${method} not allowed for leave operation`,
+							405,
+						);
+
+					case "participants":
+						if (method === "GET") {
 							return await this.getChannelParticipants(resourceId, permissions);
 						}
-						return this.errorResponse(`Method ${method} not allowed for participants operation`, 405);
 
-					case 'update-token':
-						if (method === 'PUT' || method === 'POST') {
-							return await this.updateParticipantToken(request, resourceId, userId, permissions);
+						return this.errorResponse(
+							`Method ${method} not allowed for participants operation`,
+							405,
+						);
+
+					case "update-token":
+						if (method === "PUT" || method === "POST") {
+							return await this.updateParticipantToken(
+								request,
+								resourceId,
+								userId,
+								permissions,
+							);
 						}
-						return this.errorResponse(`Method ${method} not allowed for update-token operation`, 405);
+
+						return this.errorResponse(
+							`Method ${method} not allowed for update-token operation`,
+							405,
+						);
 
 					default:
-						return this.errorResponse(`Unknown sub-resource: ${subResource}`, 404);
+						return this.errorResponse(
+							`Unknown sub-resource: ${subResource}`,
+							404,
+						);
 				}
 			}
 
 			// Handle regular channel CRUD operations
 			switch (method) {
-				case 'GET':
-					return resourceId ?
-						await this.getChannel(resourceId, permissions) :
-						await this.getChannels(request, permissions);
+				case "GET":
+					return resourceId
+						? await this.getChannel(resourceId, permissions)
+						: await this.getChannels(request, permissions);
 
-				case 'POST':
+				case "POST":
 					return await this.createChannel(request, userId, permissions);
 
-				case 'PUT':
+				case "PUT":
 					if (!resourceId) {
-						return this.errorResponse('Channel UUID required for update', 400);
+						return this.errorResponse("Channel UUID required for update", 400);
 					}
-					return await this.updateChannel(request, resourceId, userId, permissions);
 
-				case 'DELETE':
+					return await this.updateChannel(
+						request,
+						resourceId,
+						userId,
+						permissions,
+					);
+
+				case "DELETE":
 					if (!resourceId) {
-						return this.errorResponse('Channel UUID required for deletion', 400);
+						return this.errorResponse(
+							"Channel UUID required for deletion",
+							400,
+						);
 					}
-					return await this.deleteChannel(request, resourceId, userId, permissions);
+
+					return await this.deleteChannel(
+						request,
+						resourceId,
+						userId,
+						permissions,
+					);
 
 				default:
 					return this.errorResponse(`Method ${method} not allowed`, 405);
 			}
 		} catch (error) {
-			console.error('Channel API error:', error);
-			return this.errorResponse('Channel operation failed', 500);
+			console.error("Channel API error:", error);
+
+			return this.errorResponse("Channel operation failed", 500);
 		}
 	}
 
 	/**
 	 * GET /api/v1/channels - List all channels with optional filtering
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels:
 	 *   get:
@@ -633,37 +714,46 @@ export class PTTAPIHandler {
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 */
-	private async getChannels(request: Request, permissions: string[]): Promise<Response> {
+	private async getChannels(
+		request: Request,
+		permissions: string[],
+	): Promise<Response> {
 		// Check read permission
-		if (!permissions.includes('read:api')) {
-			return this.errorResponse('Insufficient permissions', 403);
+		if (!permissions.includes("read:api")) {
+			return this.errorResponse("Insufficient permissions", 403);
 		}
 
 		const url = new URL(request.url);
-		const type = url.searchParams.get('type') || undefined;
-		const activeOnly = url.searchParams.get('active') !== 'false';
-		const lat = url.searchParams.get('lat');
-		const lon = url.searchParams.get('lon');
-		const radius = url.searchParams.get('radius');
+		const type = url.searchParams.get("type") || undefined;
+		const activeOnly = url.searchParams.get("active") !== "false";
+		const lat = url.searchParams.get("lat");
+		const lon = url.searchParams.get("lon");
+		const radius = url.searchParams.get("radius");
 
 		let location;
+
 		if (lat && lon) {
 			location = {
 				lat: parseFloat(lat),
-				lon: parseFloat(lon)
+				lon: parseFloat(lon),
 			};
 		}
 
 		const radiusKm = radius ? parseFloat(radius) : undefined;
 
-		const result = await this.channelService.getChannels(type, activeOnly, location, radiusKm);
+		const result = await this.channelService.getChannels(
+			type,
+			activeOnly,
+			location,
+			radiusKm,
+		);
 
 		return this.successResponse<ChannelsListResponse>(result);
 	}
 
 	/**
 	 * GET /api/v1/channels/{uuid} - Get specific channel
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}:
 	 *   get:
@@ -730,20 +820,27 @@ export class PTTAPIHandler {
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 */
-	private async getChannel(uuid: string, permissions: string[]): Promise<Response> {
+	private async getChannel(
+		uuid: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check read permission
-		if (!permissions.includes('read:api')) {
-			return this.errorResponse('Insufficient permissions', 403);
+		if (!permissions.includes("read:api")) {
+			return this.errorResponse("Insufficient permissions", 403);
 		}
 
 		const channel = await this.channelService.getChannel(uuid.toLowerCase());
+
 		if (!channel) {
-			return this.errorResponse('Channel not found', 404);
+			return this.errorResponse("Channel not found", 404);
 		}
 
 		// Get channel statistics if user has admin permissions
-		if (permissions.includes('admin:api')) {
-			const stats = await this.channelService.getChannelStats(uuid.toLowerCase());
+		if (permissions.includes("admin:api")) {
+			const stats = await this.channelService.getChannelStats(
+				uuid.toLowerCase(),
+			);
+
 			if (stats) {
 				return this.successResponse({ ...channel, stats });
 			}
@@ -754,7 +851,7 @@ export class PTTAPIHandler {
 
 	/**
 	 * POST /api/v1/channels - Create new channel
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels:
 	 *   post:
@@ -858,32 +955,47 @@ export class PTTAPIHandler {
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 */
-	private async createChannel(request: Request, userId: string, permissions: string[]): Promise<Response> {
+	private async createChannel(
+		request: Request,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check write permission
-		if (!permissions.includes('write:api')) {
-			return this.errorResponse('Insufficient permissions', 403);
+		if (!permissions.includes("write:api")) {
+			return this.errorResponse("Insufficient permissions", 403);
 		}
 
 		let createRequest: CreateChannelRequest;
+
 		try {
 			createRequest = await request.json();
 		} catch (error) {
-			return this.errorResponse('Invalid JSON payload', 400);
+			return this.errorResponse("Invalid JSON payload", 400);
 		}
 
 		// Validate required fields
 		if (!createRequest.name || !createRequest.type) {
-			return this.errorResponse('Name and type are required fields', 400);
+			return this.errorResponse("Name and type are required fields", 400);
 		}
 
 		// Additional validation for emergency channels (admin only)
-		if (createRequest.type === 'emergency' && !permissions.includes('admin:api')) {
-			return this.errorResponse('Admin permission required to create emergency channels', 403);
+		if (
+			createRequest.type === "emergency" &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				"Admin permission required to create emergency channels",
+				403,
+			);
 		}
 
-		const channel = await this.channelService.createChannel(createRequest, userId);
+		const channel = await this.channelService.createChannel(
+			createRequest,
+			userId,
+		);
+
 		if (!channel) {
-			return this.errorResponse('Failed to create channel', 500);
+			return this.errorResponse("Failed to create channel", 500);
 		}
 
 		return this.successResponse(channel, 201);
@@ -891,7 +1003,7 @@ export class PTTAPIHandler {
 
 	/**
 	 * POST /api/v1/channels/with-uuid - Create channel with specific UUID
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/with-uuid:
 	 *   post:
@@ -942,32 +1054,54 @@ export class PTTAPIHandler {
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 */
-	private async createChannelWithUuid(request: Request, userId: string, permissions: string[]): Promise<Response> {
+	private async createChannelWithUuid(
+		request: Request,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check write permission
-		if (!permissions.includes('write:api')) {
-			return this.errorResponse('Insufficient permissions', 403);
+		if (!permissions.includes("write:api")) {
+			return this.errorResponse("Insufficient permissions", 403);
 		}
 
 		let createRequest: CreateChannelWithUuidRequest;
+
 		try {
 			createRequest = await request.json();
 		} catch (error) {
-			return this.errorResponse('Invalid JSON payload', 400);
+			return this.errorResponse("Invalid JSON payload", 400);
 		}
 
 		// Validate required fields
 		if (!createRequest.name || !createRequest.type || !createRequest.uuid) {
-			return this.errorResponse('Name, type, and uuid are required fields', 400);
+			return this.errorResponse(
+				"Name, type, and uuid are required fields",
+				400,
+			);
 		}
 
 		// Additional validation for emergency channels (admin only)
-		if (createRequest.type === 'emergency' && !permissions.includes('admin:api')) {
-			return this.errorResponse('Admin permission required to create emergency channels', 403);
+		if (
+			createRequest.type === "emergency" &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				"Admin permission required to create emergency channels",
+				403,
+			);
 		}
 
-		const channel = await this.channelService.createChannelWithUuid(createRequest, userId, createRequest.uuid.toLowerCase());
+		const channel = await this.channelService.createChannelWithUuid(
+			createRequest,
+			userId,
+			createRequest.uuid.toLowerCase(),
+		);
+
 		if (!channel) {
-			return this.errorResponse('Failed to create channel - UUID may already exist', 400);
+			return this.errorResponse(
+				"Failed to create channel - UUID may already exist",
+				400,
+			);
 		}
 
 		return this.successResponse(channel, 201);
@@ -975,7 +1109,7 @@ export class PTTAPIHandler {
 
 	/**
 	 * PUT /api/v1/channels/{uuid} - Update existing channel
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}:
 	 *   put:
@@ -1189,38 +1323,64 @@ export class PTTAPIHandler {
 	 *                   type: string
 	 *                   example: "1.0.0"
 	 */
-	private async updateChannel(request: Request, uuid: string, userId: string, permissions: string[]): Promise<Response> {
+	private async updateChannel(
+		request: Request,
+		uuid: string,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check write permission
-		if (!permissions.includes('write:api')) {
-			return this.errorResponse('Insufficient permissions', 403);
+		if (!permissions.includes("write:api")) {
+			return this.errorResponse("Insufficient permissions", 403);
 		}
 
 		// Check if channel exists
-		const existingChannel = await this.channelService.getChannel(uuid.toLowerCase());
+		const existingChannel = await this.channelService.getChannel(
+			uuid.toLowerCase(),
+		);
+
 		if (!existingChannel) {
-			return this.errorResponse('Channel not found', 404);
+			return this.errorResponse("Channel not found", 404);
 		}
 
 		// Emergency channels require admin permission to modify
-		if (existingChannel.type === 'emergency' && !permissions.includes('admin:api')) {
-			return this.errorResponse('Admin permission required to modify emergency channels', 403);
+		if (
+			existingChannel.type === "emergency" &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				"Admin permission required to modify emergency channels",
+				403,
+			);
 		}
 
 		let updateRequest: UpdateChannelRequest;
+
 		try {
 			updateRequest = await request.json();
 		} catch (error) {
-			return this.errorResponse('Invalid JSON payload', 400);
+			return this.errorResponse("Invalid JSON payload", 400);
 		}
 
 		// Additional validation for changing to emergency type (admin only)
-		if (updateRequest.type === 'emergency' && !permissions.includes('admin:api')) {
-			return this.errorResponse('Admin permission required to change channel to emergency type', 403);
+		if (
+			updateRequest.type === "emergency" &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				"Admin permission required to change channel to emergency type",
+				403,
+			);
 		}
 
-		const updatedChannel = await this.channelService.updateChannel(uuid.toLowerCase(), updateRequest, userId);
+		const updatedChannel = await this.channelService.updateChannel(
+			uuid.toLowerCase(),
+			updateRequest,
+			userId,
+		);
+
 		if (!updatedChannel) {
-			return this.errorResponse('Failed to update channel', 500);
+			return this.errorResponse("Failed to update channel", 500);
 		}
 
 		return this.successResponse(updatedChannel);
@@ -1228,7 +1388,7 @@ export class PTTAPIHandler {
 
 	/**
 	 * DELETE /api/v1/channels/{uuid} - Delete channel (soft delete)
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}:
 	 *   delete:
@@ -1306,46 +1466,64 @@ export class PTTAPIHandler {
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 */
-	private async deleteChannel(request: Request, uuid: string, userId: string, permissions: string[]): Promise<Response> {
+	private async deleteChannel(
+		request: Request,
+		uuid: string,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check admin permission for deletion
-		if (!permissions.includes('admin:api')) {
-			return this.errorResponse('Admin permission required for channel deletion', 403);
+		if (!permissions.includes("admin:api")) {
+			return this.errorResponse(
+				"Admin permission required for channel deletion",
+				403,
+			);
 		}
 
 		// Check if channel exists
-		const existingChannel = await this.channelService.getChannel(uuid.toLowerCase());
+		const existingChannel = await this.channelService.getChannel(
+			uuid.toLowerCase(),
+		);
+
 		if (!existingChannel) {
-			return this.errorResponse('Channel not found', 404);
+			return this.errorResponse("Channel not found", 404);
 		}
 
 		// Check for hard delete parameter
 		const url = new URL(request.url);
-		const hardDelete = url.searchParams.get('hard') === 'true';
+		const hardDelete = url.searchParams.get("hard") === "true";
 
 		let success;
+
 		if (hardDelete) {
 			// Hard delete (permanent) - super admin only
 			// TODO: Add super admin permission check
-			success = await this.channelService.hardDeleteChannel(uuid.toLowerCase(), userId);
+			success = await this.channelService.hardDeleteChannel(
+				uuid.toLowerCase(),
+				userId,
+			);
 		} else {
 			// Soft delete (deactivate)
-			success = await this.channelService.deleteChannel(uuid.toLowerCase(), userId);
+			success = await this.channelService.deleteChannel(
+				uuid.toLowerCase(),
+				userId,
+			);
 		}
 
 		if (!success) {
-			return this.errorResponse('Failed to delete channel', 500);
+			return this.errorResponse("Failed to delete channel", 500);
 		}
 
 		return this.successResponse({
-			message: `Channel ${hardDelete ? 'permanently deleted' : 'deactivated'}`,
+			message: `Channel ${hardDelete ? "permanently deleted" : "deactivated"}`,
 			uuid,
-			hard_delete: hardDelete
+			hard_delete: hardDelete,
 		});
 	}
 
 	/**
 	 * Health check endpoint
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/health:
 	 *   get:
@@ -1404,15 +1582,15 @@ export class PTTAPIHandler {
 	 */
 	private async handleHealthCheck(request: Request): Promise<Response> {
 		const health = {
-			status: 'healthy',
+			status: "healthy",
 			timestamp: new Date().toISOString(),
-			version: '1.0.0',
-			api_version: 'v1',
+			version: "1.0.0",
+			api_version: "v1",
 			services: {
-				database: 'operational',
-				cache: 'operational',
-				channels: 'operational'
-			}
+				database: "operational",
+				cache: "operational",
+				channels: "operational",
+			},
 		};
 
 		return this.successResponse(health);
@@ -1421,47 +1599,64 @@ export class PTTAPIHandler {
 	/**
 	 * Authenticate request using Auth0 token
 	 */
-	private async authenticateRequest(request: Request, env: Env): Promise<{
+	private async authenticateRequest(
+		request: Request,
+		env: Env,
+	): Promise<{
 		success: boolean;
 		userId?: string;
 		permissions?: string[];
 		error?: string;
 	}> {
-		const authHeader = request.headers.get('Authorization');
-		if (!authHeader || !authHeader.startsWith('Bearer ')) {
-			return { success: false, error: 'Missing or invalid Authorization header' };
+		const authHeader = request.headers.get("Authorization");
+
+		if (!authHeader || !authHeader.startsWith("Bearer ")) {
+			return {
+				success: false,
+				error: "Missing or invalid Authorization header",
+			};
 		}
 
 		const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
 		try {
 			// Use the existing checkPermissions function with minimal permissions
-			const { access, payload } = await checkPermissions(token, 'read:api', env);
+			const { access, payload } = await checkPermissions(
+				token,
+				"read:api",
+				env,
+			);
 
 			if (!access) {
-				return { success: false, error: 'Invalid token or insufficient permissions' };
+				return {
+					success: false,
+					error: "Invalid token or insufficient permissions",
+				};
 			}
 
 			const userId = payload.sub as string;
-			const rawPermissions = payload.permissions as string[] || [];
+			const rawPermissions = (payload.permissions as string[]) || [];
 
 			// Normalize permissions: convert access:UUID permissions to lowercase
-			const permissions = rawPermissions.map(permission => {
-				if (permission.startsWith('access:')) {
+			const permissions = rawPermissions.map((permission) => {
+				if (permission.startsWith("access:")) {
 					const uuid = permission.substring(7); // Remove 'access:' prefix
+
 					return `access:${uuid.toLowerCase()}`;
 				}
+
 				return permission;
 			});
 
 			return {
 				success: true,
 				userId,
-				permissions
+				permissions,
 			};
 		} catch (error) {
-			console.error('Authentication error:', error);
-			return { success: false, error: 'Token validation failed' };
+			console.error("Authentication error:", error);
+
+			return { success: false, error: "Token validation failed" };
 		}
 	}
 
@@ -1473,18 +1668,18 @@ export class PTTAPIHandler {
 			success: true,
 			data,
 			timestamp: new Date().toISOString(),
-			version: '1.0.0'
+			version: "1.0.0",
 		};
 
 		return new Response(JSON.stringify(response), {
 			status,
-			headers: this.corsHeaders
+			headers: this.corsHeaders,
 		});
 	}
 
 	/**
 	 * POST /api/v1/channels/{uuid}/join - Join a channel as participant
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}/join:
 	 *   post:
@@ -1540,18 +1735,32 @@ export class PTTAPIHandler {
 	 *       404:
 	 *         description: Channel not found
 	 */
-	private async joinChannel(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
+	private async joinChannel(
+		request: Request,
+		channelUuid: string,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check channel-specific access permission
 		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
-		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
-			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+
+		if (
+			!permissions.includes(requiredPermission) &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				`Access denied - missing permission: ${requiredPermission}`,
+				403,
+			);
 		}
 
 		try {
 			// Parse optional location from request body
 			let joinRequest: JoinChannelRequest = {};
+
 			try {
 				const body = await request.text();
+
 				if (body.trim()) {
 					joinRequest = JSON.parse(body);
 				}
@@ -1564,42 +1773,51 @@ export class PTTAPIHandler {
 				channelUuid.toLowerCase(),
 				userId,
 				joinRequest.location,
-				joinRequest.ephemeral_push_token
+				joinRequest.ephemeral_push_token,
 			);
 
 			if (!result.success) {
-				return this.errorResponse(result.error || 'Failed to join channel', 400);
+				return this.errorResponse(
+					result.error || "Failed to join channel",
+					400,
+				);
 			}
 
 			// Get channel info for response
-			const channel = await this.channelService.getChannel(channelUuid.toLowerCase());
-			const participants = await this.channelService.getChannelParticipants(channelUuid.toLowerCase());
+			const channel = await this.channelService.getChannel(
+				channelUuid.toLowerCase(),
+			);
+			const participants = await this.channelService.getChannelParticipants(
+				channelUuid.toLowerCase(),
+			);
 
 			const response: JoinChannelResponse = {
 				success: true,
 				participant: result.participant,
-				channel_info: channel ? {
-					name: channel.name,
-					participants_count: participants.length,
-					max_participants: channel.max_participants
-				} : undefined
+				channel_info: channel
+					? {
+							name: channel.name,
+							participants_count: participants.length,
+							max_participants: channel.max_participants,
+						}
+					: undefined,
 			};
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: this.corsHeaders
+				headers: this.corsHeaders,
 			});
-
 		} catch (error) {
-			console.error('Join channel error:', error);
-			return this.errorResponse('Internal server error', 500);
+			console.error("Join channel error:", error);
+
+			return this.errorResponse("Internal server error", 500);
 		}
 	}
 
 	/**
 	 * POST /api/v1/channels/{uuid}/leave - Leave a channel
 	 * DELETE /api/v1/channels/{uuid}/leave - Leave a channel (alternative method)
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}/leave:
 	 *   post:
@@ -1657,39 +1875,57 @@ export class PTTAPIHandler {
 	 *       403:
 	 *         description: Access denied - insufficient permissions
 	 */
-	private async leaveChannel(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
+	private async leaveChannel(
+		request: Request,
+		channelUuid: string,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check channel-specific access permission
 		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
-		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
-			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+
+		if (
+			!permissions.includes(requiredPermission) &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				`Access denied - missing permission: ${requiredPermission}`,
+				403,
+			);
 		}
 
 		try {
 			// Leave channel using service
-			const result = await this.channelService.leaveChannel(channelUuid.toLowerCase(), userId);
+			const result = await this.channelService.leaveChannel(
+				channelUuid.toLowerCase(),
+				userId,
+			);
 
 			if (!result.success) {
-				return this.errorResponse(result.error || 'Failed to leave channel', 400);
+				return this.errorResponse(
+					result.error || "Failed to leave channel",
+					400,
+				);
 			}
 
 			const response: LeaveChannelResponse = {
-				success: true
+				success: true,
 			};
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: this.corsHeaders
+				headers: this.corsHeaders,
 			});
-
 		} catch (error) {
-			console.error('Leave channel error:', error);
-			return this.errorResponse('Internal server error', 500);
+			console.error("Leave channel error:", error);
+
+			return this.errorResponse("Internal server error", 500);
 		}
 	}
 
 	/**
 	 * GET /api/v1/channels/{uuid}/participants - Get channel participants
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}/participants:
 	 *   get:
@@ -1747,50 +1983,65 @@ export class PTTAPIHandler {
 	 *       404:
 	 *         description: Channel not found
 	 */
-	private async getChannelParticipants(channelUuid: string, permissions: string[]): Promise<Response> {
+	private async getChannelParticipants(
+		channelUuid: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check channel-specific access permission
 		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
-		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
-			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+
+		if (
+			!permissions.includes(requiredPermission) &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				`Access denied - missing permission: ${requiredPermission}`,
+				403,
+			);
 		}
 
 		try {
 			// Verify channel exists
-			const channel = await this.channelService.getChannel(channelUuid.toLowerCase());
+			const channel = await this.channelService.getChannel(
+				channelUuid.toLowerCase(),
+			);
+
 			if (!channel) {
-				return this.errorResponse('Channel not found', 404);
+				return this.errorResponse("Channel not found", 404);
 			}
 
 			// Get participants
-			const participants = await this.channelService.getChannelParticipants(channelUuid.toLowerCase());
+			const participants = await this.channelService.getChannelParticipants(
+				channelUuid.toLowerCase(),
+			);
 
 			const response: APIResponse<ChannelParticipant[]> = {
 				success: true,
 				data: participants,
 				timestamp: new Date().toISOString(),
-				version: '1.0.0'
+				version: "1.0.0",
 			};
 
 			// Add total count as additional property
 			const responseWithCount = {
 				...response,
-				total_count: participants.length
+				total_count: participants.length,
 			};
 
 			return new Response(JSON.stringify(responseWithCount), {
 				status: 200,
-				headers: this.corsHeaders
+				headers: this.corsHeaders,
 			});
-
 		} catch (error) {
-			console.error('Get channel participants error:', error);
-			return this.errorResponse('Failed to get channel participants', 500);
+			console.error("Get channel participants error:", error);
+
+			return this.errorResponse("Failed to get channel participants", 500);
 		}
 	}
 
 	/**
 	 * PUT /api/v1/channels/{uuid}/update-token - Update participant ephemeral push token
-	 * 
+	 *
 	 * @openapi
 	 * /api/v1/channels/{uuid}/update-token:
 	 *   put:
@@ -1841,47 +2092,65 @@ export class PTTAPIHandler {
 	 *       403:
 	 *         description: Access denied - insufficient permissions
 	 */
-	private async updateParticipantToken(request: Request, channelUuid: string, userId: string, permissions: string[]): Promise<Response> {
+	private async updateParticipantToken(
+		request: Request,
+		channelUuid: string,
+		userId: string,
+		permissions: string[],
+	): Promise<Response> {
 		// Check channel-specific access permission
 		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
-		if (!permissions.includes(requiredPermission) && !permissions.includes('admin:api')) {
-			return this.errorResponse(`Access denied - missing permission: ${requiredPermission}`, 403);
+
+		if (
+			!permissions.includes(requiredPermission) &&
+			!permissions.includes("admin:api")
+		) {
+			return this.errorResponse(
+				`Access denied - missing permission: ${requiredPermission}`,
+				403,
+			);
 		}
 
 		try {
 			// Parse request body
-			const body = await request.json() as { ephemeral_push_token?: string };
+			const body = (await request.json()) as { ephemeral_push_token?: string };
 
 			if (!body.ephemeral_push_token) {
-				return this.errorResponse('Missing ephemeral_push_token in request body', 400);
+				return this.errorResponse(
+					"Missing ephemeral_push_token in request body",
+					400,
+				);
 			}
 
 			// Update token using service
 			const result = await this.channelService.updateParticipantPushToken(
 				channelUuid.toLowerCase(),
 				userId,
-				body.ephemeral_push_token
+				body.ephemeral_push_token,
 			);
 
 			if (!result.success) {
-				return this.errorResponse(result.error || 'Failed to update push token', 400);
+				return this.errorResponse(
+					result.error || "Failed to update push token",
+					400,
+				);
 			}
 
 			const response = {
 				success: true,
-				message: 'Push token updated successfully',
+				message: "Push token updated successfully",
 				timestamp: new Date().toISOString(),
-				version: '1.0.0'
+				version: "1.0.0",
 			};
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: this.corsHeaders
+				headers: this.corsHeaders,
 			});
-
 		} catch (error) {
-			console.error('Update participant token error:', error);
-			return this.errorResponse('Invalid request body', 400);
+			console.error("Update participant token error:", error);
+
+			return this.errorResponse("Invalid request body", 400);
 		}
 	}
 
@@ -1894,57 +2163,76 @@ export class PTTAPIHandler {
 	 * GET /api/v1/transmissions/active/{channel_uuid} - Get active transmission
 	 * GET /api/v1/transmissions/ws/{channel_uuid} - WebSocket for real-time
 	 */
-	private async handleTransmissionsAPI(request: Request, env: Env, resourceId?: string, subResource?: string): Promise<Response> {
+	private async handleTransmissionsAPI(
+		request: Request,
+		env: Env,
+		resourceId?: string,
+		subResource?: string,
+	): Promise<Response> {
 		const method = request.method;
 
 		// Authentication required for all transmission operations
 		const authResult = await this.authenticateRequest(request, env);
+
 		if (!authResult.success || !authResult.userId) {
-			return this.errorResponse(authResult.error || 'Authentication required', 401);
+			return this.errorResponse(
+				authResult.error || "Authentication required",
+				401,
+			);
 		}
 
 		const userId = authResult.userId;
 
 		// Extract username from JWT payload
-		let username = 'Unknown User';
+		let username = "Unknown User";
+
 		try {
-			const authHeader = request.headers.get('Authorization');
+			const authHeader = request.headers.get("Authorization");
+
 			if (authHeader) {
 				const token = authHeader.substring(7);
-				const payload = JSON.parse(atob(token.split('.')[1]));
-				username = payload.name || payload.email || payload.nickname || 'Unknown User';
+				const payload = JSON.parse(atob(token.split(".")[1]));
+
+				username =
+					payload.name || payload.email || payload.nickname || "Unknown User";
 			}
 		} catch (error) {
-			username = 'Unknown User';
+			username = "Unknown User";
 		}
 
 		try {
-			if (method === 'POST') {
+			if (method === "POST") {
 				// Handle transmission actions
-				if (resourceId === 'start') {
+				if (resourceId === "start") {
 					return await this.handleStartTransmission(request, userId, username);
-				} else if (resourceId && subResource === 'chunk') {
+				} else if (resourceId && subResource === "chunk") {
 					return await this.handleAudioChunk(request, resourceId);
-				} else if (resourceId && subResource === 'end') {
+				} else if (resourceId && subResource === "end") {
 					return await this.handleEndTransmission(request, resourceId);
 				} else {
-					return this.errorResponse('Invalid transmission endpoint', 400);
+					return this.errorResponse("Invalid transmission endpoint", 400);
 				}
-			} else if (method === 'GET') {
+			} else if (method === "GET") {
 				// Handle transmission queries
-				if (resourceId === 'active' && subResource) {
+				if (resourceId === "active" && subResource) {
 					return await this.handleGetActiveTransmission(subResource);
-				} else if (resourceId === 'ws' && subResource) {
-					return await this.handleWebSocketUpgrade(request, subResource, userId, username);
+				} else if (resourceId === "ws" && subResource) {
+					return await this.handleWebSocketUpgrade(
+						request,
+						subResource,
+						userId,
+						username,
+					);
 				} else {
-					return this.errorResponse('Invalid transmission query endpoint', 400);
+					return this.errorResponse("Invalid transmission query endpoint", 400);
 				}
 			} else {
-				return this.errorResponse('Method not allowed', 405);
+				return this.errorResponse("Method not allowed", 405);
 			}
 		} catch (error) {
-			console.error('Transmission API error:', error);
-			return this.errorResponse('Internal server error', 500);
+			console.error("Transmission API error:", error);
+
+			return this.errorResponse("Internal server error", 500);
 		}
 	}
 
@@ -2038,48 +2326,75 @@ export class PTTAPIHandler {
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 * Handle POST /api/v1/transmissions/start
 	 */
-	private async handleStartTransmission(request: Request, userId: string, username: string): Promise<Response> {
+	private async handleStartTransmission(
+		request: Request,
+		userId: string,
+		username: string,
+	): Promise<Response> {
 		try {
-			const body = await request.json() as PTTStartTransmissionRequest;
+			const body = (await request.json()) as PTTStartTransmissionRequest;
 
 			// Validate required fields
 			if (!body.channel_uuid) {
-				return this.errorResponse('channel_uuid is required', 400);
+				return this.errorResponse("channel_uuid is required", 400);
 			}
 
-			if (!body.audio_format || !['aac-lc', 'opus', 'pcm'].includes(body.audio_format)) {
-				return this.errorResponse('Valid audio_format is required (aac-lc, opus, pcm)', 400);
+			if (
+				!body.audio_format ||
+				!["aac-lc", "opus", "pcm"].includes(body.audio_format)
+			) {
+				return this.errorResponse(
+					"Valid audio_format is required (aac-lc, opus, pcm)",
+					400,
+				);
 			}
 
 			if (!body.sample_rate || body.sample_rate <= 0) {
-				return this.errorResponse('Valid sample_rate is required', 400);
+				return this.errorResponse("Valid sample_rate is required", 400);
 			}
 
-			if (!body.network_quality || !['excellent', 'good', 'fair', 'poor'].includes(body.network_quality)) {
-				return this.errorResponse('Valid network_quality is required', 400);
+			if (
+				!body.network_quality ||
+				!["excellent", "good", "fair", "poor"].includes(body.network_quality)
+			) {
+				return this.errorResponse("Valid network_quality is required", 400);
 			}
 
 			// Validate channel access
-			const accessResult = await this.audioService.validateChannelAccess(body.channel_uuid, userId);
+			const accessResult = await this.audioService.validateChannelAccess(
+				body.channel_uuid,
+				userId,
+			);
+
 			if (!accessResult.valid) {
-				return this.errorResponse(accessResult.error || 'Channel access denied', 403);
+				return this.errorResponse(
+					accessResult.error || "Channel access denied",
+					403,
+				);
 			}
 
 			// Start transmission via audio service
-			const result = await this.audioService.startTransmission(body, userId, username);
+			const result = await this.audioService.startTransmission(
+				body,
+				userId,
+				username,
+			);
 
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: this.corsHeaders
+					headers: this.corsHeaders,
 				});
 			} else {
-				return this.errorResponse(result.error || 'Failed to start transmission', 400);
+				return this.errorResponse(
+					result.error || "Failed to start transmission",
+					400,
+				);
 			}
-
 		} catch (error) {
-			console.error('Start transmission error:', error);
-			return this.errorResponse('Invalid request body', 400);
+			console.error("Start transmission error:", error);
+
+			return this.errorResponse("Invalid request body", 400);
 		}
 	}
 
@@ -2169,36 +2484,42 @@ export class PTTAPIHandler {
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 * Handle POST /api/v1/transmissions/{session_id}/chunk
 	 */
-	private async handleAudioChunk(request: Request, sessionId: string): Promise<Response> {
+	private async handleAudioChunk(
+		request: Request,
+		sessionId: string,
+	): Promise<Response> {
 		try {
-			const body = await request.json() as PTTAudioChunkRequest;
+			const body = (await request.json()) as PTTAudioChunkRequest;
 
 			// Validate required fields
 			if (!body.session_id || body.session_id !== sessionId) {
-				return this.errorResponse('session_id mismatch', 400);
+				return this.errorResponse("session_id mismatch", 400);
 			}
 
-			if (!body.audio_data || typeof body.audio_data !== 'string') {
-				return this.errorResponse('audio_data (base64) is required', 400);
+			if (!body.audio_data || typeof body.audio_data !== "string") {
+				return this.errorResponse("audio_data (base64) is required", 400);
 			}
 
-			if (typeof body.chunk_sequence !== 'number' || body.chunk_sequence <= 0) {
-				return this.errorResponse('Valid chunk_sequence is required', 400);
+			if (typeof body.chunk_sequence !== "number" || body.chunk_sequence <= 0) {
+				return this.errorResponse("Valid chunk_sequence is required", 400);
 			}
 
-			if (typeof body.chunk_size_bytes !== 'number' || body.chunk_size_bytes <= 0) {
-				return this.errorResponse('Valid chunk_size_bytes is required', 400);
+			if (
+				typeof body.chunk_size_bytes !== "number" ||
+				body.chunk_size_bytes <= 0
+			) {
+				return this.errorResponse("Valid chunk_size_bytes is required", 400);
 			}
 
-			if (typeof body.timestamp_ms !== 'number' || body.timestamp_ms <= 0) {
-				return this.errorResponse('Valid timestamp_ms is required', 400);
+			if (typeof body.timestamp_ms !== "number" || body.timestamp_ms <= 0) {
+				return this.errorResponse("Valid timestamp_ms is required", 400);
 			}
 
 			// Validate base64 audio data
 			try {
 				atob(body.audio_data);
 			} catch (error) {
-				return this.errorResponse('Invalid base64 audio_data', 400);
+				return this.errorResponse("Invalid base64 audio_data", 400);
 			}
 
 			// Process audio chunk via audio service
@@ -2207,15 +2528,18 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: this.corsHeaders
+					headers: this.corsHeaders,
 				});
 			} else {
-				return this.errorResponse(result.error || 'Failed to process audio chunk', 400);
+				return this.errorResponse(
+					result.error || "Failed to process audio chunk",
+					400,
+				);
 			}
-
 		} catch (error) {
-			console.error('Audio chunk error:', error);
-			return this.errorResponse('Invalid request body', 400);
+			console.error("Audio chunk error:", error);
+
+			return this.errorResponse("Invalid request body", 400);
 		}
 	}
 
@@ -2302,17 +2626,23 @@ export class PTTAPIHandler {
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 * Handle POST /api/v1/transmissions/{session_id}/end
 	 */
-	private async handleEndTransmission(request: Request, sessionId: string): Promise<Response> {
+	private async handleEndTransmission(
+		request: Request,
+		sessionId: string,
+	): Promise<Response> {
 		try {
-			const body = await request.json() as PTTEndTransmissionRequest;
+			const body = (await request.json()) as PTTEndTransmissionRequest;
 
 			// Validate required fields
 			if (!body.session_id || body.session_id !== sessionId) {
-				return this.errorResponse('session_id mismatch', 400);
+				return this.errorResponse("session_id mismatch", 400);
 			}
 
-			if (typeof body.total_duration_ms !== 'number' || body.total_duration_ms <= 0) {
-				return this.errorResponse('Valid total_duration_ms is required', 400);
+			if (
+				typeof body.total_duration_ms !== "number" ||
+				body.total_duration_ms <= 0
+			) {
+				return this.errorResponse("Valid total_duration_ms is required", 400);
 			}
 
 			// End transmission via audio service
@@ -2321,15 +2651,18 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: this.corsHeaders
+					headers: this.corsHeaders,
 				});
 			} else {
-				return this.errorResponse(result.error || 'Failed to end transmission', 400);
+				return this.errorResponse(
+					result.error || "Failed to end transmission",
+					400,
+				);
 			}
-
 		} catch (error) {
-			console.error('End transmission error:', error);
-			return this.errorResponse('Invalid request body', 400);
+			console.error("End transmission error:", error);
+
+			return this.errorResponse("Invalid request body", 400);
 		}
 	}
 
@@ -2401,23 +2734,29 @@ export class PTTAPIHandler {
 	 *               $ref: '#/components/schemas/ErrorResponse'
 	 * Handle GET /api/v1/transmissions/active/{channel_uuid}
 	 */
-	private async handleGetActiveTransmission(channelUuid: string): Promise<Response> {
+	private async handleGetActiveTransmission(
+		channelUuid: string,
+	): Promise<Response> {
 		try {
-			const activeTransmission = await this.audioService.getActiveTransmission(channelUuid);
+			const activeTransmission =
+				await this.audioService.getActiveTransmission(channelUuid);
 
-			return new Response(JSON.stringify({
-				success: true,
-				active_transmission: activeTransmission,
-				timestamp: new Date().toISOString(),
-				version: '1.0.0'
-			}), {
-				status: 200,
-				headers: this.corsHeaders
-			});
-
+			return new Response(
+				JSON.stringify({
+					success: true,
+					active_transmission: activeTransmission,
+					timestamp: new Date().toISOString(),
+					version: "1.0.0",
+				}),
+				{
+					status: 200,
+					headers: this.corsHeaders,
+				},
+			);
 		} catch (error) {
-			console.error('Get active transmission error:', error);
-			return this.errorResponse('Failed to get active transmission', 500);
+			console.error("Get active transmission error:", error);
+
+			return this.errorResponse("Failed to get active transmission", 500);
 		}
 	}
 
@@ -2493,27 +2832,46 @@ export class PTTAPIHandler {
 	 * Handle WebSocket upgrade for real-time PTT communication
 	 * GET /api/v1/transmissions/ws/{channel_uuid}
 	 */
-	private async handleWebSocketUpgrade(request: Request, channelUuid: string, userId: string, username: string): Promise<Response> {
+	private async handleWebSocketUpgrade(
+		request: Request,
+		channelUuid: string,
+		userId: string,
+		username: string,
+	): Promise<Response> {
 		try {
 			// Validate channel access
-			const accessResult = await this.audioService.validateChannelAccess(channelUuid, userId);
+			const accessResult = await this.audioService.validateChannelAccess(
+				channelUuid,
+				userId,
+			);
+
 			if (!accessResult.valid) {
-				return this.errorResponse(accessResult.error || 'Channel access denied', 403);
+				return this.errorResponse(
+					accessResult.error || "Channel access denied",
+					403,
+				);
 			}
 
 			// Create new request with user info in query params for Durable Object
 			const url = new URL(request.url);
-			url.searchParams.set('userId', userId);
-			url.searchParams.set('username', username);
+
+			url.searchParams.set("userId", userId);
+			url.searchParams.set("username", username);
 
 			const newRequest = new Request(url.toString(), request);
 
 			// Forward WebSocket upgrade to PTT audio service
-			return await this.audioService.getChannelWebSocket(channelUuid, newRequest);
-
+			return await this.audioService.getChannelWebSocket(
+				channelUuid,
+				newRequest,
+			);
 		} catch (error) {
-			console.error('WebSocket upgrade error:', error);
-			return this.errorResponse('Failed to establish WebSocket connection', 500);
+			console.error("WebSocket upgrade error:", error);
+
+			return this.errorResponse(
+				"Failed to establish WebSocket connection",
+				500,
+			);
 		}
 	}
 
@@ -2525,12 +2883,12 @@ export class PTTAPIHandler {
 			success: false,
 			error,
 			timestamp: new Date().toISOString(),
-			version: '1.0.0'
+			version: "1.0.0",
 		};
 
 		return new Response(JSON.stringify(response), {
 			status,
-			headers: this.corsHeaders
+			headers: this.corsHeaders,
 		});
 	}
 }

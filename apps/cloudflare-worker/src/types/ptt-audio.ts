@@ -23,191 +23,194 @@
  */
 
 // Audio formats supported by the PTT system
-export type AudioFormat = 'aac-lc' | 'opus' | 'pcm';
+export type AudioFormat = "aac-lc" | "opus" | "pcm";
 
 // Network quality indicators
-export type NetworkQuality = 'excellent' | 'good' | 'fair' | 'poor';
+export type NetworkQuality = "excellent" | "good" | "fair" | "poor";
 
 // Geographic location data
 export interface Location {
-    lat: number;
-    lon: number;
-    accuracy?: number;
-    altitude?: number;
+	lat: number;
+	lon: number;
+	accuracy?: number;
+	altitude?: number;
 }
 
 // Audio chunk data structure for real-time transmission
 export interface AudioChunk {
-    sequence: number;
-    data: string; // base64 encoded audio data
-    timestamp: number;
-    sizeBytes: number;
+	sequence: number;
+	data: string; // base64 encoded audio data
+	timestamp: number;
+	sizeBytes: number;
 }
 
 // Active transmission session stored in Durable Object memory
 export interface LiveTransmission {
-    sessionId: string;
-    channelUuid: string;
-    userId: string;
-    username: string;
-    startTime: number;
-    audioFormat: AudioFormat;
-    sampleRate: number;
-    bitrate: number;
-    networkQuality: NetworkQuality;
-    location?: Location;
-    isEmergency: boolean;
+	sessionId: string;
+	channelUuid: string;
+	userId: string;
+	username: string;
+	startTime: number;
+	audioFormat: AudioFormat;
+	sampleRate: number;
+	bitrate: number;
+	networkQuality: NetworkQuality;
+	location?: Location;
+	isEmergency: boolean;
 
-    // Real-time state
-    audioChunks: Map<number, { chunk: AudioChunk; expires: number }>;
-    participants: Set<WebSocket>;
-    cleanupTimeout?: number;
-    expectedSequence: number;
-    totalBytes: number;
+	// Real-time state
+	audioChunks: Map<number, { chunk: AudioChunk; expires: number }>;
+	participants: Set<WebSocket>;
+	cleanupTimeout?: number;
+	expectedSequence: number;
+	totalBytes: number;
 }
 
 // WebSocket message types for real-time communication
 export type PTTWebSocketMessage =
-    | PTTTransmissionStartMessage
-    | PTTAudioChunkMessage
-    | PTTTransmissionEndMessage
-    | PTTParticipantJoinMessage
-    | PTTParticipantLeaveMessage
-    | PTTErrorMessage
-    | PTTPongMessage;
+	| PTTTransmissionStartMessage
+	| PTTAudioChunkMessage
+	| PTTTransmissionEndMessage
+	| PTTParticipantJoinMessage
+	| PTTParticipantLeaveMessage
+	| PTTErrorMessage
+	| PTTPongMessage;
 
 export interface PTTTransmissionStartMessage {
-    type: 'transmission_start';
-    sessionId: string;
-    userId: string;
-    username: string;
-    audioFormat: AudioFormat;
-    isEmergency: boolean;
-    timestamp: number;
+	type: "transmission_start";
+	sessionId: string;
+	userId: string;
+	username: string;
+	audioFormat: AudioFormat;
+	isEmergency: boolean;
+	timestamp: number;
 }
 
 export interface PTTAudioChunkMessage {
-    type: 'audio_chunk';
-    sessionId: string;
-    sequence: number;
-    audioData: string;
-    timestamp: number;
-    sizeBytes: number;
+	type: "audio_chunk";
+	sessionId: string;
+	sequence: number;
+	audioData: string;
+	timestamp: number;
+	sizeBytes: number;
 }
 
 export interface PTTTransmissionEndMessage {
-    type: 'transmission_end';
-    sessionId: string;
-    userId: string;
-    duration: number;
-    totalChunks: number;
-    totalBytes: number;
-    timestamp: number;
+	type: "transmission_end";
+	sessionId: string;
+	userId: string;
+	duration: number;
+	totalChunks: number;
+	totalBytes: number;
+	timestamp: number;
 }
 
 export interface PTTParticipantJoinMessage {
-    type: 'participant_join';
-    userId: string;
-    username: string;
-    timestamp: number;
+	type: "participant_join";
+	userId: string;
+	username: string;
+	timestamp: number;
 }
 
 export interface PTTParticipantLeaveMessage {
-    type: 'participant_leave';
-    userId: string;
-    timestamp: number;
+	type: "participant_leave";
+	userId: string;
+	timestamp: number;
 }
 
 export interface PTTErrorMessage {
-    type: 'error';
-    error: string;
-    code?: string;
-    timestamp: number;
+	type: "error";
+	error: string;
+	code?: string;
+	timestamp: number;
 }
 
 export interface PTTPongMessage {
-    type: 'pong';
-    timestamp: number;
+	type: "pong";
+	timestamp: number;
 }
 
 // HTTP API Request/Response types
 export interface PTTStartTransmissionRequest {
-    channel_uuid: string;
-    audio_format: AudioFormat;
-    sample_rate: number;
-    bitrate: number;
-    network_quality: NetworkQuality;
-    location?: Location;
-    is_emergency?: boolean;
+	channel_uuid: string;
+	audio_format: AudioFormat;
+	sample_rate: number;
+	bitrate: number;
+	network_quality: NetworkQuality;
+	location?: Location;
+	is_emergency?: boolean;
 }
 
 export interface PTTStartTransmissionResponse {
-    success: boolean;
-    session_id?: string;
-    max_duration_ms?: number;
-    websocket_url?: string;
-    error?: string;
+	success: boolean;
+	session_id?: string;
+	max_duration_ms?: number;
+	websocket_url?: string;
+	error?: string;
 }
 
 export interface PTTAudioChunkRequest {
-    session_id: string;
-    chunk_sequence: number;
-    audio_data: string;
-    chunk_size_bytes: number;
-    timestamp_ms: number;
+	session_id: string;
+	chunk_sequence: number;
+	audio_data: string;
+	chunk_size_bytes: number;
+	timestamp_ms: number;
 }
 
 export interface PTTAudioChunkResponse {
-    success: boolean;
-    chunk_received?: boolean;
-    next_expected_sequence?: number;
-    error?: string;
+	success: boolean;
+	chunk_received?: boolean;
+	next_expected_sequence?: number;
+	error?: string;
 }
 
 export interface PTTEndTransmissionRequest {
-    session_id: string;
-    total_duration_ms: number;
-    final_location?: Location;
+	session_id: string;
+	total_duration_ms: number;
+	final_location?: Location;
 }
 
 export interface PTTEndTransmissionResponse {
-    success: boolean;
-    session_summary?: {
-        total_duration_ms: number;
-        chunks_received: number;
-        total_bytes: number;
-        participants_notified: number;
-    };
-    error?: string;
+	success: boolean;
+	session_summary?: {
+		total_duration_ms: number;
+		chunks_received: number;
+		total_bytes: number;
+		participants_notified: number;
+	};
+	error?: string;
 }
 
 // Durable Object state for channel
 export interface PTTChannelState {
-    channelUuid: string;
-    activeTransmission: LiveTransmission | null;
-    connectedParticipants: Map<string, {
-        userId: string;
-        username: string;
-        websocket: WebSocket;
-        joinedAt: number;
-    }>;
-    lastActivity: number;
+	channelUuid: string;
+	activeTransmission: LiveTransmission | null;
+	connectedParticipants: Map<
+		string,
+		{
+			userId: string;
+			username: string;
+			websocket: WebSocket;
+			joinedAt: number;
+		}
+	>;
+	lastActivity: number;
 }
 
 // Transmission metadata for audit logging (minimal)
 export interface TransmissionAuditLog {
-    sessionId: string;
-    channelUuid: string;
-    userId: string;
-    username: string;
-    startTime: string;
-    endTime?: string;
-    duration?: number;
-    audioFormat: AudioFormat;
-    chunksCount: number;
-    totalBytes: number;
-    participantCount: number;
-    isEmergency: boolean;
-    networkQuality: NetworkQuality;
-    location?: Location;
+	sessionId: string;
+	channelUuid: string;
+	userId: string;
+	username: string;
+	startTime: string;
+	endTime?: string;
+	duration?: number;
+	audioFormat: AudioFormat;
+	chunksCount: number;
+	totalBytes: number;
+	participantCount: number;
+	isEmergency: boolean;
+	networkQuality: NetworkQuality;
+	location?: Location;
 }

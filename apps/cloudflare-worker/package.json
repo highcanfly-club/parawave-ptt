@@ -13,7 +13,7 @@
     "build": "echo 'Cloudflare Worker does not require build step'",
     "test": "set -a && source ../../.env && set +a && node --experimental-vm-modules ../../node_modules/.bin/jest",
     "type-check": "tsc --noEmit",
-    "lint": "eslint ./src/**/*.{ts,tsx} --fix",
+    "lint": "eslint ./src/**/*.ts --fix",
     "clean": "rm -rf .wrangler .dev.vars .turbo",
     "cf-typegen": "wrangler types",
     "d1:create": "npx wrangler d1 execute --local --file migrations/001_initial_schema.sql ptt-parapente",

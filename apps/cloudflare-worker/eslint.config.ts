@@ -4,6 +4,8 @@ import tsParser from "@typescript-eslint/parser";
 import unusedImports from "eslint-plugin-unused-imports";
 import importPlugin from "eslint-plugin-import";
 import prettierPlugin from "eslint-plugin-prettier";
+import globals from "globals";
+import { DurableObject } from "cloudflare:workers";
 
 export default [
 	eslint.configs.recommended,
@@ -14,19 +16,14 @@ export default [
 			sourceType: "module",
 			parser: tsParser,
 			globals: {
-				// Ajout des globals du navigateur
-				document: "readonly",
-				localStorage: "readonly",
-				window: "readonly",
-				SVGSVGElement: "readonly",
-				URL: "readonly",
-				console: "readonly",
-				fetch: "readonly",
-				// Ajout des types Cloudflare Workers
+				...globals.builtin,
+				...globals.worker,
+				D1Database: "readonly",
 				Env: "readonly",
-				Request: "readonly",
-				Response: "readonly",
-				ExportedHandler: "readonly",
+				KVNamespace: "readonly",
+				DurableObject: "readonly",
+				DurableObjectState: "readonly",
+				WebSocketPair: "readonly",
 			},
 			parserOptions: {
 				ecmaFeatures: {
@@ -49,7 +46,7 @@ export default [
 			prettier: prettierPlugin,
 		},
 		rules: {
-			"no-console": "warn",
+			"no-console": "off",
 			"prettier/prettier": "warn",
 			"no-unused-vars": "off",
 			"unused-imports/no-unused-vars": "off",

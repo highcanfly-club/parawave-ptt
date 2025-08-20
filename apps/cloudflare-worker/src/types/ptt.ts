@@ -25,12 +25,21 @@
 /**
  * Channel types for PTT application
  */
-export type ChannelType = "site_local" | "emergency" | "general" | "cross_country" | "instructors";
+export type ChannelType =
+	| "site_local"
+	| "emergency"
+	| "general"
+	| "cross_country"
+	| "instructors";
 
 /**
  * Channel difficulty levels for paragliding sites
  */
-export type ChannelDifficulty = "beginner" | "intermediate" | "advanced" | "expert";
+export type ChannelDifficulty =
+	| "beginner"
+	| "intermediate"
+	| "advanced"
+	| "expert";
 
 /**
  * Network quality levels
