@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS channel_participants (
     connection_quality TEXT DEFAULT 'good' CHECK (connection_quality IN ('poor', 'fair', 'good', 'excellent')),
     is_transmitting BOOLEAN DEFAULT FALSE,
     ephemeral_push_token TEXT, -- Ephemeral APNs PTT token from iOS framework
+    device_os TEXT, -- Operating system (iOS, Android, Web, etc.)
+    device_os_version TEXT, -- OS version (e.g., "17.5.1", "14", "Chrome 119.0")
+    app_version TEXT, -- Application version (e.g., "1.2.3", "2.0.0-beta.1")
+    user_agent TEXT, -- Full user agent string for debugging
     FOREIGN KEY (channel_uuid) REFERENCES channels (uuid) ON DELETE CASCADE,
     UNIQUE(channel_uuid, user_id)
 );

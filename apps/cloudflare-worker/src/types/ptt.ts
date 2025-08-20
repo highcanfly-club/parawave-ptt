@@ -47,6 +47,21 @@ export type ChannelDifficulty =
 export type NetworkQuality = "poor" | "fair" | "good" | "excellent";
 
 /**
+ * Device operating system types
+ */
+export type DeviceOS = "iOS" | "Android" | "Web" | "Desktop" | "Unknown";
+
+/**
+ * Device information
+ */
+export interface DeviceInfo {
+	os?: DeviceOS;
+	os_version?: string;
+	app_version?: string;
+	user_agent?: string;
+}
+
+/**
  * Geographic coordinates
  */
 export interface Coordinates {
@@ -122,6 +137,9 @@ export interface ChannelParticipant {
 	connection_quality: NetworkQuality;
 	is_transmitting: boolean;
 	ephemeral_push_token?: string; // Token éphémère APNs PTT pour notifications
+	os_type?: DeviceOS;
+	os_version?: string;
+	app_version?: string;
 }
 
 /**
@@ -190,6 +208,7 @@ export interface FlyingSite {
 export interface JoinChannelRequest {
 	location?: Coordinates;
 	ephemeral_push_token?: string; // Token éphémère APNs PTT depuis iOS framework
+	device_info?: DeviceInfo;
 }
 
 /**

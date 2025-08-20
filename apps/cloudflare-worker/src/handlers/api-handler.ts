@@ -162,6 +162,19 @@ import {
  *         ephemeral_push_token:
  *           type: string
  *           description: Ephemeral APNs PTT token (only visible to admin users)
+ *         os_type:
+ *           type: string
+ *           enum: [iOS, Android, Web, Desktop, Unknown]
+ *           description: Operating system type
+ *           example: "iOS"
+ *         os_version:
+ *           type: string
+ *           description: Operating system version
+ *           example: "17.5.1"
+ *         app_version:
+ *           type: string
+ *           description: Application version
+ *           example: "1.2.3"
  *     JoinChannelRequest:
  *       type: object
  *       properties:
@@ -171,6 +184,27 @@ import {
  *         ephemeral_push_token:
  *           type: string
  *           description: Ephemeral APNs PTT token from iOS framework for push notifications
+ *         device_info:
+ *           type: object
+ *           properties:
+ *             os:
+ *               type: string
+ *               description: Operating system
+ *               example: "iOS"
+ *               enum: [iOS, Android, Web, Desktop, Unknown]
+ *             os_version:
+ *               type: string
+ *               description: Operating system version
+ *               example: "17.5.1"
+ *             app_version:
+ *               type: string
+ *               description: Application version
+ *               example: "1.2.3"
+ *             user_agent:
+ *               type: string
+ *               description: Full user agent string for debugging
+ *               example: "ParaWave/1.2.3 (iPhone; iOS 17.5.1; Scale/3.00)"
+ *           description: Optional device and application information
  *     JoinChannelResponse:
  *       type: object
  *       properties:
@@ -1777,6 +1811,7 @@ export class PTTAPIHandler {
 				userId,
 				joinRequest.location,
 				joinRequest.ephemeral_push_token,
+				joinRequest.device_info,
 			);
 
 			if (!result.success) {

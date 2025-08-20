@@ -46,6 +46,8 @@ Application de communication half-duplex simulant les radios deux voies traditio
 - **Canaux prédéfinis pour sites de vol spécifiques**
 - **Intégration optionnelle avec données météo locales**
 - **Gestion de groupes fermés avec invitations**
+- **Suivi automatique des informations d'appareil pour support technique**
+- **Mise à jour optionnelle de localisation lors des transmissions**
 
 ## Architecture Globale
 
@@ -659,7 +661,16 @@ Authorization: Bearer JWT_TOKEN_FROM_Auth0
 Content-Type: application/json
 - Rejoindre un channel
 - Permissions requises: access:{uuid} OU admin:api
-- Body optionnel: {"location": {"lat": 45.929681, "lon": 6.876345}}
+- Body optionnel: {
+    "location": {"lat": 45.929681, "lon": 6.876345},
+    "ephemeral_push_token": "token-from-ios-framework",
+    "device_info": {
+      "os": "iOS",
+      "os_version": "17.2.1",
+      "app_version": "1.0.0",
+      "user_agent": "ParaWave/1.0.0 (iPhone; iOS 17.2.1; Scale/3.00)"
+    }
+  }
 
 POST /api/v1/channels/{uuid}/leave
 DELETE /api/v1/channels/{uuid}/leave
@@ -727,7 +738,11 @@ Body: {"ephemeral_push_token": "token-from-ios-framework"}
       "lon": 6.876345
     },
     "connection_quality": "good",
-    "is_transmitting": false
+    "is_transmitting": false,
+    "ephemeral_push_token": "...",
+    "os_type": "iOS",
+    "os_version": "17.2.1",
+    "app_version": "1.0.0"
   },
   "channel_info": {
     "name": "Chamonix Local",
@@ -869,7 +884,7 @@ struct ChannelPermission {
 
 ### Architecture Réseau iOS pour PTT Temps Réel
 
-```swift
+````swift
 protocol ParapenteNetworkServiceProtocol {
     // Authentification
     func validateAuth0Token(_ token: String) async throws -> AuthValidationResponse
@@ -1159,15 +1174,131 @@ enum AudioFormat: String, Codable, CaseIterable {
 }
 
 struct DeviceInfo: Codable {
-    let model: String?
+    let os: String?
     let osVersion: String?
+    let appVersion: String?
+    let userAgent: String?
 
     enum CodingKeys: String, CodingKey {
-        case model
+        case os
         case osVersion = "os_version"
+        case appVersion = "app_version"
+        case userAgent = "user_agent"
+    }
+}
+
+### Suivi des Informations d'Appareil et Analytics
+
+#### Collecte Automatique des Informations Système
+
+L'application collecte automatiquement des informations d'appareil lors de l'adhésion aux canaux pour :
+
+- **Support technique** : Diagnostic des problèmes spécifiques aux versions iOS
+- **Analytics d'utilisation** : Répartition des appareils et versions système
+- **Optimisation** : Adaptation des codecs audio selon les capacités matérielles
+- **Compatibilité** : Identification des problèmes de compatibilité
+
+#### Implémentation iOS
+
+```swift
+import UIKit
+
+extension DeviceInfo {
+    static var current: DeviceInfo {
+        return DeviceInfo(
+            os: "iOS",
+            osVersion: UIDevice.current.systemVersion,
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+            userAgent: buildUserAgent()
+        )
+    }
+
+    private static func buildUserAgent() -> String {
+        let appName = Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String ?? "ParaWave"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let deviceModel = UIDevice.current.model
+        let systemVersion = UIDevice.current.systemVersion
+        let scale = UIScreen.main.scale
+
+        return "\(appName)/\(appVersion) (\(deviceModel); iOS \(systemVersion); Scale/\(scale))"
+    }
+}
+````
+
+#### Intégration dans JoinChannelRequest
+
+```swift
+// Lors de l'adhésion à un canal, les informations d'appareil sont transmises automatiquement
+func joinChannel(uuid: String, location: CLLocation? = nil, ephemeralPushToken: String? = nil) async throws -> JoinChannelResponse {
+    let request = JoinChannelRequest(
+        location: location?.coordinate,
+        ephemeralPushToken: ephemeralPushToken,
+        deviceInfo: DeviceInfo.current  // Collecte automatique
+    )
+
+    let body = try JSONEncoder().encode(request)
+    return try await makeRequest(
+        endpoint: "channels/\(uuid)/join",
+        method: .POST,
+        body: body,
+        responseType: JoinChannelResponse.self
+    )
+}
+```
+
+#### Stockage Backend et Confidentialité
+
+Les informations d'appareil sont stockées dans la table `channel_participants` avec les colonnes :
+
+- `device_os` : Système d'exploitation (iOS, Android, Web, etc.)
+- `device_os_version` : Version du système (ex: "17.2.1")
+- `app_version` : Version de l'application (ex: "1.0.0")
+- `user_agent` : Chaîne complète pour diagnostic technique
+
+**Politique de confidentialité** :
+
+- Informations visibles uniquement par les administrateurs
+- Pas de données personnelles identifiantes
+- Données utilisées uniquement à des fins techniques et d'amélioration du service
+- Possibilité de désactiver la collecte dans les paramètres de l'application
+
+#### Structure ChannelParticipant Étendue
+
+```swift
+struct ChannelParticipant: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let username: String
+    let joinTime: Date
+    let lastSeen: Date
+    let location: Coordinates?
+    let connectionQuality: NetworkQuality
+    let isTransmitting: Bool
+    let ephemeralPushToken: String?
+
+    // Nouvelles propriétés pour informations d'appareil
+    let osType: String?
+    let osVersion: String?
+    let appVersion: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case username
+        case joinTime = "join_time"
+        case lastSeen = "last_seen"
+        case location
+        case connectionQuality = "connection_quality"
+        case isTransmitting = "is_transmitting"
+        case ephemeralPushToken = "ephemeral_push_token"
+        case osType = "os_type"
+        case osVersion = "os_version"
+        case appVersion = "app_version"
     }
 }
 ```
+
+````
 
 ### Implémentation WebSocket PTT Temps Réel
 
@@ -1463,7 +1594,7 @@ class PTTSession {
 
     // Implémentation spécialisée parapente avec JWT...
 }
-```
+````
 
 ## Stratégie de Stockage des Données
 
@@ -2477,6 +2608,8 @@ enum EmergencyType {
 - **Tests calculs géographiques et distances**
 - **Tests intégration données météo**
 - **Validation algorithmes auto-sélection canal**
+- **Tests collecte informations d'appareil**
+- **Validation protection confidentialité données**
 
 ### Tests d'Intégration Parapente
 
@@ -2487,6 +2620,7 @@ enum EmergencyType {
 - **Tests GPS et géolocalisation sites**
 - **Intégration services météo**
 - **Tests basculement mode dégradé**
+- **Tests suivi participants avec informations d'appareil**
 
 ### Tests Interface Utilisateur
 
@@ -6187,6 +6321,70 @@ app.get("/health", async (request, env) => {
 - **Surveillance Automatique** : Alertes et métriques intégrées
 
 Cette architecture backend Cloudflare Workers avec Durable Objects offre une **solution robuste, scalable et économique** parfaitement adaptée aux besoins spécialisés de communication PTT pour parapentistes, tout en respectant les contraintes du plan gratuit et en fournissant les performances temps réel nécessaires pour une utilisation sécuritaire en montagne.
+
+---
+
+## Changelog et Évolutions Récentes
+
+### Version 1.1.0 - 20 août 2025
+
+#### ✨ Nouvelles Fonctionnalités
+
+**Suivi automatique des informations d'appareil**
+
+- Collecte automatique du système d'exploitation (iOS, Android, Web)
+- Enregistrement de la version de l'OS et de l'application
+- Génération automatique du User-Agent pour diagnostic technique
+- Intégration transparente lors de l'adhésion aux canaux
+
+**Mise à jour optionnelle de localisation**
+
+- Support de mise à jour de position lors du démarrage de transmission PTT
+- Paramètre optionnel `location` dans `/api/v1/transmissions/start`
+- Amélioration de la précision de géolocalisation des participants actifs
+
+#### 🔧 Améliorations Backend
+
+**Base de données étendue**
+
+- Ajout des colonnes `device_os`, `device_os_version`, `app_version`, `user_agent` à `channel_participants`
+- Nouvelles propriétés dans les réponses API `ChannelParticipant`
+- Support complet des informations d'appareil dans l'API REST
+
+**Tests automatisés**
+
+- 57 tests end-to-end couvrant toutes les fonctionnalités
+- Tests spécifiques pour les informations d'appareil (complets et partiels)
+- Renumérotation cohérente des tests (10, 20, 30... jusqu'à 660)
+- Validation complète de l'intégration iOS-Backend
+
+#### 📱 Interface iOS Améliorée
+
+**Types TypeScript/Swift synchronisés**
+
+- Interface `DeviceInfo` étendue avec `os`, `os_version`, `app_version`, `user_agent`
+- Structure `ChannelParticipant` enrichie avec informations d'appareil
+- Modèles de données cohérents entre frontend et backend
+
+**Confidentialité renforcée**
+
+- Informations d'appareil visibles uniquement par les administrateurs
+- Possibilité de désactiver la collecte dans les paramètres
+- Respect des bonnes pratiques de protection des données
+
+#### 🛠️ Optimisations Techniques
+
+**Performance améliorée**
+
+- Requêtes SQL optimisées pour les informations d'appareil
+- Gestion efficace des participants avec données étendues
+- Cache intelligent pour les informations statiques
+
+**Documentation enrichie**
+
+- Section dédiée au suivi d'appareil dans l'analyse technique
+- Exemples de code iOS pour la collecte automatique
+- Documentation OpenAPI mise à jour avec les nouveaux schémas
 
 ---
 

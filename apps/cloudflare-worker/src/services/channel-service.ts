@@ -30,6 +30,7 @@ import {
 	ChannelsListResponse,
 	Coordinates,
 	ChannelParticipant,
+	DeviceInfo,
 } from "../types/ptt";
 
 /**
@@ -785,9 +786,9 @@ export class ChannelService {
 			coordinates:
 				row.coordinates_lat && row.coordinates_lon
 					? {
-							lat: row.coordinates_lat,
-							lon: row.coordinates_lon,
-						}
+						lat: row.coordinates_lat,
+						lon: row.coordinates_lon,
+					}
 					: undefined,
 			radius_km: row.radius_km,
 			vhf_frequency: row.vhf_frequency,
@@ -807,6 +808,7 @@ export class ChannelService {
 	 * @param userId User ID joining the channel
 	 * @param userLocation Optional user location
 	 * @param ephemeralPushToken Optional ephemeral APNs PTT token
+	 * @param deviceInfo Optional device and application information
 	 * @returns Success status and participant info
 	 */
 	async joinChannel(
@@ -814,6 +816,7 @@ export class ChannelService {
 		userId: string,
 		userLocation?: Coordinates,
 		ephemeralPushToken?: string,
+		deviceInfo?: DeviceInfo,
 	): Promise<{
 		success: boolean;
 		participant?: ChannelParticipant;
@@ -864,12 +867,13 @@ export class ChannelService {
 				.first()) as any;
 
 			if (existingParticipant) {
-				// User is already in the channel, update last seen, location and token
+				// User is already in the channel, update last seen, location, token and device info
 				await this.db
 					.prepare(
 						`
 					UPDATE channel_participants 
-					SET last_seen = ?, location_lat = ?, location_lon = ?, ephemeral_push_token = ?
+					SET last_seen = ?, location_lat = ?, location_lon = ?, ephemeral_push_token = ?,
+						device_os = ?, device_os_version = ?, app_version = ?, user_agent = ?
 					WHERE channel_uuid = ? AND user_id = ?
 				`,
 					)
@@ -878,6 +882,10 @@ export class ChannelService {
 						userLocation?.lat || null,
 						userLocation?.lon || null,
 						ephemeralPushToken || null,
+						deviceInfo?.os || null,
+						deviceInfo?.os_version || null,
+						deviceInfo?.app_version || null,
+						deviceInfo?.user_agent || null,
 						uuidLower,
 						userId,
 					)
@@ -892,6 +900,9 @@ export class ChannelService {
 					connection_quality: "good",
 					is_transmitting: false,
 					ephemeral_push_token: ephemeralPushToken,
+					os_type: deviceInfo?.os,
+					os_version: deviceInfo?.os_version,
+					app_version: deviceInfo?.app_version,
 				};
 
 				return { success: true, participant };
@@ -904,8 +915,9 @@ export class ChannelService {
 					`
 				INSERT INTO channel_participants (
 					channel_uuid, user_id, username, join_time, last_seen, 
-					location_lat, location_lon, connection_quality, ephemeral_push_token
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+					location_lat, location_lon, connection_quality, ephemeral_push_token,
+					device_os, device_os_version, app_version, user_agent
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 				)
 				.bind(
@@ -918,6 +930,10 @@ export class ChannelService {
 					userLocation?.lon || null,
 					"good",
 					ephemeralPushToken || null,
+					deviceInfo?.os || null,
+					deviceInfo?.os_version || null,
+					deviceInfo?.app_version || null,
+					deviceInfo?.user_agent || null,
 				)
 				.run(); // Log join event
 
@@ -935,6 +951,9 @@ export class ChannelService {
 				connection_quality: "good",
 				is_transmitting: false,
 				ephemeral_push_token: ephemeralPushToken,
+				os_type: deviceInfo?.os,
+				os_version: deviceInfo?.os_version,
+				app_version: deviceInfo?.app_version,
 			};
 
 			// Invalidate cache
@@ -1016,7 +1035,8 @@ export class ChannelService {
 					`
 			   SELECT 
 				   user_id, username, join_time, last_seen,
-				   location_lat, location_lon, connection_quality, is_transmitting, ephemeral_push_token
+				   location_lat, location_lon, connection_quality, is_transmitting, ephemeral_push_token,
+				   device_os, device_os_version, app_version, user_agent
 			   FROM channel_participants 
 			   WHERE channel_uuid = ?
 			   ORDER BY join_time ASC
@@ -1033,13 +1053,16 @@ export class ChannelService {
 				location:
 					row.location_lat && row.location_lon
 						? {
-								lat: row.location_lat as number,
-								lon: row.location_lon as number,
-							}
+							lat: row.location_lat as number,
+							lon: row.location_lon as number,
+						}
 						: undefined,
 				connection_quality: (row.connection_quality as any) || "good",
 				is_transmitting: Boolean(row.is_transmitting),
 				ephemeral_push_token: row.ephemeral_push_token as string | undefined,
+				os_type: row.device_os as any,
+				os_version: row.device_os_version as string | undefined,
+				app_version: row.app_version as string | undefined,
 			}));
 		} catch (error) {
 			console.error("Error getting channel participants:", error);
