@@ -1046,6 +1046,123 @@ describe('Parawave-PTT API', () => {
     (global as any).testSessionId = response.data.session_id;
   });
 
+  test('400.5. Should update participant location when joining channel with location', async () => {
+    if (!testChannelCreated) {
+      throw new Error('Test channel must be created first (test 230)');
+    }
+
+    // Get initial participant info before location update
+    let initialParticipants;
+    try {
+      initialParticipants = await api.get(`/v1/channels/${testChannelUuid}/participants`);
+      expect(initialParticipants.status).toBe(200);
+    } catch (error) {
+      console.log('⚠️ Could not get initial participants - user may not be in channel yet');
+    }
+
+    // Join/rejoin channel with new location (this will update location if already joined)
+    const newLocation = {
+      lat: 46.123456,
+      lon: 7.654321
+    };
+
+    const joinRequest = {
+      location: newLocation
+    };
+
+    const joinResponse = await api.post(`/v1/channels/${testChannelUuid}/join`, joinRequest);
+    
+    expect(joinResponse.status).toBe(200);
+    expect(joinResponse.data.success).toBe(true);
+
+    // Get updated participant info
+    const updatedParticipants = await api.get(`/v1/channels/${testChannelUuid}/participants`);
+    expect(updatedParticipants.status).toBe(200);
+    
+    const updatedParticipant = updatedParticipants.data.data.find(
+      (p: any) => p.user_id === testerId
+    );
+    
+    expect(updatedParticipant).toBeDefined();
+    expect(updatedParticipant.location).toBeDefined();
+    expect(updatedParticipant.location.lat).toBeCloseTo(newLocation.lat, 6);
+    expect(updatedParticipant.location.lon).toBeCloseTo(newLocation.lon, 6);
+
+    console.log('✅ Participant location updated successfully via join channel');
+  });
+
+  test('400.6. Should update participant location when starting transmission with location (new channel)', async () => {
+    // Create a dedicated test channel for this test to avoid conflicts
+    const locationTestChannel = {
+      name: 'Location Test Channel',
+      type: 'general' as const,
+      description: 'Test channel specifically for location transmission test',
+      coordinates: { lat: 45.5, lon: 6.5 },
+      radius_km: 25,
+      vhf_frequency: '144.200',
+      max_participants: 5,
+      difficulty: 'beginner' as const
+    };
+
+    const createResponse = await api.post('/v1/channels', locationTestChannel);
+    expect(createResponse.status).toBe(201);
+    const locationTestChannelUuid = createResponse.data.data.uuid;
+
+    try {
+      // Join the new channel first
+      const joinResponse = await api.post(`/v1/channels/${locationTestChannelUuid}/join`, {});
+      expect(joinResponse.status).toBe(200);
+
+      // Start transmission with location
+      const transmissionLocation = {
+        lat: 47.123456,
+        lon: 8.654321,
+        accuracy: 5.0,
+        altitude: 1500.0
+      };
+
+      const startRequest = {
+        channel_uuid: locationTestChannelUuid,
+        audio_format: 'aac-lc' as const,
+        sample_rate: 48000,
+        bitrate: 128000,
+        network_quality: 'good' as const,
+        location: transmissionLocation,
+        is_emergency: false
+      };
+
+      const startResponse = await api.post('/v1/transmissions/start', startRequest);
+
+      if (startResponse.status !== 200) {
+        console.log('❌ Start transmission failed with status:', startResponse.status);
+        console.log('Response data:', JSON.stringify(startResponse.data, null, 2));
+      }
+
+      expect(startResponse.status).toBe(200);
+      expect(startResponse.data.success).toBe(true);
+      expect(startResponse.data.session_id).toBeDefined();
+
+      // End the transmission
+      const endRequest = { reason: 'completed' as const };
+      await api.post(`/v1/transmissions/${startResponse.data.session_id}/end`, endRequest);
+
+      // Check if participant location was updated
+      const participants = await api.get(`/v1/channels/${locationTestChannelUuid}/participants`);
+      expect(participants.status).toBe(200);
+      
+      const participant = participants.data.data.find((p: any) => p.user_id === testerId);
+      expect(participant).toBeDefined();
+      expect(participant.location).toBeDefined();
+      expect(participant.location.lat).toBeCloseTo(transmissionLocation.lat, 6);
+      expect(participant.location.lon).toBeCloseTo(transmissionLocation.lon, 6);
+
+      console.log('✅ Participant location updated successfully during transmission start');
+    } finally {
+      // Clean up the test channel
+      await api.delete(`/v1/channels/${locationTestChannelUuid}?hard=true`);
+    }
+  });
+
   test('401. Should reject PTT transmission start with invalid audio format', async () => {
     if (!testChannelCreated) {
       throw new Error('Test channel must be created first (test 230)');

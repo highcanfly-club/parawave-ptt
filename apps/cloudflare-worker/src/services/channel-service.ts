@@ -1102,6 +1102,59 @@ export class ChannelService {
 	}
 
 	/**
+	 * Update participant location
+	 * @param channelUuid Channel UUID
+	 * @param userId User ID
+	 * @param location User location coordinates
+	 * @returns Success status
+	 */
+	async updateParticipantLocation(
+		channelUuid: string,
+		userId: string,
+		location: Coordinates,
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			const uuidLower = channelUuid.toLowerCase();
+
+			// Check if user is a participant
+			const participant = (await this.db
+				.prepare(
+					`
+				   SELECT * FROM channel_participants 
+				   WHERE channel_uuid = ? AND user_id = ?
+			   `,
+				)
+				.bind(uuidLower, userId)
+				.first()) as any;
+
+			if (!participant) {
+				return {
+					success: false,
+					error: "User is not a participant in this channel",
+				};
+			}
+
+			// Update location and last seen
+			await this.db
+				.prepare(
+					`
+				   UPDATE channel_participants 
+				   SET location_lat = ?, location_lon = ?, last_seen = ?
+				   WHERE channel_uuid = ? AND user_id = ?
+			   `,
+				)
+				.bind(location.lat, location.lon, this.getCurrentTimestamp(), uuidLower, userId)
+				.run();
+
+			return { success: true };
+		} catch (error) {
+			console.error("Error updating participant location:", error);
+
+			return { success: false, error: "Failed to update participant location" };
+		}
+	}
+
+	/**
 	 * Log channel-related events for audit trail
 	 * Uses 'text' message type for system events to comply with DB constraints
 	 */

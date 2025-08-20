@@ -230,6 +230,9 @@ import {
  *           minimum: 0
  *           maximum: 30
  *           description: Expected transmission duration in seconds (max 30s)
+ *         location:
+ *           $ref: '#/components/schemas/Coordinates'
+ *           description: Optional user location at the time of transmission start
  *     PTTStartTransmissionResponse:
  *       type: object
  *       properties:
@@ -1796,10 +1799,10 @@ export class PTTAPIHandler {
 				participant: result.participant,
 				channel_info: channel
 					? {
-							name: channel.name,
-							participants_count: participants.length,
-							max_participants: channel.max_participants,
-						}
+						name: channel.name,
+						participants_count: participants.length,
+						max_participants: channel.max_participants,
+					}
 					: undefined,
 			};
 
@@ -2324,7 +2327,6 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
-	 * Handle POST /api/v1/transmissions/start
 	 */
 	private async handleStartTransmission(
 		request: Request,
@@ -2379,6 +2381,20 @@ export class PTTAPIHandler {
 				userId,
 				username,
 			);
+
+			// Update participant location if provided
+			if (result.success && body.location) {
+				try {
+					await this.channelService.updateParticipantLocation(
+						body.channel_uuid,
+						userId,
+						body.location,
+					);
+				} catch (locationError) {
+					console.warn("Failed to update participant location:", locationError);
+					// Continue with transmission start even if location update fails
+				}
+			}
 
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
@@ -2482,7 +2498,6 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
-	 * Handle POST /api/v1/transmissions/{session_id}/chunk
 	 */
 	private async handleAudioChunk(
 		request: Request,
@@ -2623,8 +2638,7 @@ export class PTTAPIHandler {
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               $ref: '#/components/schemas/ErrorResponse'
-	 * Handle POST /api/v1/transmissions/{session_id}/end
+	 *               $ref: '#/components/schemas/ErrorResponse' 
 	 */
 	private async handleEndTransmission(
 		request: Request,
@@ -2732,7 +2746,6 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
-	 * Handle GET /api/v1/transmissions/active/{channel_uuid}
 	 */
 	private async handleGetActiveTransmission(
 		channelUuid: string,
@@ -2829,8 +2842,6 @@ export class PTTAPIHandler {
 	 *           application/json:
 	 *             schema:
 	 *               $ref: '#/components/schemas/ErrorResponse'
-	 * Handle WebSocket upgrade for real-time PTT communication
-	 * GET /api/v1/transmissions/ws/{channel_uuid}
 	 */
 	private async handleWebSocketUpgrade(
 		request: Request,

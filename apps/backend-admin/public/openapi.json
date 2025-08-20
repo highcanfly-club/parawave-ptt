@@ -1781,7 +1781,7 @@
     "/api/v1/transmissions/active/{channel_uuid}": {
       "get": {
         "summary": "Get active transmission",
-        "description": "Get details about the currently active transmission in a channel, if any.",
+        "description": "Get information about the currently active transmission in a channel, if any.",
         "tags": [
           "Transmissions"
         ],
@@ -1804,28 +1804,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Active transmission details retrieved successfully",
+            "description": "Active transmission information retrieved successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PTTActiveTransmissionResponse"
                 },
                 "examples": {
-                  "with_transmission": {
+                  "with_active": {
                     "summary": "Channel has active transmission",
                     "value": {
                       "success": true,
                       "transmission": {
                         "session_id": "123e4567-e89b-12d3-a456-426614174000",
                         "user_id": "auth0|user123",
-                        "username": "John Pilot",
-                        "started_at": "2025-08-19T10:30:00.000Z",
+                        "username": "Pilot Alpha",
+                        "started_at": "2024-01-15T10:30:00Z",
                         "duration": 5.2,
                         "audio_format": "aac-lc"
                       }
                     }
                   },
-                  "no_transmission": {
+                  "no_active": {
                     "summary": "No active transmission",
                     "value": {
                       "success": true,
@@ -1846,20 +1846,22 @@
               }
             }
           },
+          "403": {
+            "description": "Channel access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Channel not found",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "examples": {
-                  "not_found": {
-                    "value": {
-                      "success": false,
-                      "error": "Channel not found"
-                    }
-                  }
                 }
               }
             }
@@ -1880,7 +1882,7 @@
     "/api/v1/transmissions/ws/{channel_uuid}": {
       "get": {
         "summary": "WebSocket upgrade for real-time PTT",
-        "description": "Upgrade HTTP connection to WebSocket for real-time PTT audio transmission.\nUsed for receiving live audio chunks from active transmissions.\n\n**WebSocket Protocol:**\n- Client sends: `{\"type\": \"join\", \"channel_uuid\": \"uuid\"}`\n- Server sends: `{\"type\": \"audio_chunk\", \"session_id\": \"uuid\", \"audio_data\": \"base64\", \"sequence\": 0}`\n- Server sends: `{\"type\": \"transmission_start\", \"session_id\": \"uuid\", \"user_id\": \"string\", \"username\": \"string\"}`\n- Server sends: `{\"type\": \"transmission_end\", \"session_id\": \"uuid\", \"duration\": 5.2}`\n",
+        "description": "Upgrade HTTP connection to WebSocket for real-time PTT audio transmission. Used for receiving live audio broadcasts.",
         "tags": [
           "Transmissions"
         ],
@@ -1898,36 +1900,12 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "The channel UUID to listen for transmissions"
-          },
-          {
-            "name": "Upgrade",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "websocket"
-              ]
-            },
-            "description": "Must be \"websocket\""
-          },
-          {
-            "name": "Connection",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "Upgrade"
-              ]
-            },
-            "description": "Must be \"Upgrade\""
+            "description": "The channel UUID for real-time PTT communication"
           }
         ],
         "responses": {
           "101": {
-            "description": "WebSocket connection established",
+            "description": "WebSocket connection upgraded successfully",
             "headers": {
               "Upgrade": {
                 "schema": {
@@ -1940,15 +1918,29 @@
                   "type": "string",
                   "example": "Upgrade"
                 }
+              },
+              "Sec-WebSocket-Accept": {
+                "schema": {
+                  "type": "string",
+                  "description": "WebSocket handshake response"
+                }
               }
             }
           },
           "400": {
-            "description": "Invalid WebSocket upgrade request",
+            "description": "Invalid WebSocket request",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_websocket": {
+                    "value": {
+                      "success": false,
+                      "error": "WebSocket upgrade required"
+                    }
+                  }
                 }
               }
             }
@@ -1965,6 +1957,16 @@
           },
           "403": {
             "description": "Channel access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2264,6 +2266,10 @@
             "minimum": 0,
             "maximum": 30,
             "description": "Expected transmission duration in seconds (max 30s)"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Coordinates",
+            "description": "Optional user location at the time of transmission start"
           }
         }
       },
