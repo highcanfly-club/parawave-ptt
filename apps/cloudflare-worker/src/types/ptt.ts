@@ -188,6 +188,14 @@ export interface ChannelsListResponse {
 }
 
 /**
+ * Channel participants list response
+ */
+export interface ChannelParticipantsResponse {
+	participants: ChannelParticipant[];
+	total_count: number;
+}
+
+/**
  * Flying site information (complementary to channels)
  */
 export interface FlyingSite {

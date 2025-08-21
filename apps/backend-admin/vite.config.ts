@@ -100,6 +100,9 @@ export default defineConfig({
       process.env.DEX_JWKS_ENDPOINT,
     ),
     "import.meta.env.DEX_DOMAIN": JSON.stringify(process.env.DEX_DOMAIN),
+    "import.meta.env.READ_PERMISSION": JSON.stringify(process.env.READ_PERMISSION),
+    "import.meta.env.WRITE_PERMISSION": JSON.stringify(process.env.WRITE_PERMISSION),
+    "import.meta.env.ADMIN_PERMISSION": JSON.stringify(process.env.ADMIN_PERMISSION)
   },
   plugins: [react(), tsconfigPaths(), tailwindcss(), githubPagesSpa()],
   build: {

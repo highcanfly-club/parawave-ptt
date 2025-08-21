@@ -20,9 +20,11 @@
   "dependencies": {
     "@auth0/auth0-react": "^2.3.0",
     "@heroui/button": "2.2.24",
+    "@heroui/card": "^2.2.23",
+    "@heroui/chip": "^2.2.20",
     "@heroui/code": "2.2.18",
     "@heroui/date-picker": "2.3.25",
-    "@heroui/dropdown": "2.3.24",
+    "@heroui/dropdown": "^2.3.24",
     "@heroui/image": "2.2.15",
     "@heroui/input": "2.4.25",
     "@heroui/kbd": "2.2.19",

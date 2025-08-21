@@ -3,6 +3,12 @@ import { Kbd } from "@heroui/kbd";
 import { Link } from "@heroui/link";
 import { Input } from "@heroui/input";
 import {
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/dropdown";
+import {
   Navbar as HeroUINavbar,
   NavbarBrand,
   NavbarContent,
@@ -29,9 +35,39 @@ import {
 } from "@/components/icons";
 import { Logo } from "@/components/icons";
 import { availableLanguages } from "@/i18n";
+import { useAuth, useSecuredApi } from "@/authentication";
+import { useEffect, useState } from "react";
+import { APIResponse, ChannelsListResponse } from "@/types/ptt";
 
 export const Navbar = () => {
   const { t } = useTranslation();
+  const { getJson } = useSecuredApi();
+  const { isAuthenticated, user, hasPermission } = useAuth();
+  const [channels, setChannels] = useState<ChannelsListResponse | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const isAdminUser = await hasPermission(import.meta.env.ADMIN_PERMISSION);
+      if (isAuthenticated && user && isAdminUser) {
+        try {
+          const response = await getJson(
+            `${import.meta.env.API_BASE_URL}/v1/channels`,
+          ) as APIResponse<ChannelsListResponse>;
+          if (response.data) {
+            setChannels(response.data);
+          }
+          console.log("API Channels:", channels);
+        } catch (error) {
+          console.error("API Error:", error);
+        }
+      } else {
+        console.warn("User is not authenticated or does not have read permission");
+      }
+    };
+
+    fetchData();
+  }, [isAuthenticated, user]);
+
   const searchInput = (
     <Input
       aria-label={t("search")}
@@ -68,7 +104,7 @@ export const Navbar = () => {
         </NavbarBrand>
         <div className="hidden lg:flex gap-4 justify-start ml-2">
           {siteConfig().navItems.map((item) => (
-            <NavbarItem key={item.href}>
+            <NavbarItem key={item.href} className="hidden sm:flex">
               <Link
                 className={clsx(
                   linkStyles({ color: "foreground" }),
@@ -81,6 +117,35 @@ export const Navbar = () => {
               </Link>
             </NavbarItem>
           ))}
+          {channels && (channels.total_count > 0) && (
+            <NavbarItem>
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button
+                    className={clsx(
+                      linkStyles({ color: "foreground" }),
+                      "data-[active=true]:text-primary data-[active=true]:font-medium",
+                    )}
+                    variant="light"
+                  >
+                    {channels.total_count === 1 ? t("channel") : t("channels")}
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Channels">
+                  {channels.channels.map((channel) => (
+                    <DropdownItem key={channel.uuid}>
+                      <Link
+                        href={`/channel/${channel.uuid}`}
+                        color="foreground"
+                      >
+                        {channel.name}
+                      </Link>
+                    </DropdownItem>
+                  ))}
+                </DropdownMenu>
+              </Dropdown>
+            </NavbarItem>
+          )}
         </div>
       </NavbarContent>
 
@@ -128,6 +193,7 @@ export const Navbar = () => {
         </NavbarItem>
       </NavbarContent>
 
+      {/* Mobile Navbar */}
       <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
         <Link isExternal href={siteConfig().links.github}>
           <GithubIcon className="text-default-500" />
@@ -160,6 +226,26 @@ export const Navbar = () => {
               </Link>
             </NavbarMenuItem>
           ))}
+          {channels && (channels.total_count > 0) && (
+            <NavbarMenuItem key="channels-dropdown">
+              <div className="flex flex-col gap-2 w-full">
+                <p className="text-sm font-medium text-default-600 px-2">
+                  {channels.total_count === 1 ? t("channel") : t("channels")}
+                </p>
+                {channels.channels.map((channel) => (
+                  <Link
+                    key={channel.uuid}
+                    href={`/channel/${channel.uuid}`}
+                    color="foreground"
+                    size="lg"
+                    className="pl-4"
+                  >
+                    {channel.name}
+                  </Link>
+                ))}
+              </div>
+            </NavbarMenuItem>
+          )}
           <NavbarMenuItem key="login-logout">
             <LoginLogoutLink color="primary" />
           </NavbarMenuItem>
