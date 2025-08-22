@@ -1732,7 +1732,7 @@ export class PTTAPIHandler {
 	 * /api/v1/channels/{uuid}/join:
 	 *   post:
 	 *     summary: Join a channel
-	 *     description: Join a PTT channel as participant. Requires access permission for the specific channel (access:{uuid}).
+	 *     description: Join a PTT channel as participant. Requires access permission for the specific channel (access:{uuid}) or admin permission (admin:api).
 	 *     tags:
 	 *       - Channels
 	 *     security:

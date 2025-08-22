@@ -121,15 +121,14 @@ export const Navbar = () => {
             <NavbarItem>
               <Dropdown>
                 <DropdownTrigger>
-                  <Button
+                  <Link
                     className={clsx(
                       linkStyles({ color: "foreground" }),
                       "data-[active=true]:text-primary data-[active=true]:font-medium",
                     )}
-                    variant="light"
                   >
                     {channels.total_count === 1 ? t("channel") : t("channels")}
-                  </Button>
+                  </Link>
                 </DropdownTrigger>
                 <DropdownMenu aria-label="Channels">
                   {channels.channels.map((channel) => (
@@ -229,7 +228,7 @@ export const Navbar = () => {
           {channels && (channels.total_count > 0) && (
             <NavbarMenuItem key="channels-dropdown">
               <div className="flex flex-col gap-2 w-full">
-                <p className="text-sm font-medium text-default-600 px-2">
+                <p className="text-large">
                   {channels.total_count === 1 ? t("channel") : t("channels")}
                 </p>
                 {channels.channels.map((channel) => (
