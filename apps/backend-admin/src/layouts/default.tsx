@@ -57,12 +57,12 @@ export default function DefaultLayout({
           isExternal
           className="flex items-center gap-1 text-current"
           href={siteConfig().links.highcanfly}
-          title={t("heroui-com-homepage")}
+          title={t("homepage")}
         >
           <span className="text-default-600">
             <Trans ns="base">powered-by</Trans>
           </span>
-          <p className="text-primary">HighCanFly</p>
+          <p className="text-primary">{siteConfig().owner}</p>
         </Link>
         &nbsp;
         <Dropdown>

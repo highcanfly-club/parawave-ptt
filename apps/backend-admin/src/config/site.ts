@@ -2,6 +2,7 @@ export type SiteConfig = typeof siteConfig;
 import i18next from "../i18n";
 
 export const siteConfig = () => ({
+  owner: "HighCanFly Club",
   name: i18next.t("parawave-ptt"),
   needCookieConsent: true, // Set to false if you don't need cookie consent
   description: i18next.t(

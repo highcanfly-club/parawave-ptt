@@ -48,5 +48,6 @@
   "permissions": "permisos",
   "token": "simbólico",
   "user": "usuario",
-  "parawave-ptt": "Parawave PTT"
+  "parawave-ptt": "Parawave PTT",
+  "homepage": "página principal"
 }
