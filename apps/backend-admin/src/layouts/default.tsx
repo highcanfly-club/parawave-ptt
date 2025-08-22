@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { createRemoteJWKSet, JWTPayload, jwtVerify } from "jose";
 
 import { Navbar } from "@/components/navbar";
+import { siteConfig } from "@/config/site";
 
 export default function DefaultLayout({
   children,
@@ -55,7 +56,7 @@ export default function DefaultLayout({
         <Link
           isExternal
           className="flex items-center gap-1 text-current"
-          href="https://heroui.com"
+          href={siteConfig().links.highcanfly}
           title={t("heroui-com-homepage")}
         >
           <span className="text-default-600">
