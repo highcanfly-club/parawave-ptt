@@ -6,18 +6,20 @@ import { Chip } from "@heroui/chip";
 
 import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
-import { useSecuredApi } from "@/authentication";
+import { useSecuredApi, useAuth } from "@/authentication";
 import { APIResponse, PTTChannel, ChannelParticipantsResponse, ChannelParticipant } from "@/types/ptt";
 
 export default function ChannelPage() {
     const { t } = useTranslation();
     const { uuid } = useParams<{ uuid: string }>();
     const { getJson } = useSecuredApi();
+    const { hasPermission } = useAuth();
     const [channel, setChannel] = useState<PTTChannel | null>(null);
     const [participants, setParticipants] = useState<ChannelParticipant[]>([]);
     const [loading, setLoading] = useState(true);
     const [participantsLoading, setParticipantsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [canViewParticipants, setCanViewParticipants] = useState<boolean>(false);
 
     useEffect(() => {
         const fetchChannel = async () => {
@@ -31,8 +33,18 @@ export default function ChannelPage() {
 
                 if (response.data) {
                     setChannel(response.data);
-                    // Fetch participants after channel is loaded
-                    await fetchParticipants();
+
+                    // Check permissions for viewing participants
+                    const isAdmin = await hasPermission(import.meta.env.ADMIN_PERMISSION);
+                    const hasAccessToChannel = await hasPermission(`${import.meta.env.ACCESS_PERMISSION_PREFIX}:${uuid.toLowerCase()}`);
+
+                    if (isAdmin || hasAccessToChannel) {
+                        setCanViewParticipants(true);
+                        // Fetch participants after channel is loaded and permissions verified
+                        await fetchParticipants();
+                    } else {
+                        setCanViewParticipants(false);
+                    }
                 } else {
                     setError(t("channel_not_found"));
                 }
@@ -195,92 +207,94 @@ export default function ChannelPage() {
                     </CardBody>
                 </Card>
 
-                {/* Participants Section */}
-                <Card className="max-w-2xl w-full">
-                    <CardHeader className="flex gap-3">
-                        <div className="flex flex-col">
-                            <p className="text-md font-semibold">{t("participants")}</p>
-                            <p className="text-small text-default-500">
-                                {participantsLoading ? t("loading") : `${participants?.length ?? 0} ${t("participants").toLowerCase()}`}
-                            </p>
-                        </div>
-                    </CardHeader>
-                    <CardBody>
-                        {participantsLoading ? (
-                            <div className="text-center py-4">
-                                <p>{t("loading")}...</p>
+                {/* Participants Section - Only show if user has permissions */}
+                {canViewParticipants && (
+                    <Card className="max-w-2xl w-full">
+                        <CardHeader className="flex gap-3">
+                            <div className="flex flex-col">
+                                <p className="text-md font-semibold">{t("participants")}</p>
+                                <p className="text-small text-default-500">
+                                    {participantsLoading ? t("loading") : `${participants?.length ?? 0} ${t("participants").toLowerCase()}`}
+                                </p>
                             </div>
-                        ) : !participants || participants.length === 0 ? (
-                            <div className="text-center py-4">
-                                <p className="text-default-500">{t("no_participants")}</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {participants.map((participant, index) => (
-                                    <div key={participant.user_id || index} className="border-b border-default-200 last:border-b-0 pb-4 last:pb-0">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <p className="font-semibold">{t("username")}:</p>
-                                                <p>{participant.username}</p>
-                                            </div>
-
-                                            <div>
-                                                <p className="font-semibold">{t("connection_quality")}:</p>
-                                                <Chip
-                                                    color={getConnectionQualityColor(participant.connection_quality)}
-                                                    variant="flat"
-                                                >
-                                                    {t(participant.connection_quality)}
-                                                </Chip>
-                                            </div>
-
-                                            <div>
-                                                <p className="font-semibold">{t("is_transmitting")}:</p>
-                                                <Chip
-                                                    color={participant.is_transmitting ? "success" : "default"}
-                                                    variant="flat"
-                                                >
-                                                    {participant.is_transmitting ? t("yes") : t("no")}
-                                                </Chip>
-                                            </div>
-
-                                            <div>
-                                                <p className="font-semibold">{t("join_time")}:</p>
-                                                <p>{new Date(participant.join_time).toLocaleString()}</p>
-                                            </div>
-
-                                            <div>
-                                                <p className="font-semibold">{t("last_seen")}:</p>
-                                                <p>{new Date(participant.last_seen).toLocaleString()}</p>
-                                            </div>
-
-                                            {participant.location && (
+                        </CardHeader>
+                        <CardBody>
+                            {participantsLoading ? (
+                                <div className="text-center py-4">
+                                    <p>{t("loading")}...</p>
+                                </div>
+                            ) : !participants || participants.length === 0 ? (
+                                <div className="text-center py-4">
+                                    <p className="text-default-500">{t("no_participants")}</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {participants.map((participant, index) => (
+                                        <div key={participant.user_id || index} className="border-b border-default-200 last:border-b-0 pb-4 last:pb-0">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <p className="font-semibold">{t("coordinates")}:</p>
-                                                    <p>{participant.location.lat.toFixed(6)}, {participant.location.lon.toFixed(6)}</p>
+                                                    <p className="font-semibold">{t("username")}:</p>
+                                                    <p>{participant.username}</p>
                                                 </div>
-                                            )}
 
-                                            {participant.os_type && (
                                                 <div>
-                                                    <p className="font-semibold">OS:</p>
-                                                    <p>{participant.os_type} {participant.os_version}</p>
+                                                    <p className="font-semibold">{t("connection_quality")}:</p>
+                                                    <Chip
+                                                        color={getConnectionQualityColor(participant.connection_quality)}
+                                                        variant="flat"
+                                                    >
+                                                        {t(participant.connection_quality)}
+                                                    </Chip>
                                                 </div>
-                                            )}
 
-                                            {participant.app_version && (
                                                 <div>
-                                                    <p className="font-semibold">App Version:</p>
-                                                    <p>{participant.app_version}</p>
+                                                    <p className="font-semibold">{t("is_transmitting")}:</p>
+                                                    <Chip
+                                                        color={participant.is_transmitting ? "success" : "default"}
+                                                        variant="flat"
+                                                    >
+                                                        {participant.is_transmitting ? t("yes") : t("no")}
+                                                    </Chip>
                                                 </div>
-                                            )}
+
+                                                <div>
+                                                    <p className="font-semibold">{t("join_time")}:</p>
+                                                    <p>{new Date(participant.join_time).toLocaleString()}</p>
+                                                </div>
+
+                                                <div>
+                                                    <p className="font-semibold">{t("last_seen")}:</p>
+                                                    <p>{new Date(participant.last_seen).toLocaleString()}</p>
+                                                </div>
+
+                                                {participant.location && (
+                                                    <div>
+                                                        <p className="font-semibold">{t("coordinates")}:</p>
+                                                        <p>{participant.location.lat.toFixed(6)}, {participant.location.lon.toFixed(6)}</p>
+                                                    </div>
+                                                )}
+
+                                                {participant.os_type && (
+                                                    <div>
+                                                        <p className="font-semibold">OS:</p>
+                                                        <p>{participant.os_type} {participant.os_version}</p>
+                                                    </div>
+                                                )}
+
+                                                {participant.app_version && (
+                                                    <div>
+                                                        <p className="font-semibold">App Version:</p>
+                                                        <p>{participant.app_version}</p>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardBody>
-                </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </CardBody>
+                    </Card>
+                )}
             </section>
         </DefaultLayout>
     );

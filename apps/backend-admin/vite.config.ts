@@ -102,7 +102,8 @@ export default defineConfig({
     "import.meta.env.DEX_DOMAIN": JSON.stringify(process.env.DEX_DOMAIN),
     "import.meta.env.READ_PERMISSION": JSON.stringify(process.env.READ_PERMISSION),
     "import.meta.env.WRITE_PERMISSION": JSON.stringify(process.env.WRITE_PERMISSION),
-    "import.meta.env.ADMIN_PERMISSION": JSON.stringify(process.env.ADMIN_PERMISSION)
+    "import.meta.env.ADMIN_PERMISSION": JSON.stringify(process.env.ADMIN_PERMISSION),
+    "import.meta.env.ACCESS_PERMISSION_PREFIX": JSON.stringify(process.env.ACCESS_PERMISSION_PREFIX)
   },
   plugins: [react(), tsconfigPaths(), tailwindcss(), githubPagesSpa()],
   build: {

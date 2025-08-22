@@ -82,6 +82,7 @@ jobs:
           echo "READ_PERMISSION=${{ secrets.READ_PERMISSION }}" >> .env
           echo "WRITE_PERMISSION=${{ secrets.WRITE_PERMISSION }}" >> .env
           echo "ADMIN_PERMISSION=${{ secrets.ADMIN_PERMISSION }}" >> .env
+          echo "ACCESS_PERMISSION_PREFIX=${{ secrets.ACCESS_PERMISSION_PREFIX }}" >> .env
 
       - name: Replace "// vars.*" in wrangler.jsonc with a json string
         run: |
@@ -90,8 +91,9 @@ jobs:
           cp wrangler.jsonc wrangler.jsonc.bak
           set -a && source .env && set +a 
           cat .env
-          cat wrangler.jsonc.bak | sed 's|// "vars".*.|"vars": { "AUTHENTICATION_PROVIDER_TYPE": "'"${AUTHENTICATION_PROVIDER_TYPE}"'", "AUTH0_DOMAIN": "'"${AUTH0_DOMAIN}"'", "AUTH0_CLIENT_ID": "'"${AUTH0_CLIENT_ID}"'", "AUTH0_SCOPE": "'"${AUTH0_SCOPE}"'", "AUTH0_AUDIENCE": "'"${AUTH0_AUDIENCE}"'", "API_BASE_URL": "'"${API_BASE_URL}"'", "CORS_ORIGIN": "'"${CORS_ORIGIN}"'", "READ_PERMISSION": "'"${READ_PERMISSION}"'" },|' > wrangler.jsonc.2
+          cat wrangler.jsonc.bak | sed 's|// "vars".*.|"vars": { "AUTHENTICATION_PROVIDER_TYPE": "'"${AUTHENTICATION_PROVIDER_TYPE}"'", "AUTH0_DOMAIN": "'"${AUTH0_DOMAIN}"'", "AUTH0_CLIENT_ID": "'"${AUTH0_CLIENT_ID}"'", "AUTH0_SCOPE": "'"${AUTH0_SCOPE}"'", "AUTH0_AUDIENCE": "'"${AUTH0_AUDIENCE}"'", "API_BASE_URL": "'"${API_BASE_URL}"'", "CORS_ORIGIN": "'"${CORS_ORIGIN}"'", "READ_PERMISSION": "'"${READ_PERMISSION}"'", "WRITE_PERMISSION": "'"${WRITE_PERMISSION}"'", "ADMIN_PERMISSION": "'"${ADMIN_PERMISSION}"'", "ACCESS_PERMISSION_PREFIX": "'"${ACCESS_PERMISSION_PREFIX}"'" },|' > wrangler.jsonc.2
           # cat wrangler.jsonc.2 | sed 's|// "routes".*.|"routes": [{ "pattern": "'"${DOMAIN_NAME}"'", "custom_domain": true }]|'  > wrangler.jsonc
+          cat wrangler.jsonc.2 > wrangler.jsonc
           cat wrangler.jsonc
       - name: Deploy
         uses: cloudflare/wrangler-action@v3

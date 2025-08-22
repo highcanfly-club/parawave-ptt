@@ -535,7 +535,7 @@ export class PTTAPIHandler {
 			// Special handling for /channels/with-uuid endpoint
 			if (resourceId === "with-uuid" && !subResource) {
 				if (method === "POST") {
-					return await this.createChannelWithUuid(request, userId, permissions);
+					return await this.createChannelWithUuid(request, userId, permissions, env);
 				}
 
 				return this.errorResponse(
@@ -554,6 +554,7 @@ export class PTTAPIHandler {
 								resourceId,
 								userId,
 								permissions,
+								env,
 							);
 						}
 
@@ -569,6 +570,7 @@ export class PTTAPIHandler {
 								resourceId,
 								userId,
 								permissions,
+								env,
 							);
 						}
 
@@ -579,7 +581,7 @@ export class PTTAPIHandler {
 
 					case "participants":
 						if (method === "GET") {
-							return await this.getChannelParticipants(resourceId, permissions);
+							return await this.getChannelParticipants(resourceId, permissions, env);
 						}
 
 						return this.errorResponse(
@@ -594,6 +596,7 @@ export class PTTAPIHandler {
 								resourceId,
 								userId,
 								permissions,
+								env,
 							);
 						}
 
@@ -614,11 +617,11 @@ export class PTTAPIHandler {
 			switch (method) {
 				case "GET":
 					return resourceId
-						? await this.getChannel(resourceId, permissions)
-						: await this.getChannels(request, permissions);
+						? await this.getChannel(resourceId, permissions, env)
+						: await this.getChannels(request, permissions, env);
 
 				case "POST":
-					return await this.createChannel(request, userId, permissions);
+					return await this.createChannel(request, userId, permissions, env);
 
 				case "PUT":
 					if (!resourceId) {
@@ -630,6 +633,7 @@ export class PTTAPIHandler {
 						resourceId,
 						userId,
 						permissions,
+						env,
 					);
 
 				case "DELETE":
@@ -645,6 +649,7 @@ export class PTTAPIHandler {
 						resourceId,
 						userId,
 						permissions,
+						env,
 					);
 
 				default:
@@ -754,9 +759,10 @@ export class PTTAPIHandler {
 	private async getChannels(
 		request: Request,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check read permission
-		if (!permissions.includes("read:api")) {
+		if (!permissions.includes(env.READ_PERMISSION)) {
 			return this.errorResponse("Insufficient permissions", 403);
 		}
 
@@ -860,9 +866,10 @@ export class PTTAPIHandler {
 	private async getChannel(
 		uuid: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check read permission
-		if (!permissions.includes("read:api")) {
+		if (!permissions.includes(env.READ_PERMISSION)) {
 			return this.errorResponse("Insufficient permissions", 403);
 		}
 
@@ -873,7 +880,7 @@ export class PTTAPIHandler {
 		}
 
 		// Get channel statistics if user has admin permissions
-		if (permissions.includes("admin:api")) {
+		if (permissions.includes(env.ADMIN_PERMISSION)) {
 			const stats = await this.channelService.getChannelStats(
 				uuid.toLowerCase(),
 			);
@@ -996,9 +1003,10 @@ export class PTTAPIHandler {
 		request: Request,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check write permission
-		if (!permissions.includes("write:api")) {
+		if (!permissions.includes(env.WRITE_PERMISSION)) {
 			return this.errorResponse("Insufficient permissions", 403);
 		}
 
@@ -1018,7 +1026,7 @@ export class PTTAPIHandler {
 		// Additional validation for emergency channels (admin only)
 		if (
 			createRequest.type === "emergency" &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				"Admin permission required to create emergency channels",
@@ -1095,9 +1103,10 @@ export class PTTAPIHandler {
 		request: Request,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check write permission
-		if (!permissions.includes("write:api")) {
+		if (!permissions.includes(env.WRITE_PERMISSION)) {
 			return this.errorResponse("Insufficient permissions", 403);
 		}
 
@@ -1120,7 +1129,7 @@ export class PTTAPIHandler {
 		// Additional validation for emergency channels (admin only)
 		if (
 			createRequest.type === "emergency" &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				"Admin permission required to create emergency channels",
@@ -1365,9 +1374,10 @@ export class PTTAPIHandler {
 		uuid: string,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check write permission
-		if (!permissions.includes("write:api")) {
+		if (!permissions.includes(env.WRITE_PERMISSION)) {
 			return this.errorResponse("Insufficient permissions", 403);
 		}
 
@@ -1383,7 +1393,7 @@ export class PTTAPIHandler {
 		// Emergency channels require admin permission to modify
 		if (
 			existingChannel.type === "emergency" &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				"Admin permission required to modify emergency channels",
@@ -1402,7 +1412,7 @@ export class PTTAPIHandler {
 		// Additional validation for changing to emergency type (admin only)
 		if (
 			updateRequest.type === "emergency" &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				"Admin permission required to change channel to emergency type",
@@ -1508,9 +1518,10 @@ export class PTTAPIHandler {
 		uuid: string,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check admin permission for deletion
-		if (!permissions.includes("admin:api")) {
+		if (!permissions.includes(env.ADMIN_PERMISSION)) {
 			return this.errorResponse(
 				"Admin permission required for channel deletion",
 				403,
@@ -1660,7 +1671,7 @@ export class PTTAPIHandler {
 			// Use the existing checkPermissions function with minimal permissions
 			const { access, payload } = await checkPermissions(
 				token,
-				"read:api",
+				env.READ_PERMISSION,
 				env,
 			);
 
@@ -1676,10 +1687,10 @@ export class PTTAPIHandler {
 
 			// Normalize permissions: convert access:UUID permissions to lowercase
 			const permissions = rawPermissions.map((permission) => {
-				if (permission.startsWith("access:")) {
-					const uuid = permission.substring(7); // Remove 'access:' prefix
+				if (permission.startsWith(env.ACCESS_PERMISSION_PREFIX)) {
+					const uuid = permission.substring(env.ACCESS_PERMISSION_PREFIX.length); // Remove access prefix
 
-					return `access:${uuid.toLowerCase()}`;
+					return `${env.ACCESS_PERMISSION_PREFIX}${uuid.toLowerCase()}`;
 				}
 
 				return permission;
@@ -1777,13 +1788,14 @@ export class PTTAPIHandler {
 		channelUuid: string,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
+		const requiredPermission = `${env.ACCESS_PERMISSION_PREFIX}${channelUuid.toLowerCase()}`;
 
 		if (
 			!permissions.includes(requiredPermission) &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				`Access denied - missing permission: ${requiredPermission}`,
@@ -1918,13 +1930,14 @@ export class PTTAPIHandler {
 		channelUuid: string,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
+		const requiredPermission = `${env.ACCESS_PERMISSION_PREFIX}${channelUuid.toLowerCase()}`;
 
 		if (
 			!permissions.includes(requiredPermission) &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				`Access denied - missing permission: ${requiredPermission}`,
@@ -2024,13 +2037,14 @@ export class PTTAPIHandler {
 	private async getChannelParticipants(
 		channelUuid: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
+		const requiredPermission = `${env.ACCESS_PERMISSION_PREFIX}${channelUuid.toLowerCase()}`;
 
 		if (
 			!permissions.includes(requiredPermission) &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				`Access denied - missing permission: ${requiredPermission}`,
@@ -2135,13 +2149,14 @@ export class PTTAPIHandler {
 		channelUuid: string,
 		userId: string,
 		permissions: string[],
+		env: Env,
 	): Promise<Response> {
 		// Check channel-specific access permission
-		const requiredPermission = `access:${channelUuid.toLowerCase()}`;
+		const requiredPermission = `${env.ACCESS_PERMISSION_PREFIX}${channelUuid.toLowerCase()}`;
 
 		if (
 			!permissions.includes(requiredPermission) &&
-			!permissions.includes("admin:api")
+			!permissions.includes(env.ADMIN_PERMISSION)
 		) {
 			return this.errorResponse(
 				`Access denied - missing permission: ${requiredPermission}`,
