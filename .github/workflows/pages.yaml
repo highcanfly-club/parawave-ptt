@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - apps/backend-client/**
+      - apps/backend-admin/**
       - yarn.lock
       - .github/workflows/pages.yaml
 
@@ -86,6 +86,7 @@ jobs:
           echo "READ_PERMISSION=${{ secrets.READ_PERMISSION }}" >> .env
           echo "WRITE_PERMISSION=${{ secrets.WRITE_PERMISSION }}" >> .env
           echo "ADMIN_PERMISSION=${{ secrets.ADMIN_PERMISSION }}" >> .env
+          echo "ACCESS_PERMISSION_PREFIX=${{ secrets.ACCESS_PERMISSION_PREFIX }}" >> .env
           echo "VITE_BASE_PATH=${{ github.event.repository.name }}" >> .env
 
       - name: Build project
