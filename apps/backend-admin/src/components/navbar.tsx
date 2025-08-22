@@ -7,6 +7,7 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
+  DropdownSection,
 } from "@heroui/dropdown";
 import {
   Navbar as HeroUINavbar,
@@ -44,11 +45,14 @@ export const Navbar = () => {
   const { getJson } = useSecuredApi();
   const { isAuthenticated, user, hasPermission } = useAuth();
   const [channels, setChannels] = useState<ChannelsListResponse | null>(null);
+  const [isAdminUser, setIsAdminUser] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
-      const isAdminUser = await hasPermission(import.meta.env.ADMIN_PERMISSION);
-      if (isAuthenticated && user && isAdminUser) {
+      const adminPermission = await hasPermission(import.meta.env.ADMIN_PERMISSION);
+      setIsAdminUser(adminPermission);
+
+      if (isAuthenticated && user && adminPermission) {
         try {
           const response = await getJson(
             `${import.meta.env.API_BASE_URL}/v1/channels`,
@@ -131,16 +135,30 @@ export const Navbar = () => {
                   </Link>
                 </DropdownTrigger>
                 <DropdownMenu aria-label="Channels">
-                  {channels.channels.map((channel) => (
-                    <DropdownItem key={channel.uuid}>
-                      <Link
-                        href={`/channel/${channel.uuid}`}
-                        color="foreground"
-                      >
-                        {channel.name}
-                      </Link>
-                    </DropdownItem>
-                  ))}
+                  <DropdownSection title={t("channels")} showDivider={isAdminUser}>
+                    {channels.channels.map((channel) => (
+                      <DropdownItem key={channel.uuid} textValue={channel.name}>
+                        <Link
+                          href={`/channel/${channel.uuid}`}
+                          color="foreground"
+                        >
+                          {channel.name}
+                        </Link>
+                      </DropdownItem>
+                    ))}
+                  </DropdownSection>
+                  {isAdminUser ? (
+                    <DropdownSection title={t("channels_administration")}>
+                      <DropdownItem key="admin" textValue={t("channels_administration")}>
+                        <Link
+                          href="/channels-admin"
+                          color="foreground"
+                        >
+                          {t("channels_administration")}
+                        </Link>
+                      </DropdownItem>
+                    </DropdownSection>
+                  ) : null}
                 </DropdownMenu>
               </Dropdown>
             </NavbarItem>
@@ -242,6 +260,23 @@ export const Navbar = () => {
                     {channel.name}
                   </Link>
                 ))}
+                {isAdminUser && (
+                  <>
+                    <div className="border-t border-divider mt-2 pt-2">
+                      <p className="text-large">
+                        {t("channels_administration")}
+                      </p>
+                      <Link
+                        href="/channels-admin"
+                        color="foreground"
+                        size="lg"
+                        className="pl-4"
+                      >
+                        {t("channels_administration")}
+                      </Link>
+                    </div>
+                  </>
+                )}
               </div>
             </NavbarMenuItem>
           )}

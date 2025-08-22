@@ -151,6 +151,27 @@ export const useAuth0Provider = (): AuthProvider => {
     }
   };
 
+  const putJson = async (url: string, data: any): Promise<any> => {
+    try {
+      const accessToken = await getAccessToken();
+
+      const apiResponse = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      return await apiResponse.json();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Error putting JSON:", error);
+      throw error;
+    }
+  };
+
   const deleteJson = async (url: string): Promise<any> => {
     try {
       const accessToken = await getAccessToken();
@@ -181,6 +202,7 @@ export const useAuth0Provider = (): AuthProvider => {
     hasPermission,
     getJson,
     postJson,
+    putJson,
     deleteJson,
   };
 };

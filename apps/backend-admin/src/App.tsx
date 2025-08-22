@@ -15,6 +15,7 @@ import BlogPage from "@/pages/blog";
 import AboutPage from "@/pages/about";
 import OpenApiPage from "./pages/openapi-api";
 import ChannelPage from "./pages/channel";
+import ChannelsAdminPage from "./pages/channels-admin";
 
 function App() {
   const { isLoading, isAuthenticated } = useAuth();
@@ -72,6 +73,10 @@ function App() {
         <Route
           element={<AuthenticationGuard component={ChannelPage} />}
           path="/channel/:uuid"
+        />
+        <Route
+          element={<AuthenticationGuard component={ChannelsAdminPage} />}
+          path="/channels-admin"
         />
         <Route
           element={<OpenApiPage />}
