@@ -24,6 +24,8 @@ import { useSecuredApi } from "@/authentication";
 import { SearchIcon } from "@/components/icons";
 import { Auth0ManagementTokenData } from "@/types/auth0-management";
 import { APIResponse } from "@/types/ptt";
+import { CopyButton } from "@/components/copy-button";
+import { t } from "i18next";
 
 interface Auth0User {
     user_id: string;
@@ -58,6 +60,7 @@ export default function UsersAdminPage() {
     const [currentPage, setCurrentPage] = useState(0);
     const [totalUsers, setTotalUsers] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
+    const [managementToken, setManagementToken] = useState<string | null>(null);
 
     const fetchUsers = async (page = 0, search = "") => {
         try {
@@ -76,7 +79,9 @@ export default function UsersAdminPage() {
             // Get Management API token using Auth0 SDK
             const managementToken = await getManagementApiToken();
             if (!managementToken) {
-                throw new Error("Unable to obtain Management API token - authentication required");
+                throw new Error(t('unable-to-obtain-management-api-token'));
+            } else {
+                setManagementToken(managementToken);
             }
 
             const response = await fetchAuth0Users(managementToken, page, USERS_PER_PAGE, search);
@@ -86,10 +91,10 @@ export default function UsersAdminPage() {
             setCurrentPage(page);
         } catch (err) {
             console.error("Error fetching users:", err);
-            const errorMessage = err instanceof Error ? err.message : "Unknown error";
+            const errorMessage = err instanceof Error ? err.message : t('unknown-error');
 
             if (errorMessage.includes("authentication required") || errorMessage.includes("consent_required")) {
-                setError("Authentication required for Management API access. You may need to re-authenticate.");
+                setError(t('authentication-required-management-api'));
             } else {
                 setError(errorMessage);
             }
@@ -115,19 +120,19 @@ export default function UsersAdminPage() {
                 console.log("Management API token obtained from backend:", data.cached ? "(cached)" : "(new)");
                 return data.access_token;
             } else {
-                throw new Error("Invalid response format from backend");
+                throw new Error(t('invalid-response-format-backend'));
             }
         } catch (error) {
             console.error("Error obtaining Management API token from backend:", error);
 
             // If backend fails, provide helpful error message
-            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            const errorMessage = error instanceof Error ? error.message : t('unknown-error');
             if (errorMessage.includes("403") || errorMessage.includes("Insufficient permissions")) {
-                throw new Error("Insufficient permissions - tenant administration required");
+                throw new Error(t('insufficient-permissions-tenant-admin'));
             } else if (errorMessage.includes("401") || errorMessage.includes("Authentication")) {
-                throw new Error("Authentication required - please log in again");
+                throw new Error(t('authentication-required-login-again'));
             } else {
-                throw new Error(`Failed to obtain Management API token: ${errorMessage}`);
+                throw new Error(t('failed-obtain-management-token', { error: errorMessage }));
             }
         }
     };
@@ -138,42 +143,88 @@ export default function UsersAdminPage() {
         perPage: number,
         search: string
     ): Promise<Auth0UsersResponse> => {
-        const params = new URLSearchParams({
-            page: page.toString(),
-            per_page: perPage.toString(),
-            include_totals: 'true',
-        });
+        try {
+            // First, get all grants for our client ID and audience
+            const grantsParams = new URLSearchParams({
+                client_id: import.meta.env.AUTH0_CLIENT_ID,
+                audience: import.meta.env.AUTH0_AUDIENCE,
+            });
 
-        // Filter users who have authorized our application
-        let query = `app_metadata.authorized_apps:"${import.meta.env.AUTH0_CLIENT_ID}"`;
+            const grantsResponse = await fetch(
+                `https://${import.meta.env.AUTH0_DOMAIN}/api/v2/grants?${grantsParams.toString()}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
 
-        if (search.trim()) {
-            query += ` AND (email:"*${search}*" OR name:"*${search}*" OR nickname:"*${search}*")`;
-        }
-
-        params.set('q', query);
-
-        const response = await fetch(
-            `https://${import.meta.env.AUTH0_DOMAIN}/api/v2/users?${params.toString()}`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
+            if (!grantsResponse.ok) {
+                throw new Error(t('auth0-grants-api-error', {
+                    status: grantsResponse.status,
+                    statusText: grantsResponse.statusText
+                }));
             }
-        );
 
-        if (!response.ok) {
-            throw new Error(`Auth0 API Error: ${response.status} ${response.statusText}`);
+            const grants = await grantsResponse.json();
+
+            // Extract unique user IDs from grants
+            const userIds = [...new Set(grants.map((grant: any) => grant.user_id))];
+
+            if (userIds.length === 0) {
+                return {
+                    users: [],
+                    total: 0,
+                    page,
+                    per_page: perPage,
+                };
+            }
+
+            // Now get user details for these user IDs
+            let userQuery = userIds.map(id => `user_id:"${id}"`).join(' OR ');
+
+            // Add search filter if provided
+            if (search.trim()) {
+                userQuery = `(${userQuery}) AND (email:"*${search}*" OR name:"*${search}*" OR nickname:"*${search}*")`;
+            }
+
+            const usersParams = new URLSearchParams({
+                q: userQuery,
+                page: page.toString(),
+                per_page: perPage.toString(),
+                include_totals: 'true',
+            });
+
+            const usersResponse = await fetch(
+                `https://${import.meta.env.AUTH0_DOMAIN}/api/v2/users?${usersParams.toString()}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            if (!usersResponse.ok) {
+                throw new Error(t('auth0-users-api-error', {
+                    status: usersResponse.status,
+                    statusText: usersResponse.statusText
+                }));
+            }
+
+            const usersData = await usersResponse.json();
+            return {
+                users: usersData.users || [],
+                total: usersData.total || 0,
+                page,
+                per_page: perPage,
+            };
+
+        } catch (error) {
+            console.error('Error in fetchAuth0Users:', error);
+            throw error;
         }
-
-        const data = await response.json();
-        return {
-            users: data.users || [],
-            total: data.total || 0,
-            page,
-            per_page: perPage,
-        };
     };
 
     useEffect(() => {
@@ -184,7 +235,7 @@ export default function UsersAdminPage() {
                 setIsAdminUser(tenantAdminPermission);
 
                 if (!tenantAdminPermission) {
-                    setError("Insufficient permissions - tenant administration required");
+                    setError(t('insufficient-permissions-tenant-admin'));
                     setLoading(false);
                     return;
                 }
@@ -193,7 +244,7 @@ export default function UsersAdminPage() {
                 await fetchUsers();
             } catch (err) {
                 console.error("Initialization error:", err);
-                setError("Error during initialization - you may need to re-authenticate");
+                setError(t('error-during-initialization'));
                 setLoading(false);
             }
         };
@@ -215,7 +266,7 @@ export default function UsersAdminPage() {
     };
 
     const formatDate = (dateString?: string) => {
-        if (!dateString) return "Never";
+        if (!dateString) return t('never');
         return new Date(dateString).toLocaleDateString("en-US", {
             year: "numeric",
             month: "short",
@@ -226,10 +277,10 @@ export default function UsersAdminPage() {
     };
 
     const getConnectionType = (userId: string) => {
-        if (userId.startsWith("google-oauth2|")) return "Google";
-        if (userId.startsWith("auth0|")) return "Auth0";
-        if (userId.startsWith("github|")) return "GitHub";
-        return "Other";
+        if (userId.startsWith("google-oauth2|")) return t('google');
+        if (userId.startsWith("auth0|")) return t('auth0');
+        if (userId.startsWith("github|")) return t('github-connection');
+        return t('other');
     };
 
     const getStatusColor = (user: Auth0User) => {
@@ -239,9 +290,9 @@ export default function UsersAdminPage() {
     };
 
     const getStatusText = (user: Auth0User) => {
-        if (user.blocked) return "Blocked";
-        if (!user.email_verified) return "Email not verified";
-        return "Active";
+        if (user.blocked) return t('blocked');
+        if (!user.email_verified) return t('email-not-verified');
+        return t('active');
     };
 
     if (!isAdminUser && !loading) {
@@ -249,10 +300,9 @@ export default function UsersAdminPage() {
             <DefaultLayout>
                 <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
                     <div className="inline-block max-w-lg text-center justify-center">
-                        <h1 className={title({ color: "pink" })}>Access Denied</h1>
+                        <h1 className={title({ color: "pink" })}>{t('access-denied')}</h1>
                         <p className="text-lg mt-4">
-                            You don't have the necessary permissions to access this page.
-                            Tenant administration is required.
+                            {t('no-permissions-page')}
                         </p>
                     </div>
                 </section>
@@ -264,11 +314,12 @@ export default function UsersAdminPage() {
         <DefaultLayout>
             <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
                 <div className="inline-block max-w-full text-center justify-center">
+
                     <h1 className={title({ color: "blue" })}>
-                        👥 Auth0 Users Administration
+                        👥 {t('auth0-users-administration')}<CopyButton value={managementToken || ""} title={t('copy-management-token-to-clipboard')} />
                     </h1>
                     <p className="text-lg mt-2 text-default-600">
-                        Management of users who have authorized the Parawave PTT application
+                        {t('management-of-users-who-authorized-parawave-ptt')}
                     </p>
                 </div>
 
@@ -283,14 +334,14 @@ export default function UsersAdminPage() {
                 <Card className="max-w-6xl w-full">
                     <CardHeader className="flex gap-3">
                         <div className="flex flex-col flex-1">
-                            <p className="text-md font-semibold">Authorized users</p>
+                            <p className="text-md font-semibold">{t('authorized-users')}</p>
                             <p className="text-small text-default-500">
-                                {totalUsers} user{totalUsers !== 1 ? "s" : ""} found
+                                {t('users-found', { count: totalUsers })}
                             </p>
                         </div>
                         <div className="flex gap-2">
                             <Input
-                                placeholder="Search by email, name..."
+                                placeholder={t('search-by-email-name')}
                                 startContent={<SearchIcon className="w-4 h-4" />}
                                 value={searchTerm}
                                 onValueChange={setSearchTerm}
@@ -303,7 +354,7 @@ export default function UsersAdminPage() {
                                 onPress={handleSearch}
                                 isDisabled={loading}
                             >
-                                Search
+                                {t('search')}
                             </Button>
                             <Button
                                 color="primary"
@@ -313,7 +364,7 @@ export default function UsersAdminPage() {
                                 isLoading={refreshing}
                                 startContent={!refreshing && <span>🔄</span>}
                             >
-                                Refresh
+                                {t('refresh')}
                             </Button>
                         </div>
                     </CardHeader>
@@ -326,12 +377,12 @@ export default function UsersAdminPage() {
                         ) : (
                             <Table aria-label="Auth0 users table">
                                 <TableHeader>
-                                    <TableColumn>USER</TableColumn>
-                                    <TableColumn>CONNECTION</TableColumn>
-                                    <TableColumn>STATUS</TableColumn>
-                                    <TableColumn>LOGINS</TableColumn>
-                                    <TableColumn>CREATED</TableColumn>
-                                    <TableColumn>LAST LOGIN</TableColumn>
+                                    <TableColumn>{t('user-column')}</TableColumn>
+                                    <TableColumn>{t('connection')}</TableColumn>
+                                    <TableColumn>{t('status')}</TableColumn>
+                                    <TableColumn>{t('logins')}</TableColumn>
+                                    <TableColumn>{t('created')}</TableColumn>
+                                    <TableColumn>{t('last-login')}</TableColumn>
                                 </TableHeader>
                                 <TableBody>
                                     {users.map((user) => (
@@ -343,7 +394,7 @@ export default function UsersAdminPage() {
                                                     </div>
                                                     <div className="flex flex-col">
                                                         <p className="text-bold text-sm">
-                                                            {user.name || user.nickname || "Unknown name"}
+                                                            {user.name || user.nickname || t('unknown-name')}
                                                         </p>
                                                         <p className="text-bold text-sm text-default-400">
                                                             {user.email}
@@ -394,10 +445,13 @@ export default function UsersAdminPage() {
                                     onPress={() => handlePageChange(currentPage - 1)}
                                     isDisabled={currentPage === 0}
                                 >
-                                    Previous
+                                    {t('previous')}
                                 </Button>
                                 <span className="px-3 py-2 text-sm">
-                                    Page {currentPage + 1} of {Math.ceil(totalUsers / USERS_PER_PAGE)}
+                                    {t('page-x-of-y', {
+                                        current: currentPage + 1,
+                                        total: Math.ceil(totalUsers / USERS_PER_PAGE)
+                                    })}
                                 </span>
                                 <Button
                                     size="sm"
@@ -405,7 +459,7 @@ export default function UsersAdminPage() {
                                     onPress={() => handlePageChange(currentPage + 1)}
                                     isDisabled={currentPage >= Math.ceil(totalUsers / USERS_PER_PAGE) - 1}
                                 >
-                                    Next
+                                    {t('next')}
                                 </Button>
                             </div>
                         )}
