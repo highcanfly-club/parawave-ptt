@@ -1,0 +1,583 @@
+import Foundation
+import CoreLocation
+
+/*
+ Copyright (C) 2025 Ronan Le Meillat
+ SPDX-License-Identifier: AGPL-3.0-or-later
+
+ This file is part of ParaWave PTT.
+ ParaWave PTT is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ ParaWave PTT is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU Affero General Public License for more details.
+
+ You should have received a copy of the GNU Affero General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>.
+*/
+
+// API and domain models for ParaWave PTT
+
+// MARK: - API Response Models
+
+struct APIResponse<T: Codable>: Codable {
+    let success: Bool
+    let data: T?
+    let error: String?
+    let timestamp: Date?
+    let version: String?
+}
+
+struct ErrorResponse: Codable {
+    let success: Bool
+    let error: String
+    let timestamp: Date?
+    let version: String?
+}
+
+// MARK: - Channel Models
+
+struct PTTChannel: Codable, Identifiable, Equatable {
+    let uuid: String
+    let name: String
+    let description: String?
+    let type: ChannelType
+    let frequency: Double?
+    let flyingSiteId: Int?
+    let isActive: Bool
+    let createdAt: Date
+    let updatedAt: Date
+    let creatorUserId: String
+    let maxParticipants: Int
+    let difficulty: ChannelDifficulty?
+    let location: Coordinates?
+    let stats: ChannelStats?
+    
+    var id: String { uuid }
+    
+    enum CodingKeys: String, CodingKey {
+        case uuid, name, description, type, frequency
+        case flyingSiteId = "flying_site_id"
+        case isActive = "is_active"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case creatorUserId = "creator_user_id"
+        case maxParticipants = "max_participants"
+        case difficulty, location, stats
+    }
+    
+    static func == (lhs: PTTChannel, rhs: PTTChannel) -> Bool {
+        return lhs.uuid == rhs.uuid
+    }
+}
+
+enum ChannelType: String, Codable, CaseIterable {
+    case general = "general"
+    case siteLocal = "site_local"
+    case emergency = "emergency"
+    case crossCountry = "cross_country"
+    case training = "training"
+    case competition = "competition"
+    
+    var displayName: String {
+        switch self {
+        case .general: return "General"
+        case .siteLocal: return "Local Site"
+        case .emergency: return "Emergency"
+        case .crossCountry: return "Cross Country"
+        case .training: return "Training"
+        case .competition: return "Competition"
+        }
+    }
+}
+
+enum ChannelDifficulty: String, Codable, CaseIterable {
+    case beginner = "beginner"
+    case intermediate = "intermediate"
+    case advanced = "advanced"
+    case expert = "expert"
+    
+    var displayName: String {
+        switch self {
+        case .beginner: return "Beginner"
+        case .intermediate: return "Intermediate"
+        case .advanced: return "Advanced"
+        case .expert: return "Expert"
+        }
+    }
+}
+
+struct ChannelStats: Codable {
+    let totalParticipants: Int
+    let activeParticipants: Int
+    let totalMessages: Int
+    let totalTransmissions: Int
+    let lastActivity: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case totalParticipants = "total_participants"
+        case activeParticipants = "active_participants"
+        case totalMessages = "total_messages"
+        case totalTransmissions = "total_transmissions"
+        case lastActivity = "last_activity"
+    }
+}
+
+struct Coordinates: Codable {
+    let lat: Double
+    let lon: Double
+    
+    var clLocation: CLLocation {
+        return CLLocation(latitude: lat, longitude: lon)
+    }
+}
+
+// MARK: - Channel Operations
+
+struct CreateChannelRequest: Codable {
+    let name: String
+    let description: String?
+    let type: ChannelType
+    let frequency: Double?
+    let flyingSiteId: Int?
+    let maxParticipants: Int?
+    let difficulty: ChannelDifficulty?
+    let location: Coordinates?
+    
+    enum CodingKeys: String, CodingKey {
+        case name, description, type, frequency
+        case flyingSiteId = "flying_site_id"
+        case maxParticipants = "max_participants"
+        case difficulty, location
+    }
+}
+
+struct UpdateChannelRequest: Codable {
+    let name: String?
+    let description: String?
+    let type: ChannelType?
+    let frequency: Double?
+    let flyingSiteId: Int?
+    let maxParticipants: Int?
+    let difficulty: ChannelDifficulty?
+    let location: Coordinates?
+    let isActive: Bool?
+    
+    enum CodingKeys: String, CodingKey {
+        case name, description, type, frequency
+        case flyingSiteId = "flying_site_id"
+        case maxParticipants = "max_participants"
+        case difficulty, location
+        case isActive = "is_active"
+    }
+}
+
+// MARK: - Participant Models
+
+struct ChannelParticipant: Codable, Identifiable {
+    let userId: String
+    let username: String
+    let joinTime: Date
+    let lastSeen: Date
+    let location: Coordinates?
+    let connectionQuality: String
+    let isTransmitting: Bool
+    let ephemeralPushToken: String?
+    let osType: String?
+    let osVersion: String?
+    let appVersion: String?
+    
+    var id: String { userId }
+    
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case username
+        case joinTime = "join_time"
+        case lastSeen = "last_seen"
+        case location
+        case connectionQuality = "connection_quality"
+        case isTransmitting = "is_transmitting"
+        case ephemeralPushToken = "ephemeral_push_token"
+        case osType = "os_type"
+        case osVersion = "os_version"
+        case appVersion = "app_version"
+    }
+}
+
+struct JoinChannelRequest: Codable {
+    let location: Coordinates?
+    let ephemeralPushToken: String?
+    let deviceInfo: DeviceInfo?
+    
+    enum CodingKeys: String, CodingKey {
+        case location
+        case ephemeralPushToken = "ephemeral_push_token"
+        case deviceInfo = "device_info"
+    }
+}
+
+struct JoinChannelResponse: Codable {
+    let success: Bool
+    let participant: ChannelParticipant?
+    let channelInfo: PTTChannel?
+    let error: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case success, participant, error
+        case channelInfo = "channel_info"
+    }
+}
+
+struct LeaveChannelResponse: Codable {
+    let success: Bool
+    let error: String?
+}
+
+// MARK: - PTT Audio Models
+
+struct PTTStartTransmissionRequest: Codable {
+    let channelUuid: String
+    let audioFormat: AudioFormat
+    let deviceInfo: DeviceInfo?
+    let expectedDuration: Int?
+    let location: Coordinates?
+    
+    enum CodingKeys: String, CodingKey {
+        case channelUuid = "channel_uuid"
+        case audioFormat = "audio_format"
+        case deviceInfo = "device_info"
+        case expectedDuration = "expected_duration"
+        case location
+    }
+}
+
+struct PTTStartTransmissionResponse: Codable {
+    let success: Bool
+    let sessionId: String?
+    let channelUuid: String?
+    let maxDuration: Int?
+    let websocketUrl: String?
+    let error: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case success
+        case sessionId = "session_id"
+        case channelUuid = "channel_uuid"
+        case maxDuration = "max_duration"
+        case websocketUrl = "websocket_url"
+        case error
+    }
+}
+
+struct PTTAudioChunkRequest: Codable {
+    let audioData: String
+    let sequenceNumber: Int
+    let timestamp: Int?
+    let durationMs: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case audioData = "audio_data"
+        case sequenceNumber = "sequence_number"
+        case timestamp
+        case durationMs = "duration_ms"
+    }
+}
+
+struct PTTAudioChunkResponse: Codable {
+    let success: Bool
+    let sequenceNumber: Int?
+    let totalChunks: Int?
+    let durationSoFar: Double?
+    let error: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case success
+        case sequenceNumber = "sequence_number"
+        case totalChunks = "total_chunks"
+        case durationSoFar = "duration_so_far"
+        case error
+    }
+}
+
+struct PTTEndTransmissionRequest: Codable {
+    let reason: String?
+}
+
+struct PTTEndTransmissionResponse: Codable {
+    let success: Bool
+    let totalDuration: Double?
+    let totalChunks: Int?
+    let participantsReached: Int?
+    let error: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case success
+        case totalDuration = "total_duration"
+        case totalChunks = "total_chunks"
+        case participantsReached = "participants_reached"
+        case error
+    }
+}
+
+struct PTTActiveTransmissionResponse: Codable {
+    let success: Bool
+    let transmission: ActiveTransmission?
+    let error: String?
+}
+
+struct ActiveTransmission: Codable {
+    let sessionId: String
+    let userId: String
+    let username: String
+    let startTime: Date
+    let currentDuration: Double
+    let location: Coordinates?
+    
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case userId = "user_id"
+        case username
+        case startTime = "start_time"
+        case currentDuration = "current_duration"
+        case location
+    }
+}
+
+// MARK: - Audio Format
+
+enum AudioFormat: String, Codable, CaseIterable {
+    case aacLc = "aac-lc"
+    case opus = "opus"
+    case pcm = "pcm"
+    
+    var displayName: String {
+        switch self {
+        case .aacLc: return "AAC-LC"
+        case .opus: return "Opus"
+        case .pcm: return "PCM"
+        }
+    }
+}
+
+// MARK: - Device Info
+
+struct DeviceInfo: Codable {
+    let os: String?
+    let osVersion: String?
+    let appVersion: String?
+    let deviceModel: String?
+    let userAgent: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case os
+        case osVersion = "os_version"
+        case appVersion = "app_version"
+        case deviceModel = "device_model"
+        case userAgent = "user_agent"
+    }
+    
+    static var current: DeviceInfo {
+        return DeviceInfo(
+            os: "iOS",
+            osVersion: UIDevice.current.systemVersion,
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0",
+            deviceModel: UIDevice.current.model,
+            userAgent: "ParaWave PTT iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")"
+        )
+    }
+}
+
+// MARK: - WebSocket Messages
+
+struct PTTWebSocketMessage: Codable {
+    let type: String
+    let sessionId: String?
+    let userId: String?
+    let username: String?
+    let timestamp: Date
+    let audioData: String?
+    let sequenceNumber: Int?
+    let totalDuration: Double?
+    let reason: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case sessionId = "session_id"
+        case userId = "user_id"
+        case username
+        case timestamp
+        case audioData = "audio_data"
+        case sequenceNumber = "sequence_number"
+        case totalDuration = "total_duration"
+        case reason
+    }
+}
+
+// MARK: - Health Check
+
+struct HealthResponse: Codable {
+    let success: Bool
+    let status: String
+    let timestamp: Date
+    let version: String
+    let database: String?
+    let auth0: String?
+    let uptime: Int?
+}
+
+// MARK: - Auth0 Models
+
+struct Auth0ValidationResponse: Codable {
+    let valid: Bool
+    let permissions: [String]
+    let userId: String?
+    let error: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case valid, permissions, error
+        case userId = "user_id"
+    }
+}
+
+struct Auth0ManagementTokenResponse: Codable {
+    let accessToken: String
+    let tokenType: String
+    let expiresIn: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case tokenType = "token_type"
+        case expiresIn = "expires_in"
+    }
+}
+
+// MARK: - Error Types
+
+enum ParapenteError: Error, LocalizedError {
+    case authenticationFailed(Error)
+    case networkError(Error)
+    case invalidCredentials
+    case tokenExpired
+    case insufficientPermissions
+    case channelNotFound
+    case transmissionFailed
+    case audioError(Error)
+    case locationError(Error)
+    case unknownError(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .authenticationFailed(let error):
+            return "Authentication failed: \(error.localizedDescription)"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        case .invalidCredentials:
+            return "Invalid credentials"
+        case .tokenExpired:
+            return "Session expired"
+        case .insufficientPermissions:
+            return "Insufficient permissions"
+        case .channelNotFound:
+            return "Channel not found"
+        case .transmissionFailed:
+            return "Transmission failed"
+        case .audioError(let error):
+            return "Audio error: \(error.localizedDescription)"
+        case .locationError(let error):
+            return "Location error: \(error.localizedDescription)"
+        case .unknownError(let error):
+            return "Unknown error: \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Application State
+
+enum ParapenteAppState: Equatable {
+    // Note: enum case identifiers are intentionally kept in French to preserve
+    // existing code usage. Only comments and user-facing strings are translated.
+    case lancement
+    case authentification
+    case authentifié(permissions: [String])
+    case selectionCanal
+    case canalRejoint(channel: PTTChannel)
+    case transmissionActive(sessionId: String)
+    case erreur(ParapenteError)
+    
+    static func == (lhs: ParapenteAppState, rhs: ParapenteAppState) -> Bool {
+        switch (lhs, rhs) {
+        case (.lancement, .lancement),
+             (.authentification, .authentification),
+             (.selectionCanal, .selectionCanal):
+            return true
+        case (.authentifié(let lhsPermissions), .authentifié(let rhsPermissions)):
+            return lhsPermissions == rhsPermissions
+        case (.canalRejoint(let lhsChannel), .canalRejoint(let rhsChannel)):
+            return lhsChannel == rhsChannel
+        case (.transmissionActive(let lhsSessionId), .transmissionActive(let rhsSessionId)):
+            return lhsSessionId == rhsSessionId
+        case (.erreur, .erreur):
+            return true // Simplified comparison for errors
+        default:
+            return false
+        }
+    }
+}
+
+// MARK: - Network Configuration
+
+struct NetworkConfiguration {
+    static let baseURL = "https://ptt-backend.highcanfly.club/api/v1"
+    static let websocketURL = "wss://ptt-backend.highcanfly.club/api/v1/transmissions/ws"
+    static let auth0Domain = "highcanfly.eu.auth0.com"
+    static let auth0ClientId = "YOUR_AUTH0_CLIENT_ID" // À configurer
+    static let auth0Audience = "https://ptt-backend.highcanfly.club"
+    
+    static let timeout: TimeInterval = 30.0
+    static let maxTransmissionDuration: TimeInterval = 30.0
+    static let audioChunkSize = 1024
+    static let maxRetries = 3
+}
+
+// MARK: - Extensions
+
+extension Date {
+    static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+}
+
+extension JSONDecoder {
+    static let parawaveDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            
+            if let date = Date.iso8601Formatter.date(from: string) {
+                return date
+            }
+            
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format")
+        }
+        return decoder
+    }()
+}
+
+extension JSONEncoder {
+    static let parawaveEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            let string = Date.iso8601Formatter.string(from: date)
+            try container.encode(string)
+        }
+        return encoder
+    }()
+}

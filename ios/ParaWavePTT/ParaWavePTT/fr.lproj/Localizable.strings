@@ -1,0 +1,128 @@
+/* Authentication */
+"auth0.login.button" = "Se connecter";
+"auth0.logout.button" = "Se déconnecter";
+"auth0.biometric.prompt" = "Authentifiez-vous avec Touch ID ou Face ID";
+"auth0.error.network" = "Erreur de connexion. Vérifiez votre réseau.";
+"auth0.error.token_expired" = "Session expirée. Veuillez vous reconnecter.";
+
+/* Main Interface */
+"main.talk.button" = "PARLER";
+"main.channel.label" = "Canal";
+"main.join.channel" = "Rejoindre";
+"main.leave.channel" = "Quitter";
+
+/* Status */
+"status.connected" = "Connecté";
+"status.disconnected" = "Déconnecté";
+"status.transmitting" = "Transmission...";
+"status.receiving" = "Réception...";
+
+/* Network Status */
+"status.network.2g" = "GPRS";
+"status.network.3g" = "3G";
+"status.network.4g" = "4G";
+"status.network.5g" = "5G";
+"status.network.offline" = "Hors ligne";
+"status.network.poor" = "Signal faible";
+"status.network.good" = "Bon signal";
+"status.network.excellent" = "Excellent signal";
+
+/* Channels */
+"channel.type.general" = "Général";
+"channel.type.site_local" = "Site local";
+"channel.type.emergency" = "Urgence";
+"channel.type.cross_country" = "Cross country";
+"channel.type.training" = "Formation";
+"channel.type.competition" = "Compétition";
+
+"channel.select.title" = "Sélectionner un canal";
+"channel.no.selection" = "Aucun canal sélectionné";
+"channel.participants" = "%d participant(s)";
+"channel.join.success" = "Rejoint le canal avec succès";
+"channel.join.failed" = "Impossible de rejoindre le canal";
+"channel.leave.success" = "Canal quitté";
+
+/* Emergency */
+"emergency.title" = "Urgence";
+"emergency.call.112" = "Appeler le 112";
+"emergency.channel.button" = "Canal d'urgence";
+"emergency.cancel" = "Annuler";
+"emergency.message" = "En cas d'urgence, vous pouvez appeler le 112 ou basculer sur le canal d'urgence.";
+"emergency.channel.name" = "🚨 URGENCE";
+"notification.emergency.title" = "Alerte Urgence Parapente";
+
+/* Audio */
+"audio.quality.no_signal" = "Aucun signal";
+"audio.quality.poor" = "Qualité faible";
+"audio.quality.good" = "Bonne qualité";
+"audio.quality.excellent" = "Excellente qualité";
+
+"audio.permission.title" = "Accès microphone requis";
+"audio.permission.message" = "ParaWave PTT nécessite l'accès au microphone pour les transmissions vocales.";
+"audio.permission.settings" = "Paramètres";
+
+/* Location */
+"location.permission.title" = "Accès localisation";
+"location.permission.message" = "La localisation permet de proposer automatiquement les canaux adaptés à votre site de vol.";
+"location.disabled" = "GPS désactivé";
+"location.searching" = "Recherche GPS...";
+
+/* Errors */
+"error.network.title" = "Erreur réseau";
+"error.authentication.title" = "Erreur d'authentification";
+"error.permission.title" = "Permissions insuffisantes";
+"error.channel.title" = "Erreur de canal";
+"error.audio.title" = "Erreur audio";
+
+"error.generic.message" = "Une erreur inattendue s'est produite. Veuillez réessayer.";
+"error.network.message" = "Vérifiez votre connexion internet et réessayez.";
+"error.retry.button" = "Réessayer";
+"error.ok.button" = "OK";
+
+/* Flying Sites */
+"site.annecy.name" = "Annecy - Forclaz";
+"site.chamonix.name" = "Chamonix - Vallée Blanche";
+"site.pyrenees.name" = "Pyrénées - Saint-Hilaire";
+"site.alps.name" = "Alpes du Sud";
+
+/* VHF Integration */
+"vhf.backup.frequency" = "Fréquence VHF: %@";
+"vhf.recommended.title" = "VHF recommandée";
+"vhf.recommended.message" = "Signal cellulaire faible détecté. Il est recommandé d'utiliser également la VHF sur la fréquence %@";
+
+/* Settings */
+"settings.title" = "Paramètres";
+"settings.audio.title" = "Audio";
+"settings.network.title" = "Réseau";
+"settings.location.title" = "Localisation";
+"settings.account.title" = "Compte";
+
+"settings.wind.noise.reduction" = "Réduction bruit de vent";
+"settings.auto.gain.control" = "Contrôle auto. du gain";
+"settings.volume.buttons.ptt" = "Boutons volume pour PTT";
+
+/* Transmission */
+"transmission.started" = "Transmission démarrée";
+"transmission.ended" = "Transmission terminée";
+"transmission.failed" = "Échec de la transmission";
+"transmission.max.duration" = "Durée maximale atteinte (60s)";
+
+/* General */
+"app.name" = "ParaWave PTT";
+"app.tagline" = "Communication PTT pour parapentistes";
+"general.cancel" = "Annuler";
+"general.confirm" = "Confirmer";
+"general.close" = "Fermer";
+"general.retry" = "Réessayer";
+"general.loading" = "Chargement...";
+
+/* Accessibility */
+"accessibility.ptt.button" = "Bouton Push-to-Talk";
+"accessibility.channel.selector" = "Sélecteur de canal";
+"accessibility.emergency.button" = "Bouton d'urgence";
+"accessibility.network.status" = "Statut du réseau";
+"accessibility.audio.level" = "Niveau audio";
+
+"accessibility.ptt.hint" = "Appuyez et maintenez enfoncé pour transmettre";
+"accessibility.channel.hint" = "Appuyez pour sélectionner un canal de communication";
+"accessibility.emergency.hint" = "Appuyez pour accéder aux fonctions d'urgence";
