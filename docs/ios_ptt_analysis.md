@@ -1631,8 +1631,6 @@ struct ChannelParticipant: Codable, Identifiable {
 }
 ```
 
-````
-
 ### Implémentation WebSocket PTT Temps Réel
 
 ```swift
@@ -1927,7 +1925,7 @@ class PTTSession {
 
     // Implémentation spécialisée parapente avec JWT...
 }
-````
+```
 
 ## Stratégie de Stockage des Données
 
