@@ -31,7 +31,7 @@ import { SearchIcon } from "@/components/icons";
 import { Auth0ManagementTokenData } from "@/types/auth0-management";
 import { APIResponse } from "@/types/ptt";
 import { CopyButton } from "@/components/copy-button";
-import { t } from "i18next";
+import { useTranslation } from "react-i18next";
 
 interface Auth0Permission {
     permission_name: string;
@@ -69,6 +69,7 @@ interface Auth0UsersResponse {
 const USERS_PER_PAGE = 25;
 
 export default function UsersAdminPage() {
+    const { t, i18n } = useTranslation();
     const { hasPermission, getJson } = useSecuredApi();
 
     const [users, setUsers] = useState<Auth0User[]>([]);
@@ -335,7 +336,7 @@ export default function UsersAdminPage() {
 
     const formatDate = (dateString?: string) => {
         if (!dateString) return t('never');
-        return new Date(dateString).toLocaleDateString("en-US", {
+        return new Date(dateString).toLocaleDateString(i18n.language, {
             year: "numeric",
             month: "short",
             day: "numeric",
