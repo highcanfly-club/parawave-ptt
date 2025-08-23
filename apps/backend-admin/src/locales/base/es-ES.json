@@ -137,9 +137,9 @@
   "error-during-initialization": "Error durante la inicialización - es posible que necesites volver a autenticarte",
   "auth0-grants-api-error": "Error API Auth0 Grants: {{status}} {{statusText}}",
   "auth0-users-api-error": "Error API Auth0 Users: {{status}} {{statusText}}",
-  "users-found": "",
-  "users-found_few": "",
-  "users-found_many": "",
-  "users-found_two": "",
-  "users-found_zero": ""
+  "no-user-permissions": "No hay permisos de usuario",
+  "permission-count_one": "1 permiso",
+  "permission-count_other": "{{count}} permisos",
+  "permission-count_zero": "Sin permisos",
+  "permissions-column": "Permisos"
 }

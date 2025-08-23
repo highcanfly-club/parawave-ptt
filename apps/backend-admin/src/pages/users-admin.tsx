@@ -10,6 +10,12 @@ import { Input } from "@heroui/input";
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import {
+    Dropdown,
+    DropdownTrigger,
+    DropdownMenu,
+    DropdownItem,
+} from "@heroui/dropdown";
+import {
     Table,
     TableHeader,
     TableColumn,
@@ -27,6 +33,18 @@ import { APIResponse } from "@/types/ptt";
 import { CopyButton } from "@/components/copy-button";
 import { t } from "i18next";
 
+interface Auth0Permission {
+    permission_name: string;
+    description: string;
+    resource_server_name: string;
+    resource_server_identifier: string;
+    sources: Array<{
+        source_id: string;
+        source_name: string;
+        source_type: string;
+    }>;
+}
+
 interface Auth0User {
     user_id: string;
     email: string;
@@ -38,6 +56,7 @@ interface Auth0User {
     logins_count: number;
     blocked?: boolean;
     email_verified?: boolean;
+    permissions?: Auth0Permission[];
 }
 
 interface Auth0UsersResponse {
@@ -62,6 +81,11 @@ export default function UsersAdminPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [managementToken, setManagementToken] = useState<string | null>(null);
 
+    /**
+     * Fetch users from the Auth0 Management API.
+     * @param page The page number to fetch.
+     * @param search The search term to filter users.
+     */
     const fetchUsers = async (page = 0, search = "") => {
         try {
             setError("");
@@ -134,6 +158,38 @@ export default function UsersAdminPage() {
             } else {
                 throw new Error(t('failed-obtain-management-token', { error: errorMessage }));
             }
+        }
+    };
+
+    const fetchUserPermissions = async (
+        token: string,
+        userId: string
+    ): Promise<Auth0Permission[]> => {
+        try {
+            const response = await fetch(
+                `https://${import.meta.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}/permissions`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                console.warn(`Failed to fetch permissions for user ${userId}:`, response.status, response.statusText);
+                return [];
+            }
+
+            const permissions = await response.json();
+
+            // Filter permissions by current audience (resource server identifier)
+            return permissions.filter((permission: Auth0Permission) =>
+                permission.resource_server_identifier === import.meta.env.AUTH0_AUDIENCE
+            );
+        } catch (error) {
+            console.error(`Error fetching permissions for user ${userId}:`, error);
+            return [];
         }
     };
 
@@ -214,8 +270,20 @@ export default function UsersAdminPage() {
             }
 
             const usersData = await usersResponse.json();
+
+            // Fetch permissions for each user
+            const usersWithPermissions = await Promise.all(
+                (usersData.users || []).map(async (user: Auth0User) => {
+                    const permissions = await fetchUserPermissions(token, user.user_id);
+                    return {
+                        ...user,
+                        permissions
+                    };
+                })
+            );
+
             return {
-                users: usersData.users || [],
+                users: usersWithPermissions,
                 total: usersData.total || 0,
                 page,
                 per_page: perPage,
@@ -293,6 +361,60 @@ export default function UsersAdminPage() {
         if (user.blocked) return t('blocked');
         if (!user.email_verified) return t('email-not-verified');
         return t('active');
+    };
+
+    const renderUserPermissions = (user: Auth0User) => {
+        if (!user.permissions || user.permissions.length === 0) {
+            return (
+                <span className="text-xs text-default-400">
+                    {t('no-user-permissions')}
+                </span>
+            );
+        }
+
+        // Sort permissions alphabetically
+        const sortedPermissions = [...user.permissions].sort((a, b) =>
+            a.permission_name.localeCompare(b.permission_name)
+        );
+
+        return (
+            <Dropdown>
+                <DropdownTrigger>
+                    <Button
+                        variant="light"
+                        size="sm"
+                        className="h-auto p-2 min-w-0"
+                    >
+                        <div className="text-left">
+                            <div className="text-xs text-default-500">
+                                {t('permission-count', { count: user.permissions.length })}
+                            </div>
+                        </div>
+                    </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                    aria-label="User permissions"
+                    className="max-h-60 overflow-y-auto"
+                >
+                    {sortedPermissions.map((permission, index) => (
+                        <DropdownItem
+                            key={index}
+                            className="cursor-default"
+                            textValue={permission.permission_name}
+                        >
+                            <div className="flex flex-col gap-1">
+                                <span className="font-mono text-xs text-primary-600">
+                                    {permission.permission_name}
+                                </span>
+                                <span className="text-xs text-default-500">
+                                    {permission.description}
+                                </span>
+                            </div>
+                        </DropdownItem>
+                    ))}
+                </DropdownMenu>
+            </Dropdown>
+        );
     };
 
     if (!isAdminUser && !loading) {
@@ -380,6 +502,7 @@ export default function UsersAdminPage() {
                                     <TableColumn>{t('user-column')}</TableColumn>
                                     <TableColumn>{t('connection')}</TableColumn>
                                     <TableColumn>{t('status')}</TableColumn>
+                                    <TableColumn>{t('permissions-column')}</TableColumn>
                                     <TableColumn>{t('logins')}</TableColumn>
                                     <TableColumn>{t('created')}</TableColumn>
                                     <TableColumn>{t('last-login')}</TableColumn>
@@ -415,6 +538,9 @@ export default function UsersAdminPage() {
                                                 >
                                                     {getStatusText(user)}
                                                 </Chip>
+                                            </TableCell>
+                                            <TableCell>
+                                                {renderUserPermissions(user)}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="text-bold text-sm">

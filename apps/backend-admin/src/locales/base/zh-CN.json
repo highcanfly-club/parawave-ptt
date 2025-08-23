@@ -135,11 +135,11 @@
   "unknown-error": "未知错误",
   "unknown-name": "未知名称",
   "user-column": "用户",
-  "users-found": "找到 {{count}} 个用户",
   "users-found_one": "找到 1 个用户",
   "users-found_other": "找到 {{count}} 个用户",
-  "users-found_few": "",
-  "users-found_many": "",
-  "users-found_two": "",
-  "users-found_zero": ""
+  "no-user-permissions": "没有用户权限",
+  "permission-count_one": "1许可",
+  "permission-count_other": "{{count}}权限",
+  "permission-count_zero": "无许可",
+  "permissions-column": "权限"
 }

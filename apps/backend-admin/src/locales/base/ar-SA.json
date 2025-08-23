@@ -135,11 +135,11 @@
   "unknown-error": "خطأ غير معروف",
   "unknown-name": "اسم غير معروف",
   "user-column": "مستخدم",
-  "users-found": "تم العثور على {{count}} مستخدم",
-  "users-found_zero": "لم يتم العثور على مستخدمين",
   "users-found_one": "تم العثور على مستخدم واحد",
-  "users-found_two": "تم العثور على مستخدمين اثنين",
-  "users-found_few": "تم العثور على {{count}} مستخدمين",
-  "users-found_many": "تم العثور على {{count}} مستخدماً",
-  "users-found_other": "تم العثور على {{count}} مستخدم"
+  "users-found_other": "تم العثور على {{count}} مستخدم",
+  "no-user-permissions": "لا أذونات المستخدم",
+  "permission-count_one": "1 إذن",
+  "permission-count_other": "{{count}} أذونات",
+  "permission-count_zero": "لا أذونات",
+  "permissions-column": "أذونات"
 }

@@ -135,11 +135,11 @@
   "unknown-error": "שגיאה לא ידועה",
   "unknown-name": "שם לא ידוע",
   "user-column": "מִשׁתַמֵשׁ",
-  "users-found": "נמצאו {{count}} משתמשים",
   "users-found_one": "נמצא משתמש אחד",
   "users-found_other": "נמצאו {{count}} משתמשים",
-  "users-found_few": "",
-  "users-found_many": "",
-  "users-found_two": "",
-  "users-found_zero": ""
+  "no-user-permissions": "אין הרשאות משתמש",
+  "permission-count_one": "הרשאה אחת",
+  "permission-count_other": "{{count}} הרשאות",
+  "permission-count_zero": "אין הרשאות",
+  "permissions-column": "הרשאות"
 }

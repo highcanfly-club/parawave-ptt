@@ -136,5 +136,10 @@
   "failed-obtain-management-token": "Failed to obtain Management API token: {{error}}",
   "error-during-initialization": "Error during initialization - you may need to re-authenticate",
   "auth0-grants-api-error": "Auth0 Grants API Error: {{status}} {{statusText}}",
-  "auth0-users-api-error": "Auth0 Users API Error: {{status}} {{statusText}}"
+  "auth0-users-api-error": "Auth0 Users API Error: {{status}} {{statusText}}",
+  "permission-count_one": "1 permission",
+  "permission-count_other": "{{count}} permissions",
+  "permission-count_zero": "No permissions",
+  "permissions-column": "PERMISSIONS",
+  "no-user-permissions": "No user permissions"
 }
