@@ -8,14 +8,10 @@ import SwiftUI
 // See: https://www.gnu.org/licenses/agpl-3.0.en.html
 //
 
-//
-// Copyright © 2025 Ronan Le Meillat
-// Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
-// See: https://www.gnu.org/licenses/agpl-3.0.en.html
-//
+// Main application view
 
-// Temporary placeholder for ParapenteStateManager if not found
-class TempParapenteStateManagerContentView: ObservableObject {
+// Temporary solution until ParapenteStateManager is properly available in the build
+class TempParapenteStateManagerForContent: ObservableObject {
     @Published var currentState: ParapenteAppState = .lancement
     @Published var showError = false
     @Published var errorMessage = ""
@@ -27,40 +23,63 @@ class TempParapenteStateManagerContentView: ObservableObject {
     func joinChannel(_ channel: Any) async {}
 }
 
-// Temporary placeholder views
+// Temporary placeholder views until the real ones are available in build
 struct ChannelSelectionView: View {
-    @ObservedObject var stateManager: TempParapenteStateManagerContentView
-    @ObservedObject var networkService: ParapenteNetworkService
-    @ObservedObject var locationManager: LocationManager
+    let channels: [PTTChannel]
+    let stateManager: TempParapenteStateManagerForContent
     
     var body: some View {
-        Text("Channel Selection")
+        VStack {
+            Text("Channel Selection")
+                .font(.title2)
+                .padding()
+            
+            Text("Available channels will be displayed here")
+                .foregroundColor(.gray)
+        }
     }
 }
 
 struct PTTTransmissionView: View {
-    @ObservedObject var stateManager: TempParapenteStateManagerContentView
-    @ObservedObject var networkService: ParapenteNetworkService
-    @ObservedObject var locationManager: LocationManager
+    let channel: PTTChannel
+    let stateManager: TempParapenteStateManagerForContent
     
     var body: some View {
-        Text("PTT Transmission")
+        VStack {
+            Text("PTT Transmission")
+                .font(.title2)
+                .padding()
+            
+            Text("Channel: \(channel.name)")
+                .padding()
+            
+            Button("Transmit") {
+                // Placeholder action
+            }
+            .buttonStyle(.borderedProminent)
+        }
     }
 }
 
 struct ActiveTransmissionView: View {
-    @ObservedObject var stateManager: TempParapenteStateManagerContentView
-    @ObservedObject var networkService: ParapenteNetworkService
-    @ObservedObject var locationManager: LocationManager
+    let transmission: ActiveTransmission
+    let stateManager: TempParapenteStateManagerForContent
     
     var body: some View {
-        Text("Active Transmission")
+        VStack {
+            Text("Active Transmission")
+                .font(.title2)
+                .padding()
+            
+            Text("Session: \(transmission.sessionId)")
+                .padding()
+        }
     }
 }
 
 struct ErrorView: View {
     let error: ParapenteError
-    @ObservedObject var stateManager: TempParapenteStateManagerContentView
+    let stateManager: TempParapenteStateManagerForContent
     
     var body: some View {
         VStack {
@@ -71,11 +90,9 @@ struct ErrorView: View {
         }
     }
 }
-    func clearError() {}
 
-// Main view of the ParaWave PTT application
 struct ContentView: View {
-  @StateObject private var appStateManager = TempParapenteStateManagerContentView()
+  @StateObject private var appStateManager = TempParapenteStateManagerForContent()
   @StateObject private var networkService = ParapenteNetworkService()
   @StateObject private var locationManager = LocationManager()
 
@@ -126,23 +143,27 @@ struct ContentView: View {
 
     case .selectionCanal:
       ChannelSelectionView(
-        stateManager: appStateManager,
-        networkService: networkService,
-        locationManager: locationManager
+        channels: [],  // Placeholder: will be populated from network service
+        stateManager: appStateManager
       )
 
     case .canalRejoint(let channel):
       PTTTransmissionView(
-        stateManager: appStateManager,
-        networkService: networkService,
-        locationManager: locationManager
+        channel: channel,
+        stateManager: appStateManager
       )
 
     case .transmissionActive(let sessionId):
       ActiveTransmissionView(
-        stateManager: appStateManager,
-        networkService: networkService,
-        locationManager: locationManager
+        transmission: ActiveTransmission(
+          sessionId: sessionId,
+          userId: "temp-user",
+          username: "Temporary User",
+          startTime: Date(),
+          currentDuration: 0,
+          location: nil
+        ),
+        stateManager: appStateManager
       )
 
     case .erreur(let error):
@@ -182,7 +203,7 @@ struct LaunchView: View {
 // MARK: - Authentication View
 
 struct AuthenticationView: View {
-  @ObservedObject var stateManager: TempParapenteStateManagerContentView
+  @ObservedObject var stateManager: TempParapenteStateManagerForContent
 
   var body: some View {
     VStack(spacing: 30) {
@@ -228,7 +249,7 @@ struct AuthenticationView: View {
 // MARK: - Main PTT View
 
 struct MainPTTView: View {
-  @ObservedObject var stateManager: TempParapenteStateManagerContentView
+  @ObservedObject var stateManager: TempParapenteStateManagerForContent
   @ObservedObject var networkService: ParapenteNetworkService
   @ObservedObject var locationManager: LocationManager
 
@@ -474,7 +495,7 @@ struct MainPTTButton: View {
 // MARK: - Emergency Button
 
 struct EmergencyButton: View {
-  @ObservedObject var stateManager: TempParapenteStateManagerContentView
+  @ObservedObject var stateManager: TempParapenteStateManagerForContent
   @State private var showEmergencyAlert = false
 
   var body: some View {

@@ -10,8 +10,8 @@ import UIKit
 // See: https://www.gnu.org/licenses/agpl-3.0.en.html
 //
 
-// Temporary placeholder for ParapenteStateManager if not found
-class TempParapenteStateManager: ObservableObject {
+// Forward declaration - temporary solution until ParapenteStateManager is properly available
+class TempParapenteStateManagerForMain: ObservableObject {
     @Published var currentState: Int = 0
     @Published var showError = false
     @Published var errorMessage = ""
@@ -44,7 +44,7 @@ class MainViewController: UIViewController {
   private var volumeButtonHandler: VolumeButtonHandler?
 
   // Managers
-  private let stateManager = TempParapenteStateManager()
+  private let stateManager = TempParapenteStateManagerForMain()
   private let networkService = ParapenteNetworkService()
 
   // MARK: - Lifecycle
