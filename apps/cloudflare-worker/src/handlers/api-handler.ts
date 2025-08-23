@@ -1459,6 +1459,17 @@ export class PTTAPIHandler {
 			return this.errorResponse("Failed to update channel", 500);
 		}
 
+		// Check if Auth0 permission exists, create it if it doesn't
+		try {
+			const hasPermission = await this.permissionsService.hasChannelPermission(updatedChannel.uuid);
+			if (!hasPermission) {
+				await this.permissionsService.addChannelPermission(updatedChannel.uuid, updatedChannel.name);
+			}
+		} catch (error) {
+			console.error("Failed to verify/create channel permission in Auth0:", error);
+			// Don't fail the channel update if permission verification/creation fails
+		}
+
 		return this.successResponse(updatedChannel);
 	}
 

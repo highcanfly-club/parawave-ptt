@@ -120,7 +120,7 @@ export class Auth0PermissionsService {
                 return false;
             }
 
-            const permissionValue = `access:${channelUuid.toLowerCase()}`;
+            const permissionValue = `${this.env.ACCESS_PERMISSION_PREFIX}:${channelUuid.toLowerCase()}`;
             const permissionDescription = `Access to channel ${channelName}`;
 
             // Check if permission already exists
@@ -161,7 +161,7 @@ export class Auth0PermissionsService {
                 return false;
             }
 
-            const permissionValue = `access:${channelUuid.toLowerCase()}`;
+            const permissionValue = `${this.env.ACCESS_PERMISSION_PREFIX}:${channelUuid.toLowerCase()}`;
 
             // Filter out the permission to remove
             const updatedScopes = resourceServer.scopes.filter(scope => scope.value !== permissionValue);
@@ -194,7 +194,7 @@ export class Auth0PermissionsService {
                 return false;
             }
 
-            const permissionValue = `access:${channelUuid.toUpperCase()}`;
+            const permissionValue = `${this.env.ACCESS_PERMISSION_PREFIX}:${channelUuid.toUpperCase()}`;
             return resourceServer.scopes.some(scope => scope.value === permissionValue);
         } catch (error) {
             console.error('Error checking channel permission:', error);
@@ -213,9 +213,9 @@ export class Auth0PermissionsService {
             }
 
             return resourceServer.scopes
-                .filter(scope => scope.value.startsWith('access:'))
+                .filter(scope => scope.value.startsWith(`${this.env.ACCESS_PERMISSION_PREFIX}:`))
                 .map(scope => ({
-                    uuid: scope.value.replace('access:', ''),
+                    uuid: scope.value.replace(`${this.env.ACCESS_PERMISSION_PREFIX}:`, ''),
                     description: scope.description
                 }));
         } catch (error) {
