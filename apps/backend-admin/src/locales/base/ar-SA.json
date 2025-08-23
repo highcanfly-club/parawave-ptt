@@ -153,5 +153,6 @@
   "read-permission-description": "وصول القراءة إلى API والقنوات",
   "write-permission-description": "وصول الكتابة لإنشاء وتعديل القنوات",
   "admin-permission-description": "وصول إداري كامل",
-  "tenant-admin-permission-description": "امتيازات إدارة المستأجر"
+  "tenant-admin-permission-description": "امتيازات إدارة المستأجر",
+  "users-administration": "إدارة المستخدمين"
 }

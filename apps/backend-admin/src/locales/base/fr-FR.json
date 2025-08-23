@@ -153,5 +153,6 @@
   "read-permission-description": "Accès en lecture à l'API et aux canaux",
   "write-permission-description": "Accès en écriture pour créer et modifier les canaux",
   "admin-permission-description": "Accès administrateur complet",
-  "tenant-admin-permission-description": "Privilèges d'administration du tenant"
+  "tenant-admin-permission-description": "Privilèges d'administration du tenant",
+  "users-administration": "Administration des utilisateurs"
 }

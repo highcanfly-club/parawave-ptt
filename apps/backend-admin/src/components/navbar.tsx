@@ -102,7 +102,7 @@ export const Navbar = () => {
             color="foreground"
             href="/"
           >
-            <Logo />
+            <Logo size={24} />
             <p className="font-bold text-inherit">{siteConfig().name}</p>
           </Link>
         </NavbarBrand>
@@ -157,12 +157,12 @@ export const Navbar = () => {
                           {t("channels_administration")}
                         </Link>
                       </DropdownItem>
-                      <DropdownItem key="users-admin" textValue="Users Administration">
+                      <DropdownItem key="users-admin" textValue={t("users-administration")}>
                         <Link
                           href="/users-admin"
                           color="foreground"
                         >
-                          Users Administration
+                          {t("users-administration")}
                         </Link>
                       </DropdownItem>
                     </DropdownSection>
@@ -288,7 +288,7 @@ export const Navbar = () => {
                         size="lg"
                         className="pl-4"
                       >
-                        Users Administration
+                        {t("users-administration")}
                       </Link>
                     </div>
                   </>

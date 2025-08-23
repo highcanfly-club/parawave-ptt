@@ -153,5 +153,6 @@
   "read-permission-description": "גישת קריאה ל-API ולערוצים",
   "write-permission-description": "גישת כתיבה ליצירה ועריכת ערוצים",
   "admin-permission-description": "גישת מנהל מלאה",
-  "tenant-admin-permission-description": "הרשאות ניהול דייר"
+  "tenant-admin-permission-description": "הרשאות ניהול דייר",
+  "users-administration": "ניהול משתמשים"
 }

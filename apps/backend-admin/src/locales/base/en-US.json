@@ -153,5 +153,6 @@
   "read-permission-description": "Read access to API and channels",
   "write-permission-description": "Write access to create and modify channels",
   "admin-permission-description": "Full administrative access",
-  "tenant-admin-permission-description": "Tenant administration privileges"
+  "tenant-admin-permission-description": "Tenant administration privileges",
+  "users-administration": "Users Administration"
 }

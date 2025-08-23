@@ -153,5 +153,6 @@
   "read-permission-description": "Acceso de lectura a la API y canales",
   "write-permission-description": "Acceso de escritura para crear y modificar canales",
   "admin-permission-description": "Acceso administrativo completo",
-  "tenant-admin-permission-description": "Privilegios de administración del tenant"
+  "tenant-admin-permission-description": "Privilegios de administración del tenant",
+  "users-administration": "Administración de Usuarios"
 }

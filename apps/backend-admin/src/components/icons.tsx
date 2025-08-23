@@ -4,22 +4,43 @@ import { IconSvgProps } from "@/types";
 
 export const Logo: React.FC<IconSvgProps> = ({
   size = 36,
+  width,
   height,
   ...props
 }) => (
-  <svg
-    fill="none"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
     height={size || height}
-    viewBox="0 0 32 32"
-    width={size || height}
-    {...props}
-  >
-    <path
-      clipRule="evenodd"
-      d="M17.6482 10.1305L15.8785 7.02583L7.02979 22.5499H10.5278L17.6482 10.1305ZM19.8798 14.0457L18.11 17.1983L19.394 19.4511H16.8453L15.1056 22.5499H24.7272L19.8798 14.0457Z"
-      fill="currentColor"
-      fillRule="evenodd"
-    />
+    width={size || width}>
+    <defs>
+      <linearGradient id="gradGreen" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#95be1f" />
+        <stop offset="50%" stop-color="#3da938" />
+        <stop offset="100%" stop-color="#0e6835" />
+      </linearGradient>
+      <linearGradient id="gradVoice" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#39b54a" />
+        <stop offset="100%" stop-color="#882647" />
+      </linearGradient>
+    </defs>
+
+    <circle cx="256" cy="256" r="240" fill="url(#gradGreen)" />
+
+    <path d="M128 180 Q256 60 384 180"
+      fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" />
+    <line x1="256" y1="180" x2="220" y2="280" stroke="#fff" stroke-width="12" />
+    <line x1="256" y1="180" x2="292" y2="280" stroke="#fff" stroke-width="12" />
+    <circle cx="256" cy="300" r="20" fill="#fff" />
+
+    <path d="M256 360
+           m -30 0 a 30 30 0 0 1 60 0 a 30 30 0 0 1 -60 0"
+      fill="none" stroke="url(#gradVoice)" stroke-width="16" />
+    <path d="M256 360
+           m -60 0 a 60 60 0 0 1 120 0 a 60 60 0 0 1 -120 0"
+      fill="none" stroke="url(#gradVoice)" stroke-width="12" opacity="0.7" />
+    <path d="M256 360
+           m -90 0 a 90 90 0 0 1 180 0 a 90 90 0 0 1 -180 0"
+      fill="none" stroke="url(#gradVoice)" stroke-width="8" opacity="0.4" />
+    <circle cx="256" cy="400" r="28" fill="url(#gradVoice)" stroke="#fff" stroke-width="4" />
   </svg>
 );
 
