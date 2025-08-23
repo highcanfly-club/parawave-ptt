@@ -315,6 +315,337 @@ Authorization: Bearer JWT_TOKEN_FROM_Auth0
 - Permissions requises: admin:api
 ```
 
+## Gestion des Permissions et API Management Auth0
+
+### Architecture de Sécurité Basée sur les Permissions
+
+L'application utilise un système de permissions granulaire géré par Auth0 pour contrôler l'accès aux canaux et aux fonctionnalités administratives.
+
+#### Modèle de Permissions
+
+```typescript
+// Types de permissions dans le système
+interface Auth0Permission {
+  permission_name: string; // ex: "read:api", "access:8879F616-D468-4793-AFCD-D66F0CEA4651"
+  description: string; // Description lisible de la permission
+  resource_server_identifier: string; // Identifiant du serveur de ressources Auth0
+}
+
+// Permissions de base du système
+const BASE_PERMISSIONS = {
+  READ: "read:api", // Lecture des canaux
+  WRITE: "write:api", // Création/modification des canaux
+  ADMIN: "admin:api", // Administration complète
+  TENANT_ADMIN: "tenant:admin", // Administration du tenant
+};
+
+// Permissions dynamiques d'accès aux canaux
+const CHANNEL_ACCESS_PATTERN = "{PREFIX}:{CHANNEL_UUID}";
+// Exemple: "access:8879F616-D468-4793-AFCD-D66F0CEA4651"
+```
+
+#### Flux de Validation des Permissions
+
+```mermaid
+sequenceDiagram
+    participant C as Client iOS
+    participant API as API Handler
+    participant Auth0 as Auth0 Service
+    participant MS as Management Service
+    participant KV as KV Storage
+
+    C->>API: Requête avec JWT Token
+    API->>Auth0: Validation Token + Extraction Permissions
+    Auth0-->>API: Permissions Utilisateur
+
+    alt Opération sur Canal Spécifique
+        API->>API: Vérification Permission access:uuid
+        alt Permission Manquante
+            API->>MS: Création Permission Dynamique
+            MS->>Auth0: POST /api/v2/resource-servers/{id}
+            Auth0-->>MS: Permission Créée
+            MS->>KV: Cache Token Management
+        end
+    end
+
+    API->>API: Validation Permissions Requises
+    alt Permissions Suffisantes
+        API-->>C: Opération Autorisée
+    else Permissions Insuffisantes
+        API-->>C: 403 Forbidden
+    end
+```
+
+### Service de Gestion des Permissions Auth0
+
+#### Auth0ManagementTokenService
+
+Service responsable de la gestion des tokens d'accès à l'API Management Auth0 avec mise en cache intelligente.
+
+```typescript
+export class Auth0ManagementTokenService {
+  private cache: KVNamespace;
+  private env: Env;
+  private readonly CACHE_KEY = "auth0:management_token";
+  private readonly EXPIRATION_BUFFER = 5 * 60; // 5 minutes avant expiration
+
+  async getManagementToken(): Promise<string | null> {
+    // 1. Vérification cache KV
+    const cachedToken = await this.getCachedToken();
+    if (cachedToken) return cachedToken;
+
+    // 2. Génération nouveau token via machine-to-machine
+    const tokenData = await this.generateManagementToken();
+    if (!tokenData) return null;
+
+    // 3. Mise en cache avec TTL
+    await this.cacheToken(tokenData);
+    return tokenData.access_token;
+  }
+
+  private async generateManagementToken(): Promise<{
+    access_token: string;
+    expires_in: number;
+    token_type: string;
+  } | null> {
+    const response = await fetch(
+      `https://${this.env.AUTH0_DOMAIN}/oauth/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: this.env.AUTH0_MANAGEMENT_CLIENT_ID,
+          client_secret: this.env.AUTH0_MANAGEMENT_CLIENT_SECRET,
+          audience: this.env.AUTH0_MANAGEMENT_AUDIENCE,
+          grant_type: "client_credentials",
+          scope: AUTH0_MANAGEMENT_SCOPES, // Scopes pour gestion des permissions
+        }),
+      }
+    );
+
+    return response.ok ? await response.json() : null;
+  }
+}
+```
+
+#### Auth0PermissionsService
+
+Service de gestion des permissions dynamiques pour l'accès aux canaux.
+
+```typescript
+export class Auth0PermissionsService {
+  private managementTokenService: Auth0ManagementTokenService;
+  private env: Env;
+
+  // Ajout d'une permission d'accès à un canal
+  async addChannelPermission(
+    channelUuid: string,
+    channelName: string
+  ): Promise<boolean> {
+    const resourceServer = await this.getResourceServer();
+    if (!resourceServer) return false;
+
+    const permissionValue = `${this.env.ACCESS_PERMISSION_PREFIX}:${channelUuid.toLowerCase()}`;
+    const permissionDescription = `Access to channel ${channelName}`;
+
+    // Vérification existence
+    const existingPermission = resourceServer.scopes.find(
+      (scope) => scope.value === permissionValue
+    );
+    if (existingPermission) return true;
+
+    // Ajout de la nouvelle permission
+    const updatedScopes = [
+      ...resourceServer.scopes,
+      { value: permissionValue, description: permissionDescription },
+    ];
+
+    return await this.updateResourceServerScopes(
+      resourceServer.id,
+      updatedScopes
+    );
+  }
+
+  // Suppression d'une permission d'accès à un canal
+  async removeChannelPermission(channelUuid: string): Promise<boolean> {
+    const resourceServer = await this.getResourceServer();
+    if (!resourceServer) return false;
+
+    const permissionValue = `${this.env.ACCESS_PERMISSION_PREFIX}:${channelUuid.toLowerCase()}`;
+    const updatedScopes = resourceServer.scopes.filter(
+      (scope) => scope.value !== permissionValue
+    );
+
+    return await this.updateResourceServerScopes(
+      resourceServer.id,
+      updatedScopes
+    );
+  }
+
+  // Vérification existence d'une permission
+  async hasChannelPermission(channelUuid: string): Promise<boolean> {
+    const resourceServer = await this.getResourceServer();
+    if (!resourceServer) return false;
+
+    const permissionValue = `${this.env.ACCESS_PERMISSION_PREFIX}:${channelUuid.toUpperCase()}`;
+    return resourceServer.scopes.some(
+      (scope) => scope.value === permissionValue
+    );
+  }
+}
+```
+
+### Intégration dans les Opérations CRUD
+
+#### Création de Canal avec Permission
+
+```typescript
+// Dans PTTAPIHandler.createChannel()
+const channel = await this.channelService.createChannel(createRequest, userId);
+
+if (channel) {
+  // Création automatique de la permission d'accès
+  try {
+    await this.permissionsService.addChannelPermission(
+      channel.uuid,
+      channel.name
+    );
+    console.log(
+      `Permission créée: ${env.ACCESS_PERMISSION_PREFIX}:${channel.uuid}`
+    );
+  } catch (error) {
+    console.error("Échec création permission Auth0:", error);
+    // Ne pas faire échouer la création du canal
+  }
+}
+```
+
+#### Mise à Jour avec Vérification Permission
+
+```typescript
+// Dans PTTAPIHandler.updateChannel()
+const updatedChannel = await this.channelService.updateChannel(
+  uuid,
+  updateRequest,
+  userId
+);
+
+if (updatedChannel) {
+  // Vérification et création si nécessaire
+  try {
+    const hasPermission = await this.permissionsService.hasChannelPermission(
+      updatedChannel.uuid
+    );
+    if (!hasPermission) {
+      await this.permissionsService.addChannelPermission(
+        updatedChannel.uuid,
+        updatedChannel.name
+      );
+      console.log(`Permission recréée pour canal: ${updatedChannel.uuid}`);
+    }
+  } catch (error) {
+    console.error("Échec vérification/création permission:", error);
+  }
+}
+```
+
+#### Suppression avec Nettoyage Permission
+
+```typescript
+// Dans PTTAPIHandler.deleteChannel()
+if (hardDelete) {
+  success = await this.channelService.deleteChannelPermanently(
+    uuid.toLowerCase(),
+    userId
+  );
+} else {
+  success = await this.channelService.deactivateChannel(
+    uuid.toLowerCase(),
+    userId
+  );
+}
+
+if (success) {
+  // Nettoyage de la permission Auth0
+  try {
+    await this.permissionsService.removeChannelPermission(uuid.toLowerCase());
+    console.log(
+      `Permission supprimée: ${env.ACCESS_PERMISSION_PREFIX}:${uuid.toLowerCase()}`
+    );
+  } catch (error) {
+    console.error("Échec suppression permission Auth0:", error);
+  }
+}
+```
+
+### Configuration Variables d'Environnement
+
+```bash
+# Auth0 Management API Configuration
+AUTH0_DOMAIN=highcanfly.eu.auth0.com
+AUTH0_MANAGEMENT_CLIENT_ID=<machine-to-machine-client-id>
+AUTH0_MANAGEMENT_CLIENT_SECRET=<machine-to-machine-secret>
+AUTH0_MANAGEMENT_AUDIENCE=https://highcanfly.eu.auth0.com/api/v2/
+
+# Permission Configuration
+ACCESS_PERMISSION_PREFIX=access  # Préfixe flexible pour les permissions
+READ_PERMISSION=read:api
+WRITE_PERMISSION=write:api
+ADMIN_PERMISSION=admin:api
+```
+
+### Scopes Requis pour l'API Management
+
+```typescript
+// Dans constants/auth0-scopes.ts
+export const AUTH0_MANAGEMENT_SCOPES = [
+  // Gestion des serveurs de ressources et permissions
+  "read:resource_servers",
+  "update:resource_servers",
+  "create:resource_servers",
+
+  // Gestion des utilisateurs et rôles
+  "read:users",
+  "read:user_grants",
+  "read:grants",
+
+  // Gestion des clients et applications
+  "read:clients",
+  "read:client_grants",
+
+  // Gestion des rôles et permissions
+  "read:roles",
+  "read:role_members",
+
+  // Statistiques et logs
+  "read:stats",
+  "read:tenant_settings",
+].join(" ");
+```
+
+### Sécurité et Bonnes Pratiques
+
+#### Token Management
+
+- **Mise en cache** : Les tokens Management API sont cachés dans Cloudflare KV avec TTL
+- **Renouvellement** : Renouvellement automatique 5 minutes avant expiration
+- **Isolation** : Credentials machine-to-machine séparés des tokens utilisateur
+- **Monitoring** : Logs détaillés des opérations de permissions
+
+#### Gestion des Erreurs
+
+- **Graceful Degradation** : Les échecs de permissions n'interrompent pas les opérations CRUD
+- **Retry Logic** : Tentatives multiples pour les opérations critiques
+- **Fallback** : Fonctionnement dégradé sans permissions dynamiques si Auth0 indisponible
+
+#### Audit et Conformité
+
+- **Traçabilité** : Logs des créations/suppressions de permissions
+- **Synchronisation** : Vérification périodique de cohérence permissions/canaux
+- **Nettoyage** : Suppression automatique des permissions orphelines
+
+Cette architecture garantit une gestion sécurisée et scalable des permissions tout en maintenant la flexibilité nécessaire pour l'évolution du système.
+
 ## Architecture PTT Audio Temps Réel Implémentée
 
 ### Vue d'ensemble de l'Architecture
