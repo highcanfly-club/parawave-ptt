@@ -124,7 +124,7 @@ export const LanguageSwitch: FC<LanguageSwitchProps> = ({
       document.documentElement.lang = lng;
 
       // Update metadata
-      document.title = t("vite-heroui");
+      document.title = t("site-title");
       const metaTags = [
         document.head.querySelector("meta[key='title']"),
         document.head.querySelector("meta[name='title']"),
@@ -132,7 +132,7 @@ export const LanguageSwitch: FC<LanguageSwitchProps> = ({
       ];
 
       metaTags.forEach((tag) => {
-        tag?.setAttribute("content", t("vite-heroui"));
+        tag?.setAttribute("content", t("site-title"));
       });
     },
     [i18n, t],

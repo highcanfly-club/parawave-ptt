@@ -141,5 +141,6 @@
   "permission-count_one": "1 إذن",
   "permission-count_other": "{{count}} أذونات",
   "permission-count_zero": "لا أذونات",
-  "permissions-column": "أذونات"
+  "permissions-column": "أذونات",
+  "site-title": "Parawave PTT"
 }

@@ -141,5 +141,6 @@
   "permission-count_one": "הרשאה אחת",
   "permission-count_other": "{{count}} הרשאות",
   "permission-count_zero": "אין הרשאות",
-  "permissions-column": "הרשאות"
+  "permissions-column": "הרשאות",
+  "site-title": "Parawave PTT"
 }

@@ -141,5 +141,6 @@
   "permission-count_one": "1许可",
   "permission-count_other": "{{count}}权限",
   "permission-count_zero": "无许可",
-  "permissions-column": "权限"
+  "permissions-column": "权限",
+  "site-title": "Parawave PTT"
 }

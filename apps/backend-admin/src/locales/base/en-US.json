@@ -141,5 +141,6 @@
   "permission-count_other": "{{count}} permissions",
   "permission-count_zero": "No permissions",
   "permissions-column": "PERMISSIONS",
-  "no-user-permissions": "No user permissions"
+  "no-user-permissions": "No user permissions",
+  "site-title": "Parawave PTT"
 }
