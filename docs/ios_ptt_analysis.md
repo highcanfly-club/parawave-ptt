@@ -1085,7 +1085,7 @@ Body: {"ephemeral_push_token": "token-from-ios-framework"}
 
 #### Liste des Channels avec Statistiques
 
-````json
+```json
 {
   "success": true,
   "data": {
@@ -1106,13 +1106,15 @@ Body: {"ephemeral_push_token": "token-from-ios-framework"}
     "filters_applied": {
       "type": "site_local",
       "active_only": true,
-      "location": {"lat": 45.929681, "lon": 6.876345},
+      "location": { "lat": 45.929681, "lon": 6.876345 },
       "radius_km": 50
     }
   },
   "timestamp": "2025-08-14T15:45:00.000Z",
   "version": "1.0.0"
 }
+```
+
 #### Gestion des Erreurs API
 
 ```json
@@ -1129,7 +1131,7 @@ Body: {"ephemeral_push_token": "token-from-ios-framework"}
     "timestamp": "2025-08-14T15:45:00.000Z"
   }
 }
-````
+```
 
 ### Gestion des Erreurs Robuste
 
