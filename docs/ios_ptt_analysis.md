@@ -1217,7 +1217,7 @@ struct ChannelPermission {
 
 ### Architecture Réseau iOS pour PTT Temps Réel
 
-````swift
+```swift
 protocol ParapenteNetworkServiceProtocol {
     // Authentification
     func validateAuth0Token(_ token: String) async throws -> AuthValidationResponse
@@ -1519,6 +1519,7 @@ struct DeviceInfo: Codable {
         case userAgent = "user_agent"
     }
 }
+```
 
 ### Suivi des Informations d'Appareil et Analytics
 
@@ -1556,7 +1557,7 @@ extension DeviceInfo {
         return "\(appName)/\(appVersion) (\(deviceModel); iOS \(systemVersion); Scale/\(scale))"
     }
 }
-````
+```
 
 #### Intégration dans JoinChannelRequest
 
