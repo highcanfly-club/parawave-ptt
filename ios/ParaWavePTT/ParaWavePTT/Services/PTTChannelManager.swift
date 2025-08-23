@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import PushToTalk
 import AVFoundation
 import CoreLocation
@@ -24,17 +25,19 @@ import UserNotifications
 */
 
 // Main manager for Push-to-Talk operations
-class PTTChannelManager: NSObject, ObservableObject {
+class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     // MARK: - Properties
     
-    private let channelManager = PTChannelManager.shared
+    // PTChannelManager instance - temporarily disabled until proper initialization
+    private var channelManager: PTChannelManager? = nil
     private let networkService: ParapenteNetworkService
     private let locationManager = CLLocationManager()
     private let keychainManager = Auth0KeychainManager()
     
     @Published var currentChannel: PTTChannel?
     @Published var currentChannelDescriptor: PTChannelDescriptor?
+    @Published var currentChannelUUID: UUID?
     @Published var isJoined = false
     @Published var isTransmitting = false
     @Published var participants: [ChannelParticipant] = []
@@ -58,7 +61,8 @@ class PTTChannelManager: NSObject, ObservableObject {
     // MARK: - Setup Methods
     
     private func setupPTTFramework() {
-        channelManager.delegate = self
+        // TODO: Initialize channelManager properly when PTChannelManager API is available
+        // channelManager?.delegate = self
         
         // Audio configuration specialized for flight
         configureAudioSessionForFlight()
@@ -143,20 +147,19 @@ class PTTChannelManager: NSObject, ObservableObject {
             throw ParapenteError.networkError(NSError(domain: "JoinFailed", code: 0, userInfo: [NSLocalizedDescriptionKey: joinResponse.error ?? "Failed to join channel"]))
         }
         
-    // Join via the PTT framework
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            channelManager.requestJoinChannel(channelDescriptor) { error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume()
-                }
-            }
+        // Join via the PTT framework
+        guard let channelManager = channelManager else {
+            throw ParapenteError.unknown("PTT Channel Manager not available")
         }
+        
+        // Create a UUID for this channel session
+        let channelUUID = UUID()
+        channelManager.requestJoinChannel(channelUUID: channelUUID, descriptor: channelDescriptor)
         
     // Update state
         self.currentChannel = channel
         self.currentChannelDescriptor = channelDescriptor
+        self.currentChannelUUID = channelUUID
         self.isJoined = true
         
     // Load participants
@@ -181,27 +184,21 @@ class PTTChannelManager: NSObject, ObservableObject {
             print("Warning: Failed to leave channel on server")
         }
         
-    // Leave via the PTT framework
-        if let channelDescriptor = currentChannelDescriptor {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                channelManager.leaveChannel(channelDescriptor) { error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume()
-                    }
-                }
-            }
+        // Leave via the PTT framework
+        if let channelUUID = currentChannelUUID,
+           let channelManager = channelManager {
+            channelManager.leaveChannel(channelUUID: channelUUID)
         }
         
-    // Reset state
+        // Reset state
         self.currentChannel = nil
         self.currentChannelDescriptor = nil
+        self.currentChannelUUID = nil
         self.isJoined = false
         self.participants = []
         self.activeTransmission = nil
         
-    print("Channel left successfully")
+        print("Channel left successfully")
     }
     
     // MARK: - Participants Management
@@ -270,9 +267,10 @@ class PTTChannelManager: NSObject, ObservableObject {
         self.currentSessionId = sessionId
         self.isTransmitting = true
         
-    // Notify participants of the new transmission via the PTT framework
-        if let channelDescriptor = currentChannelDescriptor {
-            channelManager.setActiveRemoteParticipant(channelDescriptor, completionHandler: { error in
+        // Notify participants of the new transmission via the PTT framework
+        if let channelUUID = currentChannelUUID,
+           let channelManager = channelManager {
+            channelManager.setActiveRemoteParticipant(nil, channelUUID: channelUUID, completionHandler: { error in
                 if let error = error {
                     print("Error notifying PTT: \(error)")
                 }
@@ -302,7 +300,10 @@ class PTTChannelManager: NSObject, ObservableObject {
         }
         
     // Stop transmitting on the PTT framework
-    channelManager.stopTransmitting()
+        if let channelUUID = currentChannelUUID,
+           let channelManager = channelManager {
+            channelManager.stopTransmitting(channelUUID: channelUUID)
+        }
         
     // Reset state
         self.isTransmitting = false
@@ -389,7 +390,7 @@ class PTTChannelManager: NSObject, ObservableObject {
         Task {
             do {
                 // Attempt to renew the token
-                if let refreshToken = try keychainManager.getRefreshToken() {
+                if (try keychainManager.getRefreshToken()) != nil {
                     // Here you would implement renewal with Auth0
                     print("Token expired, renewal required")
                 } else {
@@ -409,35 +410,65 @@ class PTTChannelManager: NSObject, ObservableObject {
 
 extension PTTChannelManager: PTChannelManagerDelegate {
     
-    func channelManager(_ channelManager: PTChannelManager, received pushToken: String, for channelDescriptor: PTChannelDescriptor) {
-        print("Received PTT push token: \(String(pushToken.prefix(20)))...")
-        
-        Task {
-            await updateEphemeralPushToken(pushToken)
-        }
-    }
-    
-    func channelManager(_ channelManager: PTChannelManager, didJoin channelDescriptor: PTChannelDescriptor) {
-        print("Successfully joined PTT channel: \(channelDescriptor.name)")
+    func channelManager(_ channelManager: PTChannelManager, didJoinChannel channelUUID: UUID, reason: PTChannelJoinReason) {
+        print("Successfully joined PTT channel: \(channelUUID)")
         
         Task {
             await MainActor.run {
-                    // Update state if needed
-                    self.isJoined = true
+                self.isJoined = true
+                NotificationCenter.default.post(name: .pttChannelJoined, object: channelUUID)
             }
         }
     }
     
-    func channelManager(_ channelManager: PTChannelManager, didLeave channelDescriptor: PTChannelDescriptor) {
-        print("Left PTT channel: \(channelDescriptor.name)")
+    func channelManager(_ channelManager: PTChannelManager, didLeaveChannel channelUUID: UUID, reason: PTChannelLeaveReason) {
+        print("Left PTT channel: \(channelUUID), reason: \(reason)")
         
         Task {
             await MainActor.run {
                 self.isJoined = false
-                self.currentChannel = nil
-                self.currentChannelDescriptor = nil
+                self.isTransmitting = false
+                NotificationCenter.default.post(name: .pttChannelLeft, object: channelUUID)
             }
         }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, channelUUID: UUID, didBeginTransmittingFrom source: PTChannelTransmitRequestSource) {
+        print("Started transmitting on channel: \(channelUUID), source: \(source)")
+        
+        Task {
+            await MainActor.run {
+                self.isTransmitting = true
+                NotificationCenter.default.post(name: .pttTransmissionStarted, object: channelUUID)
+            }
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, channelUUID: UUID, didEndTransmittingFrom source: PTChannelTransmitRequestSource) {
+        print("Stopped transmitting on channel: \(channelUUID), source: \(source)")
+        
+        Task {
+            await MainActor.run {
+                self.isTransmitting = false
+                NotificationCenter.default.post(name: .pttTransmissionStopped, object: channelUUID)
+            }
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, receivedEphemeralPushToken pushToken: Data) {
+        print("Received PTT push token: \(pushToken.prefix(20).map { String(format: "%02x", $0) }.joined())")
+        
+        Task {
+            await updateEphemeralPushToken(String(data: pushToken, encoding: .utf8) ?? "")
+        }
+    }
+    
+    func incomingPushResult(channelManager: PTChannelManager, channelUUID: UUID, pushPayload: [String : Any]) -> PTPushResult {
+        print("Incoming push for channel: \(channelUUID), payload: \(pushPayload)")
+        
+        // Handle incoming push notification
+        // Return appropriate result based on app state
+        return .leaveChannel
     }
     
     func channelManager(_ channelManager: PTChannelManager, didActivate audioSession: AVAudioSession) {
@@ -466,127 +497,23 @@ extension PTTChannelManager: PTChannelManagerDelegate {
             }
         }
     }
-    
-    func channelManager(_ channelManager: PTChannelManager, failedToJoin channelDescriptor: PTChannelDescriptor, error: Error) {
-        print("Failed to join PTT channel: \(channelDescriptor.name), error: \(error)")
-        
-        Task {
-            await MainActor.run {
-                self.isJoined = false
-                self.currentChannel = nil
-                self.currentChannelDescriptor = nil
-            }
-        }
-    }
-    
-    func channelManager(_ channelManager: PTChannelManager, failedToLeave channelDescriptor: PTChannelDescriptor, error: Error) {
-        print("Failed to leave PTT channel: \(channelDescriptor.name), error: \(error)")
-    }
-    
-    func incomingPushResult(_ channelManager: PTChannelManager, channelDescriptor: PTChannelDescriptor, pushPayload: [String : Any]) {
-        print("Incoming PTT push for channel: \(channelDescriptor.name)")
-        
-    // Handle incoming push notification for a PTT transmission
-        Task {
-            await MainActor.run {
-                    // Update the UI to indicate an incoming transmission
-                Task {
-                    await loadParticipants()
-                }
-            }
-        }
-    }
+}
+
+// MARK: - Notification Names
+extension NSNotification.Name {
+    static let pttChannelJoined = NSNotification.Name("pttChannelJoined")
+    static let pttChannelLeft = NSNotification.Name("pttChannelLeft")
+    static let pttTransmissionStarted = NSNotification.Name("pttTransmissionStarted")
+    static let pttTransmissionStopped = NSNotification.Name("pttTransmissionStopped")
 }
 
 // MARK: - CLLocationManagerDelegate
-
-extension PTTChannelManager: CLLocationManagerDelegate {
-    
+extension PTTChannelManager {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        // Process location updates if needed
-        // for geo-localized channels
+        // Handle location updates if needed for geolocation features
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location error: \(error)")
-    }
-    
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            manager.startUpdatingLocation()
-        case .denied, .restricted:
-            print("Location authorization denied")
-        case .notDetermined:
-            manager.requestWhenInUseAuthorization()
-        @unknown default:
-            break
-        }
+        print("Location manager failed with error: \(error)")
     }
 }
-
-// MARK: - Public Interface Extensions
-
-extension PTTChannelManager {
-    
-    /// Récupère l'état actuel du gestionnaire PTT
-    func getCurrentState() -> PTTState {
-        if isTransmitting {
-            return .transmitting(sessionId: currentSessionId)
-        } else if isJoined, let channel = currentChannel {
-            return .joined(channel: channel, participants: participants)
-        } else {
-            return .idle
-        }
-    }
-    
-    /// Vérifie si une transmission est possible
-    func canStartTransmission() -> Bool {
-        return isJoined && 
-               !isTransmitting && 
-               networkService.getNetworkInfo().canTransmitAudio &&
-               keychainManager.getAuthenticationStatus().isAuthenticated
-    }
-    
-    /// Récupère les statistiques du canal actuel
-    func getCurrentChannelStats() -> ChannelStats? {
-        return currentChannel?.stats
-    }
-}
-
-// MARK: - PTT State
-
-enum PTTState: Equatable {
-    case idle
-    case joined(channel: PTTChannel, participants: [ChannelParticipant])
-    case transmitting(sessionId: String?)
-    
-    static func == (lhs: PTTState, rhs: PTTState) -> Bool {
-        switch (lhs, rhs) {
-        case (.idle, .idle):
-            return true
-        case (.joined(let lhsChannel, let lhsParticipants), .joined(let rhsChannel, let rhsParticipants)):
-            return lhsChannel.uuid == rhsChannel.uuid && lhsParticipants.count == rhsParticipants.count
-        case (.transmitting(let lhsSessionId), .transmitting(let rhsSessionId)):
-            return lhsSessionId == rhsSessionId
-        default:
-            return false
-        }
-    }
-}
-
-#if DEBUG
-extension PTTChannelManager {
-    
-    /// Debug methods for development
-    func debugPrintState() {
-        print("=== PTT Manager Debug State ===")
-        print("Current Channel: \(currentChannel?.name ?? "None")")
-        print("Is Joined: \(isJoined)")
-        print("Is Transmitting: \(isTransmitting)")
-        print("Participants: \(participants.count)")
-        print("Session ID: \(currentSessionId ?? "None")")
-        print("==============================")
-    }
-}
-#endif

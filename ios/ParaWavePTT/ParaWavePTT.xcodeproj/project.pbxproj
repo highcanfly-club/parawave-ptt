@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -37,8 +37,8 @@
 		1A0001001F000010000 /* PTTAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTAudioManager.swift; sourceTree = "<group>"; };
 		1A0001001F000011000 /* LocalizableStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizableStrings.swift; sourceTree = "<group>"; };
 		1A0001001F000012000 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
-		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A000100ENT000000 /* ParaWavePTT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ParaWavePTT.entitlements; sourceTree = "<group>"; };
+		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -178,14 +178,14 @@
 			};
 			buildConfigurationList = 1A000100000000016 /* Build configuration list for PBXProject "ParaWavePTT" */;
 			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = "fr";
+			developmentRegion = fr;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				"fr",
-				"en",
-				"es",
-				"it",
-				"Base",
+				fr,
+				en,
+				es,
+				it,
+				Base,
 			);
 			mainGroup = 1A000100000000002;
 			packageReferences = (
@@ -357,9 +357,11 @@
 				CODE_SIGN_ENTITLEMENTS = ParaWavePTT/ParaWavePTT.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 6G4W4D2F29;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ParaWavePTT/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Parawave PTT";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ParaWave PTT utilise la localisation pour vous proposer les canaux PTT adaptés à votre site de vol.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ParaWave PTT nécessite l'accès au microphone pour les communications vocales push-to-talk.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -388,9 +390,11 @@
 				CODE_SIGN_ENTITLEMENTS = ParaWavePTT/ParaWavePTT.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 6G4W4D2F29;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ParaWavePTT/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Parawave PTT";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ParaWave PTT utilise la localisation pour vous proposer les canaux PTT adaptés à votre site de vol.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ParaWave PTT nécessite l'accès au microphone pour les communications vocales push-to-talk.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

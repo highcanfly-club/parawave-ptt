@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import UIKit
 
 /*
  Copyright (C) 2025 Ronan Le Meillat
@@ -455,45 +456,7 @@ struct Auth0ManagementTokenResponse: Codable {
     }
 }
 
-// MARK: - Error Types
 
-enum ParapenteError: Error, LocalizedError {
-    case authenticationFailed(Error)
-    case networkError(Error)
-    case invalidCredentials
-    case tokenExpired
-    case insufficientPermissions
-    case channelNotFound
-    case transmissionFailed
-    case audioError(Error)
-    case locationError(Error)
-    case unknownError(Error)
-    
-    var errorDescription: String? {
-        switch self {
-        case .authenticationFailed(let error):
-            return "Authentication failed: \(error.localizedDescription)"
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        case .invalidCredentials:
-            return "Invalid credentials"
-        case .tokenExpired:
-            return "Session expired"
-        case .insufficientPermissions:
-            return "Insufficient permissions"
-        case .channelNotFound:
-            return "Channel not found"
-        case .transmissionFailed:
-            return "Transmission failed"
-        case .audioError(let error):
-            return "Audio error: \(error.localizedDescription)"
-        case .locationError(let error):
-            return "Location error: \(error.localizedDescription)"
-        case .unknownError(let error):
-            return "Unknown error: \(error.localizedDescription)"
-        }
-    }
-}
 
 // MARK: - Application State
 
@@ -541,6 +504,63 @@ struct NetworkConfiguration {
     static let maxTransmissionDuration: TimeInterval = 30.0
     static let audioChunkSize = 1024
     static let maxRetries = 3
+}
+
+// MARK: - Error Types
+
+enum ParapenteError: Error, Equatable, LocalizedError {
+    case networkError(Error)
+    case authenticationFailed(Error)
+    case channelNotFound
+    case insufficientPermissions
+    case tokenExpired
+    case audioError(String)
+    case locationError(String)
+    case transmissionFailed
+    case unknown(String)
+    
+    static func == (lhs: ParapenteError, rhs: ParapenteError) -> Bool {
+        switch (lhs, rhs) {
+        case (.channelNotFound, .channelNotFound),
+             (.insufficientPermissions, .insufficientPermissions),
+             (.tokenExpired, .tokenExpired),
+             (.transmissionFailed, .transmissionFailed):
+            return true
+        case (.networkError(let lhsError), .networkError(let rhsError)):
+            return lhsError.localizedDescription == rhsError.localizedDescription
+        case (.authenticationFailed(let lhsError), .authenticationFailed(let rhsError)):
+            return lhsError.localizedDescription == rhsError.localizedDescription
+        case (.audioError(let lhsStr), .audioError(let rhsStr)),
+             (.locationError(let lhsStr), .locationError(let rhsStr)),
+             (.unknown(let lhsStr), .unknown(let rhsStr)):
+            return lhsStr == rhsStr
+        default:
+            return false
+        }
+    }
+    
+    var errorDescription: String? {
+        switch self {
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        case .authenticationFailed(let error):
+            return "Authentication failed: \(error.localizedDescription)"
+        case .channelNotFound:
+            return "Channel not found"
+        case .insufficientPermissions:
+            return "Insufficient permissions"
+        case .tokenExpired:
+            return "Authentication token expired"
+        case .audioError(let message):
+            return "Audio error: \(message)"
+        case .locationError(let message):
+            return "Location error: \(message)"
+        case .transmissionFailed:
+            return "Transmission failed"
+        case .unknown(let message):
+            return "Unknown error: \(message)"
+        }
+    }
 }
 
 // MARK: - Extensions

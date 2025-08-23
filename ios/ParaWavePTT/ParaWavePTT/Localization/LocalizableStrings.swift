@@ -208,7 +208,6 @@ extension LocalizableStrings {
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.minute, .second]
         formatter.unitsStyle = .abbreviated
-        formatter.locale = Locale.current
         return formatter.string(from: seconds) ?? "0s"
     }
     

@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import UIKit
 import Accelerate
 
 /*
@@ -52,7 +53,7 @@ class PTTAudioManager: NSObject, ObservableObject {
         AVSampleRateKey: 22050,
         AVNumberOfChannelsKey: 1,
         AVEncoderBitRateKey: 32000,  // 32 kbps pour qualité parapente
-        AVEncoderQualityKey: AVAudioQuality.high.rawValue
+        AVEncoderBitRateKey: 64000,
     ]
     
     // MARK: - Initialization
@@ -75,7 +76,9 @@ class PTTAudioManager: NSObject, ObservableObject {
     }
     
     deinit {
-        stopRecording()
+        Task {
+            await stopRecording()
+        }
         audioEngine.stop()
     }
     
@@ -134,9 +137,8 @@ class PTTAudioManager: NSObject, ObservableObject {
         
         aacEncoder = AVAudioConverter(from: audioFormat, to: aacFormat)
         
-    // Configure the encoder for optimal real-time quality
+        // Configure the encoder for optimal real-time quality
         aacEncoder?.bitRate = 32000
-        aacEncoder?.bitRateStrategy = AVAudioConverter.BitRateStrategy.constant
     }
     
     // MARK: - Recording Control
@@ -241,14 +243,10 @@ class PTTAudioManager: NSObject, ObservableObject {
     }
     
     private func encodeToAAC(buffer: AVAudioPCMBuffer, encoder: AVAudioConverter) throws -> Data {
-        guard let aacFormat = encoder.outputFormat else {
-            throw PTTAudioError.encodingFailed
-        }
+        let aacFormat = encoder.outputFormat
         
-    // Create the AAC output buffer
-        guard let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: 1024) else {
-            throw PTTAudioError.bufferCreationFailed
-        }
+        // Create the AAC output buffer
+        let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: 1024)
         
     // Configure the callback for encoding
         var inputBuffer: AVAudioBuffer? = buffer
@@ -314,13 +312,11 @@ class PTTAudioManager: NSObject, ObservableObject {
             throw PTTAudioError.decodingFailed
         }
         
-    // Create a compressed buffer for AAC data
-        guard let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: aacData.count) else {
-            throw PTTAudioError.bufferCreationFailed
-        }
+        // Create a compressed buffer for AAC data
+        let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: aacData.count)
         
-    // Copy AAC data into the buffer
-    aacData.copyBytes(to: UnsafeMutableBufferPointer(start: aacBuffer.data.assumingMemoryBound(to: UInt8.self), count: aacData.count))
+        // Copy AAC data into the buffer
+        let _ = aacData.copyBytes(to: UnsafeMutableBufferPointer(start: aacBuffer.data.assumingMemoryBound(to: UInt8.self), count: aacData.count))
         aacBuffer.byteLength = UInt32(aacData.count)
         aacBuffer.packetCount = 1
         
@@ -357,12 +353,13 @@ class PTTAudioManager: NSObject, ObservableObject {
     // Cutoff frequency at 300 Hz to remove wind noise while preserving voice
         
         if enabled {
-            // Configuration d'un filtre passe-haut
-            let highPassEffect = AVAudioUnitEQFilterParameters()
-            highPassEffect.filterType = .highPass
-            highPassEffect.frequency = 300.0
-            highPassEffect.gain = 0.0
-            highPassEffect.bypass = false
+            // Configuration d'un filtre passe-haut avec AVAudioUnitEQ
+            let eq = AVAudioUnitEQ(numberOfBands: 1)
+            let highPassBand = eq.bands[0]
+            highPassBand.filterType = .highPass
+            highPassBand.frequency = 300.0
+            highPassBand.gain = 0.0
+            highPassBand.bypass = false
             
             print("Wind noise reduction enabled")
         } else {

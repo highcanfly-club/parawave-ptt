@@ -1,0 +1,59 @@
+/* 
+  Localizable.strings
+  ParaWavePTT
+
+  Created by AI Assistant on 23/08/2025.
+  SPDX-License-Identifier: AGPL-3.0-or-later
+
+  This file is part of ParaWavePTT.
+
+  ParaWavePTT is free software: you can redistribute it and/or modify
+  it under the terms of the GNU Affero General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  ParaWavePTT is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU Affero General Public License for more details.
+
+  You should have received a copy of the GNU Affero General Public License
+  along with ParaWavePTT. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+// App general
+"app_name" = "ParaWavePTT";
+"welcome" = "Welcome";
+"login" = "Login";
+"logout" = "Logout";
+"connect" = "Connect";
+"disconnect" = "Disconnect";
+"loading" = "Loading...";
+"error" = "Error";
+"ok" = "OK";
+"cancel" = "Cancel";
+"retry" = "Retry";
+
+// Authentication
+"auth_login_title" = "Login";
+"auth_login_subtitle" = "Connect to start using ParaWavePTT";
+"auth_logout_confirmation" = "Are you sure you want to logout?";
+"auth_failed" = "Authentication failed";
+
+// Channels
+"channels_title" = "Channels";
+"channel_select" = "Select Channel";
+"channel_leave" = "Leave Channel";
+"no_channels_available" = "No channels available";
+
+// PTT
+"ptt_hold_to_talk" = "Hold to Talk";
+"ptt_release_to_stop" = "Release to Stop";
+"ptt_transmitting" = "Transmitting...";
+
+// Errors
+"error_network" = "Network error";
+"error_authentication" = "Authentication error";
+"error_permission" = "Permission denied";
+"error_audio" = "Audio error";
+"error_unknown" = "Unknown error";

@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import CoreLocation
+import UIKit
 
 /*
  Copyright (C) 2025 Ronan Le Meillat
@@ -520,7 +521,7 @@ extension ParapenteNetworkService {
             }
         }
         
-        throw lastError ?? ParapenteError.unknownError(NSError(domain: "RetryFailed", code: 0, userInfo: nil))
+        throw lastError ?? ParapenteError.unknown("Retry failed")
     }
 }
 
