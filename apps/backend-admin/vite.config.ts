@@ -66,7 +66,7 @@ export function extractPerVendorDependencies(
  * @see https://vitejs.dev/config/
  */
 console.warn(
-  `Launching Vite with\nAUTH0_DOMAIN: ${process.env.AUTH0_DOMAIN}\nAUTH0_CLIENT_ID: ${process.env.AUTH0_CLIENT_ID}\nAUTH0_AUDIENCE: ${process.env.AUTH0_AUDIENCE}\nAUTH0_SCOPE: ${process.env.AUTH0_SCOPE}\nAPI_BASE_URL: ${process.env.API_BASE_URL}`,
+  `Launching Vite with\nAUTH0_DOMAIN: ${process.env.AUTH0_DOMAIN}\nAUTH0_CLIENT_ID: ${process.env.AUTH0_CLIENT_ID}\nAUTH0_AUDIENCE: ${process.env.AUTH0_AUDIENCE}\nAUTH0_SCOPE: ${process.env.AUTH0_SCOPE}\nAPI_BASE_URL: ${process.env.API_BASE_URL}\nDEX_AUTHORITY: ${process.env.DEX_AUTHORITY}\nDEX_CLIENT_ID: ${process.env.DEX_CLIENT_ID}\nDEX_REDIRECT_URI: ${process.env.DEX_REDIRECT_URI}\nDEX_SCOPE: ${process.env.DEX_SCOPE}\nDEX_AUDIENCE: ${process.env.DEX_AUDIENCE}\nDEX_TOKEN_ISSUER: ${process.env.DEX_TOKEN_ISSUER}\nDEX_JWKS_ENDPOINT: ${process.env.DEX_JWKS_ENDPOINT}\nDEX_DOMAIN: ${process.env.DEX_DOMAIN}\nREAD_PERMISSION: ${process.env.READ_PERMISSION}\nWRITE_PERMISSION: ${process.env.WRITE_PERMISSION}\nADMIN_PERMISSION: ${process.env.ADMIN_PERMISSION}\nACCESS_PERMISSION_PREFIX: ${process.env.ACCESS_PERMISSION_PREFIX}\nTENANT_ADMIN_PERMISSION: ${process.env.TENANT_ADMIN_PERMISSION}\nAUTH0_MANAGEMENT_AUDIENCE: ${process.env.AUTH0_MANAGEMENT_AUDIENCE}`,
 );
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || "/",
@@ -103,7 +103,9 @@ export default defineConfig({
     "import.meta.env.READ_PERMISSION": JSON.stringify(process.env.READ_PERMISSION),
     "import.meta.env.WRITE_PERMISSION": JSON.stringify(process.env.WRITE_PERMISSION),
     "import.meta.env.ADMIN_PERMISSION": JSON.stringify(process.env.ADMIN_PERMISSION),
-    "import.meta.env.ACCESS_PERMISSION_PREFIX": JSON.stringify(process.env.ACCESS_PERMISSION_PREFIX)
+    "import.meta.env.ACCESS_PERMISSION_PREFIX": JSON.stringify(process.env.ACCESS_PERMISSION_PREFIX),
+    "import.meta.env.TENANT_ADMIN_PERMISSION": JSON.stringify(process.env.TENANT_ADMIN_PERMISSION),
+    "import.meta.env.AUTH0_MANAGEMENT_AUDIENCE": JSON.stringify(process.env.AUTH0_MANAGEMENT_AUDIENCE),
   },
   plugins: [react(), tsconfigPaths(), tailwindcss(), githubPagesSpa()],
   build: {

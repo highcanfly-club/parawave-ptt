@@ -1058,7 +1058,7 @@
     "/api/v1/channels/{uuid}/join": {
       "post": {
         "summary": "Join a channel",
-        "description": "Join a PTT channel as participant. Requires access permission for the specific channel (access:{uuid}).",
+        "description": "Join a PTT channel as participant. Requires access permission for the specific channel (access:{uuid}) or admin permission (admin:api).",
         "tags": [
           "Channels"
         ],
@@ -1977,6 +1977,97 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth0-management/token": {
+      "get": {
+        "summary": "Get Auth0 Management API token",
+        "description": "Returns a valid Auth0 Management API token for users with tenant:admin permission. Tokens are cached to avoid exceeding quotas.",
+        "tags": [
+          "Auth0 Management"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Management API token retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "access_token": {
+                          "type": "string",
+                          "description": "Auth0 Management API token"
+                        },
+                        "token_type": {
+                          "type": "string",
+                          "example": "Bearer"
+                        },
+                        "expires_in": {
+                          "type": "integer",
+                          "description": "Token expiration time in seconds"
+                        },
+                        "cached": {
+                          "type": "boolean",
+                          "description": "Whether the token was retrieved from cache"
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient permissions - tenant:admin required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to generate Management API token",
             "content": {
               "application/json": {
                 "schema": {

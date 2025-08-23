@@ -149,12 +149,20 @@ export const Navbar = () => {
                   </DropdownSection>
                   {isAdminUser ? (
                     <DropdownSection title={t("channels_administration")}>
-                      <DropdownItem key="admin" textValue={t("channels_administration")}>
+                      <DropdownItem key="channels-admin" textValue={t("channels_administration")}>
                         <Link
                           href="/channels-admin"
                           color="foreground"
                         >
                           {t("channels_administration")}
+                        </Link>
+                      </DropdownItem>
+                      <DropdownItem key="users-admin" textValue="Users Administration">
+                        <Link
+                          href="/users-admin"
+                          color="foreground"
+                        >
+                          Users Administration
                         </Link>
                       </DropdownItem>
                     </DropdownSection>
@@ -273,6 +281,14 @@ export const Navbar = () => {
                         className="pl-4"
                       >
                         {t("channels_administration")}
+                      </Link>
+                      <Link
+                        href="/users-admin"
+                        color="foreground"
+                        size="lg"
+                        className="pl-4"
+                      >
+                        Users Administration
                       </Link>
                     </div>
                   </>

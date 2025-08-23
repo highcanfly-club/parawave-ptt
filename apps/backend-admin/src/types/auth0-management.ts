@@ -1,0 +1,1 @@
+../../../cloudflare-worker/src/types/auth0-management.ts

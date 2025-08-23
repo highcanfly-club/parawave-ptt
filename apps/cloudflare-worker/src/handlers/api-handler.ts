@@ -25,6 +25,7 @@
 import { checkPermissions } from "../auth0";
 import { ChannelService } from "../services/channel-service";
 import { PTTAudioService } from "../services/ptt-audio-service";
+import { Auth0ManagementTokenService } from "../services/auth0-management-token-service";
 import {
 	CreateChannelRequest,
 	CreateChannelWithUuidRequest,
@@ -41,6 +42,7 @@ import {
 	PTTAudioChunkRequest,
 	PTTEndTransmissionRequest,
 } from "../types/ptt-audio";
+import { Auth0ManagementTokenData } from "../types/auth0-management";
 
 /**
  * @openapi
@@ -418,6 +420,7 @@ import {
 export class PTTAPIHandler {
 	private channelService: ChannelService;
 	private audioService: PTTAudioService;
+	private managementTokenService: Auth0ManagementTokenService;
 	private corsHeaders: Record<string, string>;
 
 	constructor(
@@ -428,6 +431,7 @@ export class PTTAPIHandler {
 	) {
 		this.channelService = new ChannelService(db, kv);
 		this.audioService = new PTTAudioService(env);
+		this.managementTokenService = new Auth0ManagementTokenService(kv, env);
 		this.corsHeaders = {
 			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
 			"Access-Control-Allow-Origin": corsOrigin,
@@ -489,6 +493,12 @@ export class PTTAPIHandler {
 						env,
 						resourceId,
 						subResource,
+					);
+				case "auth0-management":
+					return await this.handleAuth0ManagementAPI(
+						request,
+						env,
+						resourceId,
 					);
 				case "health":
 					return await this.handleHealthCheck(request);
@@ -2933,6 +2943,132 @@ export class PTTAPIHandler {
 				"Failed to establish WebSocket connection",
 				500,
 			);
+		}
+	}
+
+	/**
+	 * Handle Auth0 Management API requests under /api/v1/auth0-management/
+	 *
+	 * @openapi
+	 * /api/v1/auth0-management/token:
+	 *   get:
+	 *     summary: Get Auth0 Management API token
+	 *     description: Returns a valid Auth0 Management API token for users with tenant:admin permission. Tokens are cached to avoid exceeding quotas.
+	 *     tags:
+	 *       - Auth0 Management
+	 *     security:
+	 *       - bearerAuth: []
+	 *     responses:
+	 *       200:
+	 *         description: Management API token retrieved successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: object
+	 *                   properties:
+	 *                     access_token:
+	 *                       type: string
+	 *                       description: Auth0 Management API token
+	 *                     token_type:
+	 *                       type: string
+	 *                       example: "Bearer"
+	 *                     expires_in:
+	 *                       type: integer
+	 *                       description: Token expiration time in seconds
+	 *                     cached:
+	 *                       type: boolean
+	 *                       description: Whether the token was retrieved from cache
+	 *                 timestamp:
+	 *                   type: string
+	 *                   format: date-time
+	 *                 version:
+	 *                   type: string
+	 *                   example: "1.0.0"
+	 *       401:
+	 *         description: Authentication failed
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       403:
+	 *         description: Insufficient permissions - tenant:admin required
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 *       500:
+	 *         description: Failed to generate Management API token
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorResponse'
+	 */
+	private async handleAuth0ManagementAPI(
+		request: Request,
+		env: Env,
+		action?: string,
+	): Promise<Response> {
+		try {
+			// Only handle GET requests for token endpoint
+			if (request.method !== "GET") {
+				return this.errorResponse("Method not allowed", 405);
+			}
+
+			if (action !== "token") {
+				return this.errorResponse(`Unknown action: ${action}`, 404);
+			}
+
+			// Authenticate request and check tenant admin permission
+			const authResult = await this.authenticateRequest(request, env);
+
+			if (!authResult.success) {
+				return this.errorResponse(
+					authResult.error || "Authentication failed",
+					401,
+				);
+			}
+
+			// Check if user has tenant admin permission
+			if (!authResult.permissions?.includes(env.TENANT_ADMIN_PERMISSION)) {
+				return this.errorResponse(
+					"Insufficient permissions - tenant:admin required",
+					403,
+				);
+			}
+
+			// Get Management API token (cached if available)
+			const managementToken = await this.managementTokenService.getManagementToken();
+
+			if (!managementToken) {
+				return this.errorResponse(
+					"Failed to generate Management API token",
+					500,
+				);
+			}
+
+			// Get cache info for response metadata
+			const cacheInfo = await this.managementTokenService.getCacheInfo();
+
+			const responseData: Auth0ManagementTokenData = {
+				access_token: managementToken,
+				token_type: "Bearer",
+				cached: cacheInfo.cached,
+				...(cacheInfo.remaining_time && {
+					expires_in: cacheInfo.remaining_time
+				})
+			};
+
+			return this.successResponse(responseData);
+
+		} catch (error) {
+			console.error("Auth0 Management API error:", error);
+			return this.errorResponse("Internal server error", 500);
 		}
 	}
 
