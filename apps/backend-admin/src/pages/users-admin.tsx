@@ -17,13 +17,12 @@ import {
     TableRow,
     TableCell,
 } from "@heroui/table";
-import { useAuth0 } from "@auth0/auth0-react";
 
 import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
 import { useSecuredApi } from "@/authentication";
 import { SearchIcon } from "@/components/icons";
-import { Auth0ManagementTokenData, Auth0ManagementTokenResponse } from "@/types/auth0-management";
+import { Auth0ManagementTokenData } from "@/types/auth0-management";
 import { APIResponse } from "@/types/ptt";
 
 interface Auth0User {
