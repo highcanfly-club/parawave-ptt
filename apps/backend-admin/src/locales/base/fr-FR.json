@@ -139,8 +139,8 @@
   "auth0-users-api-error": "Erreur API Auth0 Users : {{status}} {{statusText}}",
   "no-user-permissions": "Aucune autorisation d'utilisateur",
   "permission-count_one": "1 permission",
-  "permission-count_other": "{{count}} autorisation",
+  "permission-count_other": "{{count}} autorisations",
   "permission-count_zero": "Aucune autorisation",
-  "permissions-column": "Autorisation",
+  "permissions-column": "AUTORISATIONS",
   "site-title": "Parawave PTT"
 }
