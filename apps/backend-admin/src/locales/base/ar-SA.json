@@ -142,5 +142,16 @@
   "permission-count_other": "{{count}} أذونات",
   "permission-count_zero": "لا أذونات",
   "permissions-column": "أذونات",
-  "site-title": "Parawave PTT"
+  "site-title": "Parawave PTT",
+  "edit-permissions": "تحرير الأذونات",
+  "current-permissions": "الأذونات الحالية",
+  "edit-user-permissions": "تحرير أذونات المستخدم",
+  "base-permissions": "الأذونات الأساسية",
+  "channel-access-permissions": "أذونات الوصول للقنوات",
+  "no-channels-available": "لا توجد قنوات متاحة",
+  "save-permissions": "حفظ الأذونات",
+  "read-permission-description": "وصول القراءة إلى API والقنوات",
+  "write-permission-description": "وصول الكتابة لإنشاء وتعديل القنوات",
+  "admin-permission-description": "وصول إداري كامل",
+  "tenant-admin-permission-description": "امتيازات إدارة المستأجر"
 }

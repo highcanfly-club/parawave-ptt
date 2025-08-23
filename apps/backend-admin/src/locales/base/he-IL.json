@@ -142,5 +142,16 @@
   "permission-count_other": "{{count}} הרשאות",
   "permission-count_zero": "אין הרשאות",
   "permissions-column": "הרשאות",
-  "site-title": "Parawave PTT"
+  "site-title": "Parawave PTT",
+  "edit-permissions": "עריכת הרשאות",
+  "current-permissions": "הרשאות נוכחיות",
+  "edit-user-permissions": "עריכת הרשאות משתמש",
+  "base-permissions": "הרשאות בסיס",
+  "channel-access-permissions": "הרשאות גישה לערוצים",
+  "no-channels-available": "אין ערוצים זמינים",
+  "save-permissions": "שמור הרשאות",
+  "read-permission-description": "גישת קריאה ל-API ולערוצים",
+  "write-permission-description": "גישת כתיבה ליצירה ועריכת ערוצים",
+  "admin-permission-description": "גישת מנהל מלאה",
+  "tenant-admin-permission-description": "הרשאות ניהול דייר"
 }

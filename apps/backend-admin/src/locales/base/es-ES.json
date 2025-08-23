@@ -142,5 +142,16 @@
   "permission-count_other": "{{count}} permisos",
   "permission-count_zero": "Sin permisos",
   "permissions-column": "Permisos",
-  "site-title": "Parawave PTT"
+  "site-title": "Parawave PTT",
+  "edit-permissions": "Editar permisos",
+  "current-permissions": "Permisos actuales",
+  "edit-user-permissions": "Editar Permisos de Usuario",
+  "base-permissions": "Permisos Base",
+  "channel-access-permissions": "Permisos de Acceso a Canales",
+  "no-channels-available": "No hay canales disponibles",
+  "save-permissions": "Guardar Permisos",
+  "read-permission-description": "Acceso de lectura a la API y canales",
+  "write-permission-description": "Acceso de escritura para crear y modificar canales",
+  "admin-permission-description": "Acceso administrativo completo",
+  "tenant-admin-permission-description": "Privilegios de administración del tenant"
 }

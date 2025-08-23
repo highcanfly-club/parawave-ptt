@@ -142,5 +142,16 @@
   "permission-count_zero": "No permissions",
   "permissions-column": "PERMISSIONS",
   "no-user-permissions": "No user permissions",
-  "site-title": "Parawave PTT"
+  "site-title": "Parawave PTT",
+  "edit-permissions": "Edit permissions",
+  "current-permissions": "Current permissions",
+  "edit-user-permissions": "Edit User Permissions",
+  "base-permissions": "Base Permissions",
+  "channel-access-permissions": "Channel Access Permissions",
+  "no-channels-available": "No channels available",
+  "save-permissions": "Save Permissions",
+  "read-permission-description": "Read access to API and channels",
+  "write-permission-description": "Write access to create and modify channels",
+  "admin-permission-description": "Full administrative access",
+  "tenant-admin-permission-description": "Tenant administration privileges"
 }

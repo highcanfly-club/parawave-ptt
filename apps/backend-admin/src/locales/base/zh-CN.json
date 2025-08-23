@@ -142,5 +142,16 @@
   "permission-count_other": "{{count}}权限",
   "permission-count_zero": "无许可",
   "permissions-column": "权限",
-  "site-title": "Parawave PTT"
+  "site-title": "Parawave PTT",
+  "edit-permissions": "编辑权限",
+  "current-permissions": "当前权限",
+  "edit-user-permissions": "编辑用户权限",
+  "base-permissions": "基础权限",
+  "channel-access-permissions": "频道访问权限",
+  "no-channels-available": "没有可用频道",
+  "save-permissions": "保存权限",
+  "read-permission-description": "API和频道的读取访问权限",
+  "write-permission-description": "创建和修改频道的写入访问权限",
+  "admin-permission-description": "完全管理访问权限",
+  "tenant-admin-permission-description": "租户管理权限"
 }

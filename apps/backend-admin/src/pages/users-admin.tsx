@@ -28,6 +28,7 @@ import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
 import { useSecuredApi } from "@/authentication";
 import { SearchIcon } from "@/components/icons";
+import EditPermissionsModal from "@/modals/edit-permissions";
 import { Auth0ManagementTokenData } from "@/types/auth0-management";
 import { APIResponse } from "@/types/ptt";
 import { CopyButton } from "@/components/copy-button";
@@ -81,6 +82,8 @@ export default function UsersAdminPage() {
     const [totalUsers, setTotalUsers] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
     const [managementToken, setManagementToken] = useState<string | null>(null);
+    const [editPermissionsModalOpen, setEditPermissionsModalOpen] = useState(false);
+    const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<Auth0User | null>(null);
 
     /**
      * Fetch users from the Auth0 Management API.
@@ -364,19 +367,23 @@ export default function UsersAdminPage() {
         return t('active');
     };
 
-    const renderUserPermissions = (user: Auth0User) => {
-        if (!user.permissions || user.permissions.length === 0) {
-            return (
-                <span className="text-xs text-default-400">
-                    {t('no-user-permissions')}
-                </span>
-            );
-        }
+    const handleEditPermissions = (user: Auth0User) => {
+        setSelectedUserForPermissions(user);
+        setEditPermissionsModalOpen(true);
+    };
 
-        // Sort permissions alphabetically
-        const sortedPermissions = [...user.permissions].sort((a, b) =>
-            a.permission_name.localeCompare(b.permission_name)
+    const handlePermissionsUpdated = (updatedUser: Auth0User) => {
+        setUsers(prevUsers =>
+            prevUsers.map(user =>
+                user.user_id === updatedUser.user_id ? updatedUser : user
+            )
         );
+        setEditPermissionsModalOpen(false);
+        setSelectedUserForPermissions(null);
+    };
+
+    const renderUserPermissions = (user: Auth0User) => {
+        const hasPermissions = user.permissions && user.permissions.length > 0;
 
         return (
             <Dropdown>
@@ -388,31 +395,68 @@ export default function UsersAdminPage() {
                     >
                         <div className="text-left">
                             <div className="text-xs text-default-500">
-                                {t('permission-count', { count: user.permissions.length })}
+                                {hasPermissions
+                                    ? t('permission-count', { count: user.permissions?.length || 0 })
+                                    : t('no-user-permissions')
+                                }
                             </div>
                         </div>
                     </Button>
                 </DropdownTrigger>
-                <DropdownMenu
-                    aria-label="User permissions"
-                    className="max-h-60 overflow-y-auto"
-                >
-                    {sortedPermissions.map((permission, index) => (
-                        <DropdownItem
-                            key={index}
-                            className="cursor-default"
-                            textValue={permission.permission_name}
-                        >
-                            <div className="flex flex-col gap-1">
-                                <span className="font-mono text-xs text-primary-600">
-                                    {permission.permission_name}
-                                </span>
-                                <span className="text-xs text-default-500">
-                                    {permission.description}
-                                </span>
-                            </div>
-                        </DropdownItem>
-                    ))}
+                <DropdownMenu aria-label="User permissions">
+                    {/* Permissions list */}
+                    {hasPermissions ? (
+                        <>
+                            <DropdownItem
+                                key="permissions-header"
+                                className="cursor-default opacity-100"
+                                textValue="permissions-list"
+                            >
+                                <div className="text-xs font-semibold text-default-600 mb-2">
+                                    {t('current-permissions')}
+                                </div>
+                            </DropdownItem>
+                            {(user.permissions ?? []).sort((a, b) =>
+                                a.permission_name.localeCompare(b.permission_name)
+                            ).map((permission, index) => (
+                                <DropdownItem
+                                    key={`permission-${index}`}
+                                    className="cursor-default"
+                                    textValue={permission.permission_name}
+                                >
+                                    <div className="flex flex-col gap-1 pl-2">
+                                        <span className="font-mono text-xs text-primary-600">
+                                            {permission.permission_name}
+                                        </span>
+                                        <span className="text-xs text-default-500">
+                                            {permission.description}
+                                        </span>
+                                    </div>
+                                </DropdownItem>
+                            ))}
+                            <DropdownItem
+                                key="divider"
+                                className="cursor-default opacity-100 border-t-1 border-default-200 mt-2"
+                                textValue="divider"
+                            >
+                                <div></div>
+                            </DropdownItem>
+                        </>
+                    ) : null}
+                    {/* Edit permissions option */}
+                    <DropdownItem
+                        key="edit-permissions"
+                        className="cursor-pointer"
+                        textValue="edit-permissions"
+                        onPress={() => handleEditPermissions(user)}
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm">✏️</span>
+                            <span className="text-sm font-medium">
+                                {t('edit-permissions')}
+                            </span>
+                        </div>
+                    </DropdownItem>
                 </DropdownMenu>
             </Dropdown>
         );
@@ -593,6 +637,20 @@ export default function UsersAdminPage() {
                     </CardBody>
                 </Card>
             </section>
+
+            {/* Edit Permissions Modal */}
+            {selectedUserForPermissions && managementToken && (
+                <EditPermissionsModal
+                    isOpen={editPermissionsModalOpen}
+                    onClose={() => {
+                        setEditPermissionsModalOpen(false);
+                        setSelectedUserForPermissions(null);
+                    }}
+                    user={selectedUserForPermissions}
+                    managementToken={managementToken}
+                    onPermissionsUpdated={handlePermissionsUpdated}
+                />
+            )}
         </DefaultLayout>
     );
 }
