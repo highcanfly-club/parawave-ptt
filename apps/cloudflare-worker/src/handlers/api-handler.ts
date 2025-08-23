@@ -26,6 +26,7 @@ import { checkPermissions } from "../auth0";
 import { ChannelService } from "../services/channel-service";
 import { PTTAudioService } from "../services/ptt-audio-service";
 import { Auth0ManagementTokenService } from "../services/auth0-management-token-service";
+import { Auth0PermissionsService } from "../services/auth0-permissions-service";
 import {
 	CreateChannelRequest,
 	CreateChannelWithUuidRequest,
@@ -421,6 +422,7 @@ export class PTTAPIHandler {
 	private channelService: ChannelService;
 	private audioService: PTTAudioService;
 	private managementTokenService: Auth0ManagementTokenService;
+	private permissionsService: Auth0PermissionsService;
 	private corsHeaders: Record<string, string>;
 
 	constructor(
@@ -432,6 +434,7 @@ export class PTTAPIHandler {
 		this.channelService = new ChannelService(db, kv);
 		this.audioService = new PTTAudioService(env);
 		this.managementTokenService = new Auth0ManagementTokenService(kv, env);
+		this.permissionsService = new Auth0PermissionsService(this.managementTokenService, env);
 		this.corsHeaders = {
 			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
 			"Access-Control-Allow-Origin": corsOrigin,
@@ -1053,6 +1056,14 @@ export class PTTAPIHandler {
 			return this.errorResponse("Failed to create channel", 500);
 		}
 
+		// Add channel access permission to Auth0
+		try {
+			await this.permissionsService.addChannelPermission(channel.uuid, channel.name);
+		} catch (error) {
+			console.error("Failed to add channel permission to Auth0:", error);
+			// Don't fail the channel creation if permission addition fails
+		}
+
 		return this.successResponse(channel, 201);
 	}
 
@@ -1158,6 +1169,14 @@ export class PTTAPIHandler {
 				"Failed to create channel - UUID may already exist",
 				400,
 			);
+		}
+
+		// Add channel access permission to Auth0
+		try {
+			await this.permissionsService.addChannelPermission(channel.uuid, channel.name);
+		} catch (error) {
+			console.error("Failed to add channel permission to Auth0:", error);
+			// Don't fail the channel creation if permission addition fails
 		}
 
 		return this.successResponse(channel, 201);
@@ -1570,6 +1589,14 @@ export class PTTAPIHandler {
 
 		if (!success) {
 			return this.errorResponse("Failed to delete channel", 500);
+		}
+
+		// Remove channel access permission from Auth0
+		try {
+			await this.permissionsService.removeChannelPermission(uuid.toLowerCase());
+		} catch (error) {
+			console.error("Failed to remove channel permission from Auth0:", error);
+			// Don't fail the channel deletion if permission removal fails
 		}
 
 		return this.successResponse({
