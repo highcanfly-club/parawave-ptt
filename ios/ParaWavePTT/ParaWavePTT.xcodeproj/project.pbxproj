@@ -22,6 +22,7 @@
 		1A0001001F000012001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000012000 /* Localizable.strings */; };
 		ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */; };
 		ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */; };
+		ACA08DBE2E5B56E7004F46BB /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = ACA08DBD2E5B56E7004F46BB /* Auth0 */; };
 		ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */; };
 		ACB6DA1F2E5A541600C242EF /* ChannelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */; };
 		ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */; };
@@ -64,6 +65,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ACA08DBE2E5B56E7004F46BB /* Auth0 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -211,6 +213,7 @@
 			);
 			name = ParaWavePTT;
 			packageProductDependencies = (
+				ACA08DBD2E5B56E7004F46BB /* Auth0 */,
 			);
 			productName = ParaWavePTT;
 			productReference = 1A000100000000000 /* ParaWavePTT.app */;
@@ -245,6 +248,7 @@
 			);
 			mainGroup = 1A000100000000002;
 			packageReferences = (
+				ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */,
 			);
 			productRefGroup = 1A000100000000004 /* Products */;
 			projectDirPath = "";
@@ -498,6 +502,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/auth0/Auth0.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.14.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		ACA08DBD2E5B56E7004F46BB /* Auth0 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */;
+			productName = Auth0;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1A000100000000015 /* Project object */;
 }

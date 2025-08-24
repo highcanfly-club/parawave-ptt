@@ -106,7 +106,7 @@ class ConfigurationManager: ObservableObject {
         self.emergencyNotificationsEnabled = UserDefaults.standard.object(forKey: "emergencyNotifications") as? Bool ?? true
         self.selectedRegion = UserDefaults.standard.object(forKey: "selectedRegion") as? String ?? "france_alps"
         self.preferredLanguage = UserDefaults.standard.object(forKey: "preferredLanguage") as? String ??
-                                Locale.current.languageCode ?? "fr"
+        Locale.current.language.languageCode?.identifier ?? "fr"
         
         // Load environment configuration
         EnvironmentReader.loadEnvironment()
