@@ -461,29 +461,28 @@ struct Auth0ManagementTokenResponse: Codable {
 // MARK: - Application State
 
 enum ParapenteAppState: Equatable {
-    // Note: enum case identifiers are intentionally kept in French to preserve
-    // existing code usage. Only comments and user-facing strings are translated.
-    case lancement
-    case authentification
-    case authentifié(permissions: [String])
-    case selectionCanal
-    case canalRejoint(channel: PTTChannel)
-    case transmissionActive(sessionId: String)
-    case erreur(ParapenteError)
+    // Application states with English names for better code consistency
+    case launching
+    case authentication
+    case authenticated(permissions: [String])
+    case channelSelection
+    case channelJoined(channel: PTTChannel)
+    case activeTransmission(sessionId: String)
+    case error(ParapenteError)
     
     static func == (lhs: ParapenteAppState, rhs: ParapenteAppState) -> Bool {
         switch (lhs, rhs) {
-        case (.lancement, .lancement),
-             (.authentification, .authentification),
-             (.selectionCanal, .selectionCanal):
+        case (.launching, .launching),
+             (.authentication, .authentication),
+             (.channelSelection, .channelSelection):
             return true
-        case (.authentifié(let lhsPermissions), .authentifié(let rhsPermissions)):
+        case (.authenticated(let lhsPermissions), .authenticated(let rhsPermissions)):
             return lhsPermissions == rhsPermissions
-        case (.canalRejoint(let lhsChannel), .canalRejoint(let rhsChannel)):
+        case (.channelJoined(let lhsChannel), .channelJoined(let rhsChannel)):
             return lhsChannel == rhsChannel
-        case (.transmissionActive(let lhsSessionId), .transmissionActive(let rhsSessionId)):
+        case (.activeTransmission(let lhsSessionId), .activeTransmission(let rhsSessionId)):
             return lhsSessionId == rhsSessionId
-        case (.erreur, .erreur):
+        case (.error, .error):
             return true // Simplified comparison for errors
         default:
             return false

@@ -10,30 +10,6 @@ import UIKit
 // See: https://www.gnu.org/licenses/agpl-3.0.en.html
 //
 
-// Forward declaration - temporary solution until ParapenteStateManager is properly available
-class TempParapenteStateManagerForMain: ObservableObject {
-    @Published var currentState: Int = 0
-    @Published var showError = false
-    @Published var errorMessage = ""
-    
-    func initialize(networkService: Any) async {}
-    func authenticateWithAuth0() async {}
-    func joinEmergencyChannel() async {}
-    func clearError() {}
-    
-    // Lifecycle methods
-    func handleAppDidEnterBackground() {}
-    func handleAppWillEnterForeground() {}
-    
-    // Transmission methods
-    func startTransmission() async {}
-    func stopTransmission() async {}
-    
-    // Debug methods
-    func debugSimulateSuccessfulAuth() {}
-    func debugSimulateError() {}
-}
-
 // Main controller for the hybrid UIKit/SwiftUI user interface
 class MainViewController: UIViewController {
 
@@ -44,7 +20,7 @@ class MainViewController: UIViewController {
   private var volumeButtonHandler: VolumeButtonHandler?
 
   // Managers
-  private let stateManager = TempParapenteStateManagerForMain()
+  private let stateManager = ParapenteStateManager()
   private let networkService = ParapenteNetworkService()
 
   // MARK: - Lifecycle
@@ -385,12 +361,12 @@ extension MainViewController {
   func updateUIForState(_ state: ParapenteAppState) {
     DispatchQueue.main.async {
       switch state {
-      case .transmissionActive:
+      case .activeTransmission:
         self.pttButton?.isHidden = false
         self.pttButton?.backgroundColor = .systemRed
         self.pttButton?.setTitle("ACTIVE", for: .normal)
 
-      case .canalRejoint:
+      case .channelJoined:
         self.pttButton?.isHidden = false
         self.pttButton?.backgroundColor = .systemBlue
         self.pttButton?.setTitle("PTT", for: .normal)

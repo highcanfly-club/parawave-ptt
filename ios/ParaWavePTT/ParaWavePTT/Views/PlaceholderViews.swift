@@ -20,9 +20,9 @@ import Foundation
  along with this program. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>.
 */
 
-// Placeholder views for missing components
+// Placeholder views for missing components (Renamed to avoid conflicts with ChannelViews.swift)
 
-struct ChannelSelectionView: View {
+struct PlaceholderChannelSelectionView: View {
     let channels: [PTTChannel]
     let stateManager: ParapenteStateManager
     
@@ -38,7 +38,7 @@ struct ChannelSelectionView: View {
     }
 }
 
-struct PTTTransmissionView: View {
+struct PlaceholderPTTTransmissionView: View {
     let channel: PTTChannel
     let stateManager: ParapenteStateManager
     
@@ -59,7 +59,7 @@ struct PTTTransmissionView: View {
     }
 }
 
-struct ActiveTransmissionView: View {
+struct PlaceholderActiveTransmissionView: View {
     let transmission: ActiveTransmission
     let stateManager: ParapenteStateManager
     
@@ -80,7 +80,7 @@ struct ActiveTransmissionView: View {
     }
 }
 
-struct ErrorView: View {
+struct PlaceholderErrorView: View {
     let error: ParapenteError
     let stateManager: ParapenteStateManager
     

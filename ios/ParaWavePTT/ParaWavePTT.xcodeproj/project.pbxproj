@@ -20,6 +20,9 @@
 		1A0001001F000010001 /* PTTAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000010000 /* PTTAudioManager.swift */; };
 		1A0001001F000011001 /* LocalizableStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000011000 /* LocalizableStrings.swift */; };
 		1A0001001F000012001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000012000 /* Localizable.strings */; };
+		ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */; };
+		ACB6DA1F2E5A541600C242EF /* ChannelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */; };
+		ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +42,9 @@
 		1A0001001F000012000 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 		1A000100ENT000000 /* ParaWavePTT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ParaWavePTT.entitlements; sourceTree = "<group>"; };
 		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParapenteStateManager.swift; sourceTree = "<group>"; };
+		ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelViews.swift; sourceTree = "<group>"; };
+		ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,6 +101,8 @@
 		1A000100000000006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */,
+				ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */,
 				1A0001001F000002000 /* ContentView.swift */,
 				1A0001001F000009000 /* MainViewController.swift */,
 			);
@@ -104,6 +112,7 @@
 		1A000100000000007 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */,
 				1A0001001F000005000 /* Auth0KeychainManager.swift */,
 				1A0001001F000006000 /* PTTChannelManager.swift */,
 				1A0001001F000007000 /* NetworkService.swift */,
@@ -223,7 +232,10 @@
 				1A0001001F000005001 /* Auth0KeychainManager.swift in Sources */,
 				1A0001001F000006001 /* PTTChannelManager.swift in Sources */,
 				1A0001001F000007001 /* NetworkService.swift in Sources */,
+				ACB6DA1F2E5A541600C242EF /* ChannelViews.swift in Sources */,
+				ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */,
 				1A0001001F000008001 /* Models.swift in Sources */,
+				ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */,
 				1A0001001F000009001 /* MainViewController.swift in Sources */,
 				1A0001001F000010001 /* PTTAudioManager.swift in Sources */,
 				1A0001001F000011001 /* LocalizableStrings.swift in Sources */,

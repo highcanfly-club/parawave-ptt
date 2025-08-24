@@ -9,90 +9,8 @@ import SwiftUI
 //
 
 // Main application view
-
-// Temporary solution until ParapenteStateManager is properly available in the build
-class TempParapenteStateManagerForContent: ObservableObject {
-    @Published var currentState: ParapenteAppState = .lancement
-    @Published var showError = false
-    @Published var errorMessage = ""
-    
-    func initialize(networkService: Any) async {}
-    func authenticateWithAuth0() async {}
-    func joinEmergencyChannel() async {}
-    func clearError() {}
-    func joinChannel(_ channel: Any) async {}
-}
-
-// Temporary placeholder views until the real ones are available in build
-struct ChannelSelectionView: View {
-    let channels: [PTTChannel]
-    let stateManager: TempParapenteStateManagerForContent
-    
-    var body: some View {
-        VStack {
-            Text("Channel Selection")
-                .font(.title2)
-                .padding()
-            
-            Text("Available channels will be displayed here")
-                .foregroundColor(.gray)
-        }
-    }
-}
-
-struct PTTTransmissionView: View {
-    let channel: PTTChannel
-    let stateManager: TempParapenteStateManagerForContent
-    
-    var body: some View {
-        VStack {
-            Text("PTT Transmission")
-                .font(.title2)
-                .padding()
-            
-            Text("Channel: \(channel.name)")
-                .padding()
-            
-            Button("Transmit") {
-                // Placeholder action
-            }
-            .buttonStyle(.borderedProminent)
-        }
-    }
-}
-
-struct ActiveTransmissionView: View {
-    let transmission: ActiveTransmission
-    let stateManager: TempParapenteStateManagerForContent
-    
-    var body: some View {
-        VStack {
-            Text("Active Transmission")
-                .font(.title2)
-                .padding()
-            
-            Text("Session: \(transmission.sessionId)")
-                .padding()
-        }
-    }
-}
-
-struct ErrorView: View {
-    let error: ParapenteError
-    let stateManager: TempParapenteStateManagerForContent
-    
-    var body: some View {
-        VStack {
-            Text("Error: \(error.localizedDescription)")
-            Button("Clear") {
-                stateManager.clearError()
-            }
-        }
-    }
-}
-
 struct ContentView: View {
-  @StateObject private var appStateManager = TempParapenteStateManagerForContent()
+  @StateObject private var appStateManager = ParapenteStateManager()
   @StateObject private var networkService = ParapenteNetworkService()
   @StateObject private var locationManager = LocationManager()
 
@@ -127,13 +45,13 @@ struct ContentView: View {
   @ViewBuilder
   private var mainContent: some View {
     switch appStateManager.currentState {
-    case .lancement:
+    case .launching:
       LaunchView()
 
-    case .authentification:
+    case .authentication:
       AuthenticationView(stateManager: appStateManager)
 
-    case .authentifié(let permissions):
+    case .authenticated(let permissions):
       MainPTTView(
         stateManager: appStateManager,
         networkService: networkService,
@@ -141,32 +59,27 @@ struct ContentView: View {
         userPermissions: permissions
       )
 
-    case .selectionCanal:
+    case .channelSelection:
       ChannelSelectionView(
-        channels: [],  // Placeholder: will be populated from network service
-        stateManager: appStateManager
+        stateManager: appStateManager,
+        networkService: networkService,
+        locationManager: locationManager
       )
 
-    case .canalRejoint(let channel):
+    case .channelJoined(let channel):
       PTTTransmissionView(
         channel: channel,
-        stateManager: appStateManager
+        stateManager: appStateManager,
+        networkService: networkService
       )
 
-    case .transmissionActive(let sessionId):
+    case .activeTransmission(let sessionId):
       ActiveTransmissionView(
-        transmission: ActiveTransmission(
-          sessionId: sessionId,
-          userId: "temp-user",
-          username: "Temporary User",
-          startTime: Date(),
-          currentDuration: 0,
-          location: nil
-        ),
+        sessionId: sessionId,
         stateManager: appStateManager
       )
 
-    case .erreur(let error):
+    case .error(let error):
       ErrorView(error: error, stateManager: appStateManager)
     }
   }
@@ -203,7 +116,7 @@ struct LaunchView: View {
 // MARK: - Authentication View
 
 struct AuthenticationView: View {
-  @ObservedObject var stateManager: TempParapenteStateManagerForContent
+  @ObservedObject var stateManager: ParapenteStateManager
 
   var body: some View {
     VStack(spacing: 30) {
@@ -249,7 +162,7 @@ struct AuthenticationView: View {
 // MARK: - Main PTT View
 
 struct MainPTTView: View {
-  @ObservedObject var stateManager: TempParapenteStateManagerForContent
+  @ObservedObject var stateManager: ParapenteStateManager
   @ObservedObject var networkService: ParapenteNetworkService
   @ObservedObject var locationManager: LocationManager
 
@@ -495,7 +408,7 @@ struct MainPTTButton: View {
 // MARK: - Emergency Button
 
 struct EmergencyButton: View {
-  @ObservedObject var stateManager: TempParapenteStateManagerForContent
+  @ObservedObject var stateManager: ParapenteStateManager
   @State private var showEmergencyAlert = false
 
   var body: some View {
