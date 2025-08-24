@@ -278,10 +278,22 @@ struct JoinChannelRequest: Codable {
     }
 }
 
+struct JoinChannelInfo: Codable {
+    let name: String
+    let participantsCount: Int
+    let maxParticipants: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case participantsCount = "participants_count"
+        case maxParticipants = "max_participants"
+    }
+}
+
 struct JoinChannelResponse: Codable {
     let success: Bool
     let participant: ChannelParticipant?
-    let channelInfo: PTTChannel?
+    let channelInfo: JoinChannelInfo?
     let error: String?
 
     enum CodingKeys: String, CodingKey {
