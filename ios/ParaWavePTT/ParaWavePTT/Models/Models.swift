@@ -1,5 +1,5 @@
-import Foundation
 import CoreLocation
+import Foundation
 import UIKit
 
 /*
@@ -40,6 +40,18 @@ struct ErrorResponse: Codable {
     let version: String?
 }
 
+struct ChannelsData: Codable {
+    let channels: [PTTChannel]
+    let totalCount: Int
+    let activeCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case channels
+        case totalCount = "total_count"
+        case activeCount = "active_count"
+    }
+}
+
 // MARK: - Channel Models
 
 struct PTTChannel: Codable, Identifiable, Equatable {
@@ -47,30 +59,73 @@ struct PTTChannel: Codable, Identifiable, Equatable {
     let name: String
     let description: String?
     let type: ChannelType
-    let frequency: Double?
-    let flyingSiteId: Int?
+    let coordinates: Coordinates?
+    let radiusKm: Double?
+    let vhfFrequency: String?
     let isActive: Bool
     let createdAt: Date
-    let updatedAt: Date
-    let creatorUserId: String
+    let updatedAt: Date?
+    let createdBy: String?
+    let updatedBy: String?
     let maxParticipants: Int
     let difficulty: ChannelDifficulty?
-    let location: Coordinates?
-    let stats: ChannelStats?
-    
+    let currentParticipants: Int?
+    let totalParticipantsToday: Int?
+    let totalTransmissionsToday: Int?
+    let avgTransmissionDuration: Double?
+    let lastActivity: Date?
+    let avgConnectionQuality: String?
+
     var id: String { uuid }
-    
+
+    // For backward compatibility
+    var location: Coordinates? { coordinates }
+    var flyingSiteId: Int? { nil }
+    var frequency: Double? {
+        // Try to parse vhfFrequency as Double if it exists
+        if let vhfFrequency = vhfFrequency {
+            return Double(vhfFrequency)
+        }
+        return nil
+    }
+    var creatorUserId: String { createdBy ?? "unknown" }
+    var stats: ChannelStats? {
+        guard let currentParticipants = currentParticipants,
+            let totalParticipantsToday = totalParticipantsToday,
+            let totalTransmissionsToday = totalTransmissionsToday
+        else {
+            return nil
+        }
+
+        return ChannelStats(
+            totalParticipants: totalParticipantsToday,
+            activeParticipants: currentParticipants,
+            totalMessages: 0,  // Not provided in API
+            totalTransmissions: totalTransmissionsToday,
+            lastActivity: lastActivity
+        )
+    }
+
     enum CodingKeys: String, CodingKey {
-        case uuid, name, description, type, frequency
-        case flyingSiteId = "flying_site_id"
+        case uuid, name, description, type
+        case coordinates
+        case radiusKm = "radius_km"
+        case vhfFrequency = "vhf_frequency"
         case isActive = "is_active"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
-        case creatorUserId = "creator_user_id"
+        case createdBy = "created_by"
+        case updatedBy = "updated_by"
         case maxParticipants = "max_participants"
-        case difficulty, location, stats
+        case difficulty
+        case currentParticipants = "current_participants"
+        case totalParticipantsToday = "total_participants_today"
+        case totalTransmissionsToday = "total_transmissions_today"
+        case avgTransmissionDuration = "avg_transmission_duration"
+        case lastActivity = "last_activity"
+        case avgConnectionQuality = "avg_connection_quality"
     }
-    
+
     static func == (lhs: PTTChannel, rhs: PTTChannel) -> Bool {
         return lhs.uuid == rhs.uuid
     }
@@ -83,7 +138,8 @@ enum ChannelType: String, Codable, CaseIterable {
     case crossCountry = "cross_country"
     case training = "training"
     case competition = "competition"
-    
+    case instructors = "instructors"
+
     var displayName: String {
         switch self {
         case .general: return "General"
@@ -92,6 +148,7 @@ enum ChannelType: String, Codable, CaseIterable {
         case .crossCountry: return "Cross Country"
         case .training: return "Training"
         case .competition: return "Competition"
+        case .instructors: return "Instructors"
         }
     }
 }
@@ -101,7 +158,7 @@ enum ChannelDifficulty: String, Codable, CaseIterable {
     case intermediate = "intermediate"
     case advanced = "advanced"
     case expert = "expert"
-    
+
     var displayName: String {
         switch self {
         case .beginner: return "Beginner"
@@ -118,7 +175,7 @@ struct ChannelStats: Codable {
     let totalMessages: Int
     let totalTransmissions: Int
     let lastActivity: Date?
-    
+
     enum CodingKeys: String, CodingKey {
         case totalParticipants = "total_participants"
         case activeParticipants = "active_participants"
@@ -131,7 +188,7 @@ struct ChannelStats: Codable {
 struct Coordinates: Codable {
     let lat: Double
     let lon: Double
-    
+
     var clLocation: CLLocation {
         return CLLocation(latitude: lat, longitude: lon)
     }
@@ -148,7 +205,7 @@ struct CreateChannelRequest: Codable {
     let maxParticipants: Int?
     let difficulty: ChannelDifficulty?
     let location: Coordinates?
-    
+
     enum CodingKeys: String, CodingKey {
         case name, description, type, frequency
         case flyingSiteId = "flying_site_id"
@@ -167,7 +224,7 @@ struct UpdateChannelRequest: Codable {
     let difficulty: ChannelDifficulty?
     let location: Coordinates?
     let isActive: Bool?
-    
+
     enum CodingKeys: String, CodingKey {
         case name, description, type, frequency
         case flyingSiteId = "flying_site_id"
@@ -191,9 +248,9 @@ struct ChannelParticipant: Codable, Identifiable {
     let osType: String?
     let osVersion: String?
     let appVersion: String?
-    
+
     var id: String { userId }
-    
+
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
         case username
@@ -213,7 +270,7 @@ struct JoinChannelRequest: Codable {
     let location: Coordinates?
     let ephemeralPushToken: String?
     let deviceInfo: DeviceInfo?
-    
+
     enum CodingKeys: String, CodingKey {
         case location
         case ephemeralPushToken = "ephemeral_push_token"
@@ -226,7 +283,7 @@ struct JoinChannelResponse: Codable {
     let participant: ChannelParticipant?
     let channelInfo: PTTChannel?
     let error: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case success, participant, error
         case channelInfo = "channel_info"
@@ -246,7 +303,7 @@ struct PTTStartTransmissionRequest: Codable {
     let deviceInfo: DeviceInfo?
     let expectedDuration: Int?
     let location: Coordinates?
-    
+
     enum CodingKeys: String, CodingKey {
         case channelUuid = "channel_uuid"
         case audioFormat = "audio_format"
@@ -263,7 +320,7 @@ struct PTTStartTransmissionResponse: Codable {
     let maxDuration: Int?
     let websocketUrl: String?
     let error: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case success
         case sessionId = "session_id"
@@ -279,7 +336,7 @@ struct PTTAudioChunkRequest: Codable {
     let sequenceNumber: Int
     let timestamp: Int?
     let durationMs: Int?
-    
+
     enum CodingKeys: String, CodingKey {
         case audioData = "audio_data"
         case sequenceNumber = "sequence_number"
@@ -294,7 +351,7 @@ struct PTTAudioChunkResponse: Codable {
     let totalChunks: Int?
     let durationSoFar: Double?
     let error: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case success
         case sequenceNumber = "sequence_number"
@@ -314,7 +371,7 @@ struct PTTEndTransmissionResponse: Codable {
     let totalChunks: Int?
     let participantsReached: Int?
     let error: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case success
         case totalDuration = "total_duration"
@@ -337,7 +394,7 @@ struct ActiveTransmission: Codable {
     let startTime: Date
     let currentDuration: Double
     let location: Coordinates?
-    
+
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
         case userId = "user_id"
@@ -354,7 +411,7 @@ enum AudioFormat: String, Codable, CaseIterable {
     case aacLc = "aac-lc"
     case opus = "opus"
     case pcm = "pcm"
-    
+
     var displayName: String {
         switch self {
         case .aacLc: return "AAC-LC"
@@ -372,7 +429,7 @@ struct DeviceInfo: Codable {
     let appVersion: String?
     let deviceModel: String?
     let userAgent: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case os
         case osVersion = "os_version"
@@ -380,14 +437,16 @@ struct DeviceInfo: Codable {
         case deviceModel = "device_model"
         case userAgent = "user_agent"
     }
-    
+
     static var current: DeviceInfo {
         return DeviceInfo(
             os: "iOS",
             osVersion: UIDevice.current.systemVersion,
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0",
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+                as? String ?? "1.0",
             deviceModel: UIDevice.current.model,
-            userAgent: "ParaWave PTT iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")"
+            userAgent:
+                "ParaWave PTT iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")"
         )
     }
 }
@@ -404,7 +463,7 @@ struct PTTWebSocketMessage: Codable {
     let sequenceNumber: Int?
     let totalDuration: Double?
     let reason: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case type
         case sessionId = "session_id"
@@ -437,7 +496,7 @@ struct Auth0ValidationResponse: Codable {
     let permissions: [String]
     let userId: String?
     let error: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case valid, permissions, error
         case userId = "user_id"
@@ -448,15 +507,13 @@ struct Auth0ManagementTokenResponse: Codable {
     let accessToken: String
     let tokenType: String
     let expiresIn: Int
-    
+
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case tokenType = "token_type"
         case expiresIn = "expires_in"
     }
 }
-
-
 
 // MARK: - Application State
 
@@ -469,12 +526,12 @@ enum ParapenteAppState: Equatable {
     case channelJoined(channel: PTTChannel)
     case activeTransmission(sessionId: String)
     case error(ParapenteError)
-    
+
     static func == (lhs: ParapenteAppState, rhs: ParapenteAppState) -> Bool {
         switch (lhs, rhs) {
         case (.launching, .launching),
-             (.authentication, .authentication),
-             (.channelSelection, .channelSelection):
+            (.authentication, .authentication),
+            (.channelSelection, .channelSelection):
             return true
         case (.authenticated(let lhsPermissions), .authenticated(let rhsPermissions)):
             return lhsPermissions == rhsPermissions
@@ -483,7 +540,7 @@ enum ParapenteAppState: Equatable {
         case (.activeTransmission(let lhsSessionId), .activeTransmission(let rhsSessionId)):
             return lhsSessionId == rhsSessionId
         case (.error, .error):
-            return true // Simplified comparison for errors
+            return true  // Simplified comparison for errors
         default:
             return false
         }
@@ -494,59 +551,59 @@ enum ParapenteAppState: Equatable {
 
 struct NetworkConfiguration {
     private static let config = ConfigurationManager.shared
-    
+
     static var baseURL: String {
         return config.apiBaseURL
     }
-    
+
     static var websocketURL: String {
         return config.websocketURL
     }
-    
+
     static var auth0Domain: String {
         return config.auth0Domain
     }
-    
+
     static var auth0ClientId: String {
         return config.auth0ClientId
     }
-    
+
     static var auth0Audience: String {
         return config.auth0Audience
     }
-    
+
     static var auth0Scope: String {
         return config.auth0Scope
     }
-    
+
     static var timeout: TimeInterval {
         return config.apiTimeout
     }
-    
+
     static var maxTransmissionDuration: TimeInterval {
         return config.maxTransmissionDuration
     }
-    
+
     static let audioChunkSize = 1024
-    
+
     static var maxRetries: Int {
         return config.maxRetryAttempts
     }
-    
+
     // MARK: - Environment-aware configuration
-    
+
     static var isDevelopment: Bool {
         return config.isDevelopment
     }
-    
+
     static var isDebugEnabled: Bool {
         return config.isDebugEnabled
     }
-    
+
     static var apiVersion: String {
         return config.apiVersion
     }
-    
+
     static var bundleIdentifier: String {
         return config.bundleIdentifier
     }
@@ -564,27 +621,27 @@ enum ParapenteError: Error, Equatable, LocalizedError {
     case locationError(String)
     case transmissionFailed
     case unknown(String)
-    
+
     static func == (lhs: ParapenteError, rhs: ParapenteError) -> Bool {
         switch (lhs, rhs) {
         case (.channelNotFound, .channelNotFound),
-             (.insufficientPermissions, .insufficientPermissions),
-             (.tokenExpired, .tokenExpired),
-             (.transmissionFailed, .transmissionFailed):
+            (.insufficientPermissions, .insufficientPermissions),
+            (.tokenExpired, .tokenExpired),
+            (.transmissionFailed, .transmissionFailed):
             return true
         case (.networkError(let lhsError), .networkError(let rhsError)):
             return lhsError.localizedDescription == rhsError.localizedDescription
         case (.authenticationFailed(let lhsError), .authenticationFailed(let rhsError)):
             return lhsError.localizedDescription == rhsError.localizedDescription
         case (.audioError(let lhsStr), .audioError(let rhsStr)),
-             (.locationError(let lhsStr), .locationError(let rhsStr)),
-             (.unknown(let lhsStr), .unknown(let rhsStr)):
+            (.locationError(let lhsStr), .locationError(let rhsStr)),
+            (.unknown(let lhsStr), .unknown(let rhsStr)):
             return lhsStr == rhsStr
         default:
             return false
         }
     }
-    
+
     var errorDescription: String? {
         switch self {
         case .networkError(let error):
@@ -617,6 +674,20 @@ extension Date {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
+
+    static let sqlDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
+
+    static let sqlDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
 }
 
 extension JSONDecoder {
@@ -624,13 +695,30 @@ extension JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
+
+            // Check if the value is null
+            if container.decodeNil() {
+                throw DecodingError.valueNotFound(
+                    Date.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "Expected Date but found null"))
+            }
+
             let string = try container.decode(String.self)
-            
+
+            // Try ISO8601 format first (with T and Z)
             if let date = Date.iso8601Formatter.date(from: string) {
                 return date
             }
-            
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format")
+
+            // Try SQL datetime format (YYYY-MM-DD HH:mm:ss)
+            if let date = Date.sqlDateFormatter.date(from: string) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "Invalid date format: \(string)")
         }
         return decoder
     }()

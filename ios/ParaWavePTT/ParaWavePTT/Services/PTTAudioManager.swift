@@ -53,7 +53,6 @@ class PTTAudioManager: NSObject, ObservableObject {
         AVSampleRateKey: 22050,
         AVNumberOfChannelsKey: 1,
         AVEncoderBitRateKey: 32000,  // 32 kbps pour qualité parapente
-        AVEncoderBitRateKey: 64000,
     ]
     
     // MARK: - Initialization

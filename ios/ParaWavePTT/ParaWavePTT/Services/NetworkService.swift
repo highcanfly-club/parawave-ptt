@@ -140,13 +140,45 @@ class ParapenteNetworkService: NSObject, ObservableObject {
 
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "GET")
 
-        let response: APIResponse<[PTTChannel]> = try await performRequest(request)
+        #if DEBUG
+            print("Fetching channels with endpoint: \(endpoint)")
+        #endif
 
-        guard let channels = response.data else {
+        // Decode the response with better error handling
+        let response: APIResponse<ChannelsData>
+        do {
+            response = try await performRequest(request)
+        } catch let decodingError as DecodingError {
+            #if DEBUG
+                print("❌ Decoding error details:")
+                switch decodingError {
+                case .dataCorrupted(let context):
+                    print("Data corrupted: \(context)")
+                case .keyNotFound(let key, let context):
+                    print("Key '\(key)' not found: \(context)")
+                case .typeMismatch(let type, let context):
+                    print("Type mismatch for \(type): \(context)")
+                case .valueNotFound(let type, let context):
+                    print("Value not found for \(type): \(context)")
+                @unknown default:
+                    print("Unknown decoding error: \(decodingError)")
+                }
+            #endif
+            throw ParapenteError.networkError(decodingError)
+        }
+
+        guard let channelsData = response.data else {
             throw ParapenteError.networkError(NSError(domain: "NoData", code: 0, userInfo: nil))
         }
 
-        return channels
+        #if DEBUG
+            print("✅ Successfully decoded \(channelsData.channels.count) channels")
+            print(
+                "Total count: \(channelsData.totalCount), Active count: \(channelsData.activeCount)"
+            )
+        #endif
+
+        return channelsData.channels
     }
 
     /// Retrieve channel details
@@ -415,7 +447,19 @@ class ParapenteNetworkService: NSObject, ObservableObject {
             }
 
             // Decode the response
+            #if DEBUG
+                print(
+                    "📝 Raw response data: \(String(data: data, encoding: .utf8) ?? "Unable to decode as string")"
+                )
+                print("🔄 Attempting to decode as \(T.self)")
+            #endif
+
             let decodedResponse = try JSONDecoder.parawaveDecoder.decode(T.self, from: data)
+
+            #if DEBUG
+                print("✅ Request to \(request.url?.absoluteString ?? "") succeeded.")
+                print("✅ Successfully decoded response as \(T.self)")
+            #endif
             return decodedResponse
 
         } catch let error as ParapenteError {

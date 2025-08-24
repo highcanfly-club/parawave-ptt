@@ -44,6 +44,7 @@ struct LocalizableStrings {
     static let channelTypeCrossCountry = NSLocalizedString("channel.type.cross_country", comment: "Canal cross country")
     static let channelTypeTraining = NSLocalizedString("channel.type.training", comment: "Canal formation")
     static let channelTypeCompetition = NSLocalizedString("channel.type.competition", comment: "Canal compétition")
+    static let channelInstructors = NSLocalizedString("channel.type.instructors", comment: "Canal instructeurs")
     
     static let channelSelectTitle = NSLocalizedString("channel.select.title", comment: "Select a channel")
     static let channelNoSelection = NSLocalizedString("channel.no.selection", comment: "No channel selected")
@@ -158,6 +159,8 @@ extension LocalizableStrings {
             return channelTypeTraining
         case .competition:
             return channelTypeCompetition
+        case .instructors:
+            return channelInstructors
         }
     }
     
