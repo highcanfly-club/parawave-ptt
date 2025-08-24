@@ -493,16 +493,63 @@ enum ParapenteAppState: Equatable {
 // MARK: - Network Configuration
 
 struct NetworkConfiguration {
-    static let baseURL = "https://ptt-backend.highcanfly.club/api/v1"
-    static let websocketURL = "wss://ptt-backend.highcanfly.club/api/v1/transmissions/ws"
-    static let auth0Domain = "highcanfly.eu.auth0.com"
-    static let auth0ClientId = "YOUR_AUTH0_CLIENT_ID" // À configurer
-    static let auth0Audience = "https://ptt-backend.highcanfly.club"
+    private static let config = ConfigurationManager.shared
     
-    static let timeout: TimeInterval = 30.0
-    static let maxTransmissionDuration: TimeInterval = 30.0
+    static var baseURL: String {
+        return config.apiBaseURL
+    }
+    
+    static var websocketURL: String {
+        return config.websocketURL
+    }
+    
+    static var auth0Domain: String {
+        return config.auth0Domain
+    }
+    
+    static var auth0ClientId: String {
+        return config.auth0ClientId
+    }
+    
+    static var auth0Audience: String {
+        return config.auth0Audience
+    }
+    
+    static var auth0Scope: String {
+        return config.auth0Scope
+    }
+    
+    static var timeout: TimeInterval {
+        return config.apiTimeout
+    }
+    
+    static var maxTransmissionDuration: TimeInterval {
+        return config.maxTransmissionDuration
+    }
+    
     static let audioChunkSize = 1024
-    static let maxRetries = 3
+    
+    static var maxRetries: Int {
+        return config.maxRetryAttempts
+    }
+    
+    // MARK: - Environment-aware configuration
+    
+    static var isDevelopment: Bool {
+        return config.isDevelopment
+    }
+    
+    static var isDebugEnabled: Bool {
+        return config.isDebugEnabled
+    }
+    
+    static var apiVersion: String {
+        return config.apiVersion
+    }
+    
+    static var bundleIdentifier: String {
+        return config.bundleIdentifier
+    }
 }
 
 // MARK: - Error Types

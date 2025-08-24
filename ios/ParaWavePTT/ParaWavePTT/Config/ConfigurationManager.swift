@@ -22,37 +22,34 @@
 import Foundation
 
 /// Centralized configuration manager for ParaWave PTT
+/// Uses EnvironmentReader for .env file parsing and provides app-wide configuration
 class ConfigurationManager: ObservableObject {
     
     static let shared = ConfigurationManager()
     
-    // MARK: - Configuration Keys
+    // MARK: - Fallback Constants
     
-    private enum Keys {
+    private enum Defaults {
         // Auth0
         static let auth0Domain = "parawave-ptt.eu.auth0.com"
         static let auth0ClientId = "YOUR_AUTH0_CLIENT_ID"
         static let auth0Audience = "https://api.parawave.app"
         
-        // API Configuration
+        // API
         static let apiBaseURL = "https://api.parawave.app/v1"
         static let apiTimeout: TimeInterval = 30.0
         static let maxRetryAttempts = 3
         
-        // PTT Configuration
+        // PTT
         static let maxTransmissionDuration: TimeInterval = 60.0
         static let audioSampleRate: Double = 44100.0
         static let audioChannels: UInt32 = 1
-        
-        // UI Configuration
-        static let animationDuration: TimeInterval = 0.3
-        static let networkStatusUpdateInterval: TimeInterval = 5.0
         
         // Emergency
         static let emergencyChannelId = "emergency-global"
         static let emergencyPhoneNumber = "112"
         
-        // VHF Frequencies by region
+        // VHF Frequencies
         static let vhfFrequencies = [
             "france_alps": "143.9875 MHz",
             "france_pyrenees": "143.9875 MHz",
@@ -62,211 +59,139 @@ class ConfigurationManager: ObservableObject {
         ]
     }
     
-    // MARK: - User Preferences
+    // MARK: - User Preferences (Observable)
     
     @Published var windNoiseReductionEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(windNoiseReductionEnabled, forKey: "windNoiseReduction")
-        }
+        didSet { UserDefaults.standard.set(windNoiseReductionEnabled, forKey: "windNoiseReduction") }
     }
     
     @Published var autoGainControlEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(autoGainControlEnabled, forKey: "autoGainControl")
-        }
+        didSet { UserDefaults.standard.set(autoGainControlEnabled, forKey: "autoGainControl") }
     }
     
     @Published var volumeButtonsPTTEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(volumeButtonsPTTEnabled, forKey: "volumeButtonsPTT")
-        }
+        didSet { UserDefaults.standard.set(volumeButtonsPTTEnabled, forKey: "volumeButtonsPTT") }
     }
     
     @Published var biometricAuthEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(biometricAuthEnabled, forKey: "biometricAuth")
-        }
+        didSet { UserDefaults.standard.set(biometricAuthEnabled, forKey: "biometricAuth") }
     }
     
     @Published var emergencyNotificationsEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(emergencyNotificationsEnabled, forKey: "emergencyNotifications")
-        }
+        didSet { UserDefaults.standard.set(emergencyNotificationsEnabled, forKey: "emergencyNotifications") }
     }
     
     @Published var selectedRegion: String {
         didSet {
             UserDefaults.standard.set(selectedRegion, forKey: "selectedRegion")
+            NotificationCenter.default.post(name: .regionDidChange, object: selectedRegion)
         }
     }
     
     @Published var preferredLanguage: String {
         didSet {
             UserDefaults.standard.set(preferredLanguage, forKey: "preferredLanguage")
+            NotificationCenter.default.post(name: .languageDidChange, object: preferredLanguage)
         }
     }
     
     // MARK: - Initialization
     
     private init() {
-        // Charger les préférences utilisateur
+        // Load preferences from UserDefaults
         self.windNoiseReductionEnabled = UserDefaults.standard.object(forKey: "windNoiseReduction") as? Bool ?? true
         self.autoGainControlEnabled = UserDefaults.standard.object(forKey: "autoGainControl") as? Bool ?? true
         self.volumeButtonsPTTEnabled = UserDefaults.standard.object(forKey: "volumeButtonsPTT") as? Bool ?? true
         self.biometricAuthEnabled = UserDefaults.standard.object(forKey: "biometricAuth") as? Bool ?? true
         self.emergencyNotificationsEnabled = UserDefaults.standard.object(forKey: "emergencyNotifications") as? Bool ?? true
         self.selectedRegion = UserDefaults.standard.object(forKey: "selectedRegion") as? String ?? "france_alps"
-        self.preferredLanguage = UserDefaults.standard.object(forKey: "preferredLanguage") as? String ?? Locale.current.languageCode ?? "fr"
+        self.preferredLanguage = UserDefaults.standard.object(forKey: "preferredLanguage") as? String ??
+                                Locale.current.languageCode ?? "fr"
         
-        // Configuration initiale pour le développement
+        // Load environment configuration
+        EnvironmentReader.loadEnvironment()
+        
         #if DEBUG
-        print("🔧 Configuration Manager initialized")
-        print("   - Wind noise reduction: \(windNoiseReductionEnabled)")
-        print("   - Auto gain control: \(autoGainControlEnabled)")
-        print("   - Volume buttons PTT: \(volumeButtonsPTTEnabled)")
-        print("   - Biometric auth: \(biometricAuthEnabled)")
-        print("   - Selected region: \(selectedRegion)")
-        print("   - Preferred language: \(preferredLanguage)")
+        logInitialConfiguration()
         #endif
     }
     
-    // MARK: - Auth0 Configuration
+    // MARK: - Configuration Properties
     
+    /// Auth0 Configuration
     var auth0Domain: String {
-        return Bundle.main.object(forInfoDictionaryKey: "Auth0Domain") as? String ?? Keys.auth0Domain
+        return getConfigValue("AUTH0_DOMAIN", bundleKey: "Auth0Domain", fallback: Defaults.auth0Domain)
     }
     
     var auth0ClientId: String {
-        return Bundle.main.object(forInfoDictionaryKey: "Auth0ClientId") as? String ?? Keys.auth0ClientId
+        return getConfigValue("AUTH0_CLIENT_ID", bundleKey: "Auth0ClientId", fallback: Defaults.auth0ClientId)
     }
     
     var auth0Audience: String {
-        return Bundle.main.object(forInfoDictionaryKey: "Auth0Audience") as? String ?? Keys.auth0Audience
+        return getConfigValue("AUTH0_AUDIENCE", bundleKey: "Auth0Audience", fallback: Defaults.auth0Audience)
     }
     
     var auth0Scope: String {
-        return "openid profile email offline_access read:channels write:channels read:transmissions write:transmissions"
+        return EnvironmentReader.get("AUTH0_SCOPE",
+                                   default: "openid profile email offline_access read:channels write:channels read:transmissions write:transmissions")
     }
     
-    // MARK: - API Configuration
-    
+    /// API Configuration
     var apiBaseURL: String {
         #if DEBUG
-        return Bundle.main.object(forInfoDictionaryKey: "ApiBaseURLDev") as? String ?? "http://localhost:3000/v1"
+        // Pour le développement, priorité aux variables d'environnement
+        if let envURL = EnvironmentReader.get("API_BASE_URL") {
+            return envURL
+        }
+        return Bundle.main.object(forInfoDictionaryKey: "ApiBaseURLDev") as? String ?? "http://localhost:8787/api/v1"
         #else
-        return Bundle.main.object(forInfoDictionaryKey: "ApiBaseURL") as? String ?? Keys.apiBaseURL
+        return getConfigValue("API_BASE_URL", bundleKey: "ApiBaseURL", fallback: Defaults.apiBaseURL)
         #endif
+    }
+    
+    var websocketURL: String {
+        let baseURL = apiBaseURL
+        if baseURL.hasPrefix("https://") {
+            return baseURL.replacingOccurrences(of: "https://", with: "wss://") + "/transmissions/ws"
+        } else if baseURL.hasPrefix("http://") {
+            return baseURL.replacingOccurrences(of: "http://", with: "ws://") + "/transmissions/ws"
+        }
+        return "wss://ptt-backend.highcanfly.club/api/v1/transmissions/ws"
     }
     
     var apiTimeout: TimeInterval {
-        return Keys.apiTimeout
+        return EnvironmentReader.getDouble("API_TIMEOUT", default: Defaults.apiTimeout)
     }
     
     var maxRetryAttempts: Int {
-        return Keys.maxRetryAttempts
+        return EnvironmentReader.getInt("MAX_RETRY_ATTEMPTS", default: Defaults.maxRetryAttempts)
     }
     
-    // MARK: - PTT Configuration
-    
+    /// PTT Configuration
     var maxTransmissionDuration: TimeInterval {
-        return Keys.maxTransmissionDuration
+        return EnvironmentReader.getDouble("MAX_TRANSMISSION_DURATION", default: Defaults.maxTransmissionDuration)
     }
     
-    var audioSampleRate: Double {
-        return Keys.audioSampleRate
-    }
+    var audioSampleRate: Double { Defaults.audioSampleRate }
+    var audioChannels: UInt32 { Defaults.audioChannels }
     
-    var audioChannels: UInt32 {
-        return Keys.audioChannels
-    }
-    
-    var audioFormat: AudioFormat {
-        return AudioFormat(
-            sampleRate: audioSampleRate,
-            channels: audioChannels,
-            bitDepth: 16,
-            codec: .aacLc
-        )
-    }
-    
-    // MARK: - Emergency Configuration
-    
+    /// Emergency Configuration
     var emergencyChannelId: String {
-        return Keys.emergencyChannelId
+        return EnvironmentReader.get("EMERGENCY_CHANNEL_ID", default: Defaults.emergencyChannelId)
     }
     
-    var emergencyPhoneNumber: String {
-        return Keys.emergencyPhoneNumber
+    var emergencyPhoneNumber: String { Defaults.emergencyPhoneNumber }
+    
+    /// VHF Configuration
+    func vhfFrequency(for region: String) -> String? {
+        return Defaults.vhfFrequencies[region]
     }
     
-    var vhfFrequencyForRegion: String? {
-        return Keys.vhfFrequencies[selectedRegion]
+    var currentVhfFrequency: String? {
+        return vhfFrequency(for: selectedRegion)
     }
     
-    // MARK: - UI Configuration
-    
-    var animationDuration: TimeInterval {
-        return Keys.animationDuration
-    }
-    
-    var networkStatusUpdateInterval: TimeInterval {
-        return Keys.networkStatusUpdateInterval
-    }
-    
-    // MARK: - Feature Flags
-    
-    var isEmergencyFeatureEnabled: Bool {
-        #if DEBUG
-        return true
-        #else
-        return Bundle.main.object(forInfoDictionaryKey: "EmergencyFeatureEnabled") as? Bool ?? true
-        #endif
-    }
-    
-    var isVHFIntegrationEnabled: Bool {
-        #if DEBUG
-        return true
-        #else
-        return Bundle.main.object(forInfoDictionaryKey: "VHFIntegrationEnabled") as? Bool ?? true
-        #endif
-    }
-    
-    var isBiometricAuthSupported: Bool {
-        return Bundle.main.object(forInfoDictionaryKey: "BiometricAuthSupported") as? Bool ?? true
-    }
-    
-    var isLocationBasedChannelsEnabled: Bool {
-        return Bundle.main.object(forInfoDictionaryKey: "LocationBasedChannelsEnabled") as? Bool ?? true
-    }
-    
-    // MARK: - Environment Detection
-    
-    var isRunningInSimulator: Bool {
-        #if targetEnvironment(simulator)
-        return true
-        #else
-        return false
-        #endif
-    }
-    
-    var isDebugBuild: Bool {
-        #if DEBUG
-        return true
-        #else
-        return false
-        #endif
-    }
-    
-    var buildConfiguration: String {
-        #if DEBUG
-        return "Debug"
-        #else
-        return "Release"
-        #endif
-    }
-    
-    // MARK: - App Information
-    
+    /// App Information
     var appVersion: String {
         return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
     }
@@ -275,111 +200,60 @@ class ConfigurationManager: ObservableObject {
         return Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
     }
     
-    var appName: String {
-        return Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "ParaWave PTT"
-    }
-    
     var bundleIdentifier: String {
-        return Bundle.main.bundleIdentifier ?? "com.parawave.ptt"
+        return EnvironmentReader.get("APPLE_APP_BUNDLE_ID") ??
+               Bundle.main.bundleIdentifier ??
+               "club.highcanfly.parawave-ptt"
     }
     
-    // MARK: - Regional Settings
-    
-    var availableRegions: [String: String] {
-        return [
-            "france_alps": "Alpes françaises",
-            "france_pyrenees": "Pyrénées françaises",
-            "switzerland": "Suisse",
-            "austria": "Autriche",
-            "italy": "Italie du Nord"
-        ]
+    /// Environment Information
+    var environment: String {
+        return EnvironmentReader.get("ENVIRONMENT", default: "production")
     }
     
-    var availableLanguages: [String: String] {
-        return [
-            "fr": "Français",
-            "en": "English"
-        ]
-    }
+    var isDevelopment: Bool { environment == "development" }
     
-    // MARK: - Methods
-    
-    /// Réinitialise toutes les préférences utilisateur
-    func resetUserPreferences() {
-        let domain = Bundle.main.bundleIdentifier!
-        UserDefaults.standard.removePersistentDomain(forName: domain)
-        UserDefaults.standard.synchronize()
-        
-        // Recharger les valeurs par défaut
-        windNoiseReductionEnabled = true
-        autoGainControlEnabled = true
-        volumeButtonsPTTEnabled = true
-        biometricAuthEnabled = true
-        emergencyNotificationsEnabled = true
-        selectedRegion = "france_alps"
-        preferredLanguage = Locale.current.languageCode ?? "fr"
-        
+    var isDebugEnabled: Bool {
         #if DEBUG
-        print("🔧 User preferences reset to defaults")
-        #endif
-    }
-    
-    /// Valide la configuration actuelle
-    func validateConfiguration() -> Bool {
-        guard !auth0Domain.isEmpty,
-              !auth0ClientId.isEmpty,
-              !apiBaseURL.isEmpty else {
-            #if DEBUG
-            print("❌ Configuration validation failed: Missing required Auth0 or API configuration")
-            #endif
-            return false
-        }
-        
-        guard maxTransmissionDuration > 0,
-              audioSampleRate > 0,
-              audioChannels > 0 else {
-            #if DEBUG
-            print("❌ Configuration validation failed: Invalid audio configuration")
-            #endif
-            return false
-        }
-        
-        #if DEBUG
-        print("✅ Configuration validation successful")
-        #endif
         return true
+        #else
+        return EnvironmentReader.getBool("DEBUG_ENABLED", default: false)
+        #endif
     }
     
-    /// Exporte la configuration actuelle (pour le debug)
-    func exportConfiguration() -> [String: Any] {
-        return [
-            "app_version": appVersion,
-            "build_number": buildNumber,
-            "build_configuration": buildConfiguration,
-            "bundle_identifier": bundleIdentifier,
-            "api_base_url": apiBaseURL,
-            "auth0_domain": auth0Domain,
-            "selected_region": selectedRegion,
-            "preferred_language": preferredLanguage,
-            "wind_noise_reduction": windNoiseReductionEnabled,
-            "auto_gain_control": autoGainControlEnabled,
-            "volume_buttons_ptt": volumeButtonsPTTEnabled,
-            "biometric_auth": biometricAuthEnabled,
-            "emergency_notifications": emergencyNotificationsEnabled,
-            "max_transmission_duration": maxTransmissionDuration,
-            "audio_sample_rate": audioSampleRate,
-            "audio_channels": audioChannels,
-            "is_simulator": isRunningInSimulator,
-            "is_debug": isDebugBuild
-        ]
+    var apiVersion: String {
+        return EnvironmentReader.get("API_VERSION", default: "1.0.0")
     }
+    
+    // MARK: - Private Helpers
+    
+    /// Get configuration value with priority: Environment > Bundle > Fallback
+    private func getConfigValue(_ envKey: String, bundleKey: String, fallback: String) -> String {
+        return EnvironmentReader.get(envKey) ??
+               Bundle.main.object(forInfoDictionaryKey: bundleKey) as? String ??
+               fallback
+    }
+    
+    #if DEBUG
+    private func logInitialConfiguration() {
+        print("🔧 ConfigurationManager initialized")
+        print("   - Environment: \(environment)")
+        print("   - Auth0 Domain: \(auth0Domain)")
+        print("   - API Base URL: \(apiBaseURL)")
+        print("   - Bundle ID: \(bundleIdentifier)")
+        print("   - App Version: \(appVersion) (\(buildNumber))")
+        print("   - Selected Region: \(selectedRegion)")
+        print("   - Preferred Language: \(preferredLanguage)")
+        print("   - Wind Noise Reduction: \(windNoiseReductionEnabled)")
+        print("   - Volume Buttons PTT: \(volumeButtonsPTTEnabled)")
+    }
+    #endif
 }
 
 // MARK: - Extensions
 
 extension ConfigurationManager {
-    
-    /// Structure pour la configuration audio
+    /// Audio format configuration
     struct AudioFormat {
         let sampleRate: Double
         let channels: UInt32

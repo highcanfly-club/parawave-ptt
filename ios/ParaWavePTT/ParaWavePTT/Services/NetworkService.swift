@@ -99,7 +99,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Validate an Auth0 token with the backend
     func validateAuth0Token(_ token: String) async throws -> Auth0ValidationResponse {
-        let endpoint = "/auth0-management/validate"
+        let endpoint = "/v1/auth0-management/validate"
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "POST")
         
         let response: Auth0ValidationResponse = try await performRequest(request)
@@ -110,7 +110,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Check service health
     func checkHealth() async throws -> HealthResponse {
-        let endpoint = "/health"
+        let endpoint = "/v1/health"
         let request = try createRequest(endpoint: endpoint, method: "GET")
         
         let response: HealthResponse = try await performRequest(request)
@@ -120,12 +120,12 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     // MARK: - Channel Operations
     
     /// Retrieve the list of channels
-    func getChannels(type: ChannelType? = nil, 
+    func getChannels(type: ChannelType? = nil,
                     active: Bool = true,
                     location: CLLocation? = nil,
                     radius: Double = 50.0) async throws -> [PTTChannel] {
         
-        var endpoint = "/channels?active=\(active)"
+        var endpoint = "/v1/channels?active=\(active)"
         
         if let type = type {
             endpoint += "&type=\(type.rawValue)"
@@ -148,7 +148,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Retrieve channel details
     func getChannelDetails(_ uuid: String) async throws -> PTTChannel {
-        let endpoint = "/channels/\(uuid.lowercased())"
+        let endpoint = "/v1/channels/\(uuid.lowercased())"
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "GET")
         
         let response: APIResponse<PTTChannel> = try await performRequest(request)
@@ -162,7 +162,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Create a new channel
     func createChannel(_ channelRequest: CreateChannelRequest) async throws -> PTTChannel {
-        let endpoint = "/channels"
+        let endpoint = "/v1/channels"
         
         var request = try createAuthenticatedRequest(endpoint: endpoint, method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -179,7 +179,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Update an existing channel
     func updateChannel(_ uuid: String, request: UpdateChannelRequest) async throws -> PTTChannel {
-        let endpoint = "/channels/\(uuid.lowercased())"
+        let endpoint = "/v1/channels/\(uuid.lowercased())"
         
         var urlRequest = try createAuthenticatedRequest(endpoint: endpoint, method: "PUT")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -196,7 +196,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Delete a channel
     func deleteChannel(_ uuid: String, hard: Bool = false) async throws -> Bool {
-        let endpoint = "/channels/\(uuid.lowercased())?hard=\(hard)"
+        let endpoint = "/v1/channels/\(uuid.lowercased())?hard=\(hard)"
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "DELETE")
         
         let response: APIResponse<Bool> = try await performRequest(request)
@@ -206,11 +206,11 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     // MARK: - Channel Participation
     
     /// Join a channel
-    func joinChannel(_ uuid: String, 
+    func joinChannel(_ uuid: String,
                     location: CLLocation? = nil,
                     ephemeralPushToken: String? = nil) async throws -> JoinChannelResponse {
         
-        let endpoint = "/channels/\(uuid.lowercased())/join"
+        let endpoint = "/v1/channels/\(uuid.lowercased())/join"
         
         let joinRequest = JoinChannelRequest(
             location: location?.coordinate.toCoordinates(),
@@ -228,7 +228,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Leave a channel
     func leaveChannel(_ uuid: String) async throws -> LeaveChannelResponse {
-        let endpoint = "/channels/\(uuid.lowercased())/leave"
+        let endpoint = "/v1/channels/\(uuid.lowercased())/leave"
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "POST")
         
         let response: LeaveChannelResponse = try await performRequest(request)
@@ -237,7 +237,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Retrieve participants of a channel
     func getChannelParticipants(_ uuid: String) async throws -> [ChannelParticipant] {
-        let endpoint = "/channels/\(uuid.lowercased())/participants"
+        let endpoint = "/v1/channels/\(uuid.lowercased())/participants"
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "GET")
         
         let response: APIResponse<[ChannelParticipant]> = try await performRequest(request)
@@ -251,7 +251,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Update ephemeral push token
     func updateEphemeralPushToken(_ uuid: String, token: String) async throws -> Bool {
-        let endpoint = "/channels/\(uuid.lowercased())/update-token"
+        let endpoint = "/v1/channels/\(uuid.lowercased())/update-token"
         
         let updateRequest = ["ephemeral_push_token": token]
         
@@ -266,11 +266,11 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     // MARK: - PTT Transmissions
     
     /// Start a PTT transmission
-    func startTransmission(channelUuid: String, 
+    func startTransmission(channelUuid: String,
                           expectedDuration: Int? = nil,
                           location: CLLocation? = nil) async throws -> PTTStartTransmissionResponse {
         
-        let endpoint = "/transmissions/start"
+        let endpoint = "/v1/transmissions/start"
         
         let transmissionRequest = PTTStartTransmissionRequest(
             channelUuid: channelUuid.lowercased(),
@@ -289,11 +289,11 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     }
     
     /// Send an audio chunk
-    func sendAudioChunk(sessionId: String, 
+    func sendAudioChunk(sessionId: String,
                        audioData: Data,
                        sequenceNumber: Int) async throws -> PTTAudioChunkResponse {
         
-        let endpoint = "/transmissions/\(sessionId)/chunk"
+        let endpoint = "/v1/transmissions/\(sessionId)/chunk"
         
         let chunkRequest = PTTAudioChunkRequest(
             audioData: audioData.base64EncodedString(),
@@ -312,7 +312,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// End a PTT transmission
     func endTransmission(sessionId: String, reason: String = "completed") async throws -> PTTEndTransmissionResponse {
-        let endpoint = "/transmissions/\(sessionId)/end"
+        let endpoint = "/v1/transmissions/\(sessionId)/end"
         
         let endRequest = PTTEndTransmissionRequest(reason: reason)
         
@@ -326,7 +326,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     
     /// Retrieve active transmission for a channel
     func getActiveTransmission(channelUuid: String) async throws -> PTTActiveTransmissionResponse {
-        let endpoint = "/transmissions/active/\(channelUuid.lowercased())"
+        let endpoint = "/v1/transmissions/active/\(channelUuid.lowercased())"
         let request = try createAuthenticatedRequest(endpoint: endpoint, method: "GET")
         
         let response: PTTActiveTransmissionResponse = try await performRequest(request)

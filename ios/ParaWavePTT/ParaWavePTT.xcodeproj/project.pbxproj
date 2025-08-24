@@ -20,6 +20,8 @@
 		1A0001001F000010001 /* PTTAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000010000 /* PTTAudioManager.swift */; };
 		1A0001001F000011001 /* LocalizableStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000011000 /* LocalizableStrings.swift */; };
 		1A0001001F000012001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000012000 /* Localizable.strings */; };
+		ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */; };
+		ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */; };
 		ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */; };
 		ACB6DA1F2E5A541600C242EF /* ChannelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */; };
 		ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */; };
@@ -42,6 +44,16 @@
 		1A0001001F000012000 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 		1A000100ENT000000 /* ParaWavePTT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ParaWavePTT.entitlements; sourceTree = "<group>"; };
 		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		ACA08DA12E5B4858004F46BB /* apple_ppt_framework.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = apple_ppt_framework.md; sourceTree = "<group>"; };
+		ACA08DA22E5B4858004F46BB /* ios_ptt_analysis.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ios_ptt_analysis.md; sourceTree = "<group>"; };
+		ACA08DA32E5B4858004F46BB /* ptt-audio-api.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ptt-audio-api.md"; sourceTree = "<group>"; };
+		ACA08DA52E5B4957004F46BB /* .env */ = {isa = PBXFileReference; lastKnownFileType = text; name = .env; path = "/Users/rlemeill/Development/parawave-ptt/.env"; sourceTree = "<absolute>"; };
+		ACA08DB02E5B4C39004F46BB /* ErrorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorManager.swift; sourceTree = "<group>"; };
+		ACA08DB12E5B4C39004F46BB /* LogManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogManager.swift; sourceTree = "<group>"; };
+		ACA08DB22E5B4C39004F46BB /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
+		ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationManager.swift; sourceTree = "<group>"; };
+		ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentReader.swift; sourceTree = "<group>"; };
+		ACA08DBB2E5B5399004F46BB /* openapi.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = openapi.json; path = "/Users/rlemeill/Development/parawave-ptt/apps/backend-admin/public/openapi.json"; sourceTree = "<absolute>"; };
 		ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParapenteStateManager.swift; sourceTree = "<group>"; };
 		ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelViews.swift; sourceTree = "<group>"; };
 		ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderViews.swift; sourceTree = "<group>"; };
@@ -61,6 +73,7 @@
 		1A000100000000002 = {
 			isa = PBXGroup;
 			children = (
+				ACA08DA42E5B4858004F46BB /* docs */,
 				1A000100000000003 /* ParaWavePTT */,
 				1A000100000000004 /* Products */,
 			);
@@ -69,9 +82,12 @@
 		1A000100000000003 /* ParaWavePTT */ = {
 			isa = PBXGroup;
 			children = (
+				ACA08DB72E5B4EDC004F46BB /* Config */,
+				ACA08DA52E5B4957004F46BB /* .env */,
 				1A000100000000005 /* Application */,
 				1A000100000000006 /* Views */,
 				1A000100000000007 /* Services */,
+				ACA08DB32E5B4C39004F46BB /* Utils */,
 				1A000100000000008 /* Models */,
 				1A000100000000009 /* Localization */,
 				1A000100000000010 /* Resources */,
@@ -145,6 +161,37 @@
 				1A0001001F000004000 /* LaunchScreen.storyboard */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		ACA08DA42E5B4858004F46BB /* docs */ = {
+			isa = PBXGroup;
+			children = (
+				ACA08DBB2E5B5399004F46BB /* openapi.json */,
+				ACA08DA12E5B4858004F46BB /* apple_ppt_framework.md */,
+				ACA08DA22E5B4858004F46BB /* ios_ptt_analysis.md */,
+				ACA08DA32E5B4858004F46BB /* ptt-audio-api.md */,
+			);
+			name = docs;
+			path = "/Users/rlemeill/Development/parawave-ptt/docs";
+			sourceTree = "<absolute>";
+		};
+		ACA08DB32E5B4C39004F46BB /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */,
+				ACA08DB02E5B4C39004F46BB /* ErrorManager.swift */,
+				ACA08DB12E5B4C39004F46BB /* LogManager.swift */,
+				ACA08DB22E5B4C39004F46BB /* PermissionManager.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+		ACA08DB72E5B4EDC004F46BB /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -236,6 +283,8 @@
 				ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */,
 				1A0001001F000008001 /* Models.swift in Sources */,
 				ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */,
+				ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */,
+				ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */,
 				1A0001001F000009001 /* MainViewController.swift in Sources */,
 				1A0001001F000010001 /* PTTAudioManager.swift in Sources */,
 				1A0001001F000011001 /* LocalizableStrings.swift in Sources */,
