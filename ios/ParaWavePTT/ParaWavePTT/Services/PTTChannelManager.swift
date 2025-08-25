@@ -82,18 +82,143 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
 
+        // Enhanced diagnostics before attempting initialization
+        print("🔍 PTT Framework Diagnostic Information:")
+        let systemVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        print("   - iOS Version: \(systemVersion)")
+        print("   - App Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+
+        // Check entitlements from Info.plist (note: actual entitlements are embedded at build time)
+        if let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes")
+            as? [String]
+        {
+            let hasPTTBackgroundMode = backgroundModes.contains("push-to-talk")
+            print("   - Background Modes: \(backgroundModes)")
+            print("   - Push-to-Talk Background Mode: \(hasPTTBackgroundMode)")
+
+            if !hasPTTBackgroundMode {
+                print("   - ⚠️ WARNING: push-to-talk not found in UIBackgroundModes")
+            }
+        } else {
+            print("   - ❌ No UIBackgroundModes found in Info.plist")
+        }
+
+        // Check for microphone permission - PTT requires microphone access
+        let microphonePermission = AVAudioSession.sharedInstance().recordPermission
+        print("   - Microphone Permission: \(microphonePermission)")
+
+        if microphonePermission == .denied {
+            print("   - ❌ WARNING: Microphone access denied - this may prevent PTT initialization")
+        } else if microphonePermission == .undetermined {
+            print("   - ⚠️ WARNING: Microphone permission not yet requested")
+        }
+
+        // Check if we have required device capabilities
+        if let requiredCapabilities = Bundle.main.object(
+            forInfoDictionaryKey: "UIRequiredDeviceCapabilities") as? [String]
+        {
+            print("   - Required Device Capabilities: \(requiredCapabilities)")
+        }
+
+        // Test App Group access (this will help identify entitlements issues)
+        let appGroupID = "group.club.highcanfly.parawave-ptt"
+        if let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupID)
+        {
+            print("   - ✅ App Group '\(appGroupID)' accessible at: \(containerURL)")
+        } else {
+            print(
+                "   - ❌ App Group '\(appGroupID)' NOT accessible - this indicates entitlements/provisioning issue"
+            )
+        }
+
+        // Check push notification registration status
+        let pushRegistration = UIApplication.shared.isRegisteredForRemoteNotifications
+        print("   - Push Notifications Registration: \(pushRegistration)")
+
+        // Check if we have push capabilities in entitlements
+        if let entitlements = Bundle.main.object(forInfoDictionaryKey: "Entitlements")
+            as? [String: Any]
+        {
+            let hasPushToTalk = entitlements["com.apple.developer.push-to-talk"] != nil
+            let hasAppGroups = entitlements["com.apple.security.application-groups"] != nil
+            print("   - Push-to-Talk Entitlement: \(hasPushToTalk)")
+            print("   - App Groups Entitlement: \(hasAppGroups)")
+        } else {
+            print("   - ⚠️ No entitlements found in bundle (this may be normal)")
+        }
+
         do {
+            // Request microphone permission if needed before initializing PTT
+            if microphonePermission == .undetermined {
+                print("🎤 Requesting microphone permission...")
+                let granted = await withCheckedContinuation { continuation in
+                    AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                        continuation.resume(returning: granted)
+                    }
+                }
+                if granted {
+                    print("✅ Microphone permission granted")
+                } else {
+                    print("❌ Microphone permission denied - PTT may not work properly")
+                }
+            }
+
+            // Final verification before PTT initialization
+            print("🔍 Final checks before PTT initialization:")
+            print("   - Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+            print("   - Expected App Group: group.club.highcanfly.parawave-ptt")
+            print("   - Microphone permission: \(AVAudioSession.sharedInstance().recordPermission)")
+
+            print("🔄 Attempting to initialize PTChannelManager...")
             channelManager = try await PTChannelManager.channelManager(
                 delegate: self,
                 restorationDelegate: self)
             print("✅ PTT Channel Manager initialized successfully")
         } catch {
             print("❌ Failed to initialize PTT Channel Manager: \(error.localizedDescription)")
+
+            // Enhanced error analysis
+            if let nsError = error as NSError? {
+                print("   - Error Domain: \(nsError.domain)")
+                print("   - Error Code: \(nsError.code)")
+                print("   - Error UserInfo: \(nsError.userInfo)")
+
+                // Specific error code analysis for PTT
+                switch nsError {
+                case PTInstantiationError.unknown:
+                    print("   - Error PTInstantiationError.unknown: Unknown error occurred")
+                case PTInstantiationError.invalidPlatform:
+                    print(
+                        "   - Error PTInstantiationError.invalidPlatform: Invalid platform (not real iOS)"
+                    )
+                case PTInstantiationError.missingBackgroundMode:
+                    print(
+                        "   - Error PTInstantiationError.missingBackgroundMode: Missing 'push-to-talk' in UIBackgroundModes"
+                    )
+                case PTInstantiationError.missingPushServerEnvironment:
+                    print(
+                        "   - Error PTInstantiationError.missingPushServerEnvironment: Missing push server environment"
+                    )
+                case PTInstantiationError.missingEntitlement:
+                    print(
+                        "   - Error PTInstantiationError.missingEntitlement: Missing Push-to-Talk entitlement"
+                    )
+                case PTInstantiationError.instantiationAlreadyInProgress:
+                    print(
+                        "   - Error PTInstantiationError.instantiationAlreadyInProgress: Instantiation already in progress"
+                    )
+                default:
+                    print("   - Unknown error code: \(nsError.code)")
+                }
+            }
+
             print("💡 Common causes:")
-            print("   - Running on iOS Simulator (PTT only works on physical device)")
-            print("   - Missing provisioning profile with Push-to-Talk capability")
-            print("   - iOS version < 16.0")
-            print("   - App not properly signed with PTT entitlements")
+            print("   - Missing or invalid provisioning profile with Push-to-Talk capability")
+            print("   - App not properly signed with Push-to-Talk entitlements")
+            print("   - Push-to-Talk capability not enabled in Apple Developer Console")
+            print("   - App Group configuration mismatch")
+            print("   - Device restrictions or parental controls")
             channelManager = nil
         }
 

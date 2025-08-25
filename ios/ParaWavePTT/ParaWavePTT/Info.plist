@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ApiBaseURL</key>
+	<string>https://api.parawave.app/v1</string>
+	<key>ApiBaseURLDev</key>
+	<string>http://localhost:3000/v1</string>
+	<key>Auth0Audience</key>
+	<string>https://api.parawave.app</string>
+	<key>Auth0ClientId</key>
+	<string>${AUTH0_CLIENT_ID}</string>
+	<key>Auth0Domain</key>
+	<string>parawave-ptt.eu.auth0.com</string>
+	<key>BiometricAuthSupported</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -12,16 +24,51 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>fr</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.parawave.ptt.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.parawave.ptt</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>EmergencyFeatureEnabled</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.sports</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LocationBasedChannelsEnabled</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSExceptionDomains</key>
+		<dict/>
+	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ParaWave PTT peut utiliser Face ID pour sécuriser l'accès rapide à l'application.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>ParaWave PTT peut utiliser votre localisation pour optimiser les communications et proposer les canaux adaptés à votre site de vol.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>ParaWave PTT utilise la localisation pour vous proposer les canaux PTT adaptés à votre site de vol.</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -45,6 +92,16 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+		<string>background-processing</string>
+		<string>push-to-talk</string>
+		<string>external-accessory</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
@@ -54,6 +111,10 @@
 		<string>location-services</string>
 		<string>telephony</string>
 	</array>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDefault</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -63,98 +124,11 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>audio</string>
-		<string>location</string>
-		<string>background-processing</string>
-		<string>push-to-talk</string>
-	</array>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<false/>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>parawave-ptt.eu.auth0.com</key>
-			<dict>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-				<key>NSExceptionMinimumTLSVersion</key>
-				<string>TLSv1.2</string>
-				<key>NSThirdPartyExceptionRequiresForwardSecrecy</key>
-				<false/>
-			</dict>
-			<key>api.parawave.app</key>
-			<dict>
-				<key>NSExceptionMinimumTLSVersion</key>
-				<string>TLSv1.3</string>
-			</dict>
-		</dict>
-	</dict>
-	
-	<!-- Additional Permissions -->
-	<key>NSFaceIDUsageDescription</key>
-	<string>ParaWave PTT peut utiliser Face ID pour sécuriser l'accès rapide à l'application.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>ParaWave PTT peut utiliser votre localisation pour optimiser les communications et proposer les canaux adaptés à votre site de vol.</string>
-	
-	<!-- URL Schemes -->
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.parawave.ptt.auth</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>com.parawave.ptt</string>
-			</array>
-		</dict>
-	</array>
-	
-	<!-- Auth0 Configuration -->
-	<key>Auth0Domain</key>
-	<string>parawave-ptt.eu.auth0.com</string>
-	<key>Auth0ClientId</key>
-	<string>${AUTH0_CLIENT_ID}</string>
-	<key>Auth0Audience</key>
-	<string>https://api.parawave.app</string>
-	
-	<!-- API Configuration -->
-	<key>ApiBaseURL</key>
-	<string>https://api.parawave.app/v1</string>
-	<key>ApiBaseURLDev</key>
-	<string>http://localhost:3000/v1</string>
-	
-	<!-- Feature Flags -->
-	<key>EmergencyFeatureEnabled</key>
-	<true/>
-	<key>VHFIntegrationEnabled</key>
-	<true/>
-	<key>BiometricAuthSupported</key>
-	<true/>
-	<key>LocationBasedChannelsEnabled</key>
-	<true/>
-	
-	<!-- App Categories -->
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.sports</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>fr</string>
-		<string>en</string>
-	</array>
-	
-	<!-- Display Configuration -->
 	<key>UIUserInterfaceStyle</key>
 	<string>Light</string>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleDefault</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>UIRequiresFullScreen</key>
+	<key>VHFIntegrationEnabled</key>
 	<true/>
 </dict>
 </plist>
