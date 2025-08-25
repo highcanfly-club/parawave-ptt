@@ -19,7 +19,7 @@
 		1A0001001F000009001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000009000 /* MainViewController.swift */; };
 		1A0001001F000010001 /* PTTAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000010000 /* PTTAudioManager.swift */; };
 		1A0001001F000011001 /* LocalizableStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000011000 /* LocalizableStrings.swift */; };
-		1A0001001F000012001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000012000 /* Localizable.strings */; };
+		AC6E32C72E5C70E8007349BA /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = AC6E32C52E5C70E8007349BA /* Localizable.strings */; };
 		ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */; };
 		ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */; };
 		ACA08DBE2E5B56E7004F46BB /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = ACA08DBD2E5B56E7004F46BB /* Auth0 */; };
@@ -42,10 +42,11 @@
 		1A0001001F000009000 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		1A0001001F000010000 /* PTTAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTAudioManager.swift; sourceTree = "<group>"; };
 		1A0001001F000011000 /* LocalizableStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizableStrings.swift; sourceTree = "<group>"; };
-		1A0001001F000012000 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 		1A000100ENT000000 /* ParaWavePTT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ParaWavePTT.entitlements; sourceTree = "<group>"; };
 		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AC6E32BA2E5C6965007349BA /* copy_env_to_bundle.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = copy_env_to_bundle.sh; sourceTree = "<group>"; };
+		AC6E32C62E5C70E8007349BA /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		AC6E32C82E5C7121007349BA /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		ACA08DA12E5B4858004F46BB /* apple_ppt_framework.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = apple_ppt_framework.md; sourceTree = "<group>"; };
 		ACA08DA22E5B4858004F46BB /* ios_ptt_analysis.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ios_ptt_analysis.md; sourceTree = "<group>"; };
 		ACA08DA32E5B4858004F46BB /* ptt-audio-api.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ptt-audio-api.md"; sourceTree = "<group>"; };
@@ -152,8 +153,8 @@
 		1A000100000000009 /* Localization */ = {
 			isa = PBXGroup;
 			children = (
+				AC6E32C52E5C70E8007349BA /* Localizable.strings */,
 				1A0001001F000011000 /* LocalizableStrings.swift */,
-				1A0001001F000012000 /* Localizable.strings */,
 			);
 			path = Localization;
 			sourceTree = "<group>";
@@ -276,8 +277,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0001001F000004001 /* LaunchScreen.storyboard in Resources */,
+				AC6E32C72E5C70E8007349BA /* Localizable.strings in Resources */,
 				1A0001001F000003001 /* Assets.xcassets in Resources */,
-				1A0001001F000012001 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -328,6 +329,18 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		AC6E32C52E5C70E8007349BA /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				AC6E32C82E5C7121007349BA /* fr */,
+				AC6E32C62E5C70E8007349BA /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		1A000100000000017 /* Debug */ = {

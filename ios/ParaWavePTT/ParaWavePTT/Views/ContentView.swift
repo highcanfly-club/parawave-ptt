@@ -33,8 +33,8 @@ struct ContentView: View {
         await appStateManager.initialize(networkService: networkService)
       }
     }
-    .alert("Error", isPresented: $appStateManager.showError) {
-      Button("OK") {
+    .alert(LocalizableStrings.errorGenericTitle, isPresented: $appStateManager.showError) {
+      Button(LocalizableStrings.errorOKButton) {
         appStateManager.clearError()
       }
     } message: {
@@ -95,11 +95,11 @@ struct LaunchView: View {
           .font(.system(size: 80))
           .foregroundColor(.blue)
 
-        Text("ParaWave PTT")
+        Text(LocalizableStrings.appName)
           .font(.largeTitle)
           .fontWeight(.bold)
 
-        Text("PTT communication for paragliders")
+        Text(LocalizableStrings.appTagline)
           .font(.title2)
           .foregroundColor(.secondary)
           .multilineTextAlignment(.center)
@@ -125,11 +125,11 @@ struct AuthenticationView: View {
           .font(.system(size: 60))
           .foregroundColor(.blue)
 
-        Text("Authentication")
+        Text(LocalizableStrings.authLoginButton)
           .font(.title)
           .fontWeight(.semibold)
 
-        Text("Sign in with Auth0 to access PTT channels")
+        Text(LocalizableStrings.authBiometricPrompt)
           .font(.body)
           .foregroundColor(.secondary)
           .multilineTextAlignment(.center)
@@ -143,7 +143,7 @@ struct AuthenticationView: View {
       }) {
         HStack {
           Image(systemName: "person.circle.fill")
-          Text("Sign in with Auth0")
+          Text(LocalizableStrings.authLoginButton)
         }
         .font(.headline)
         .foregroundColor(.white)
@@ -222,7 +222,7 @@ struct MainPTTView: View {
       .padding(.horizontal)
     }
     .padding()
-    .navigationTitle("ParaWave PTT")
+    .navigationTitle(LocalizableStrings.appName)
     .navigationBarTitleDisplayMode(.inline)
     .task {
       await loadAvailableChannels()
@@ -292,7 +292,7 @@ struct NetworkStatusBar: View {
 
   private var networkStatusText: String {
     if !networkService.isConnected {
-      return "Hors ligne"
+      return LocalizableStrings.networkOffline
     }
 
     let typeText = networkService.connectionType == .cellular ? "4G/5G" : "WiFi"
@@ -304,7 +304,8 @@ struct NetworkStatusBar: View {
       return String(
         format: "%.3f°, %.3f°", location.coordinate.latitude, location.coordinate.longitude)
     } else {
-      return locationManager.isAuthorized ? "Searching..." : "GPS disabled"
+      return locationManager.isAuthorized
+        ? LocalizableStrings.locationSearching : LocalizableStrings.locationDisabled
     }
   }
 }
@@ -318,7 +319,7 @@ struct ChannelSelector: View {
 
   var body: some View {
     VStack(spacing: 12) {
-      Text("Current channel")
+      Text(LocalizableStrings.mainChannelLabel)
         .font(.headline)
         .foregroundColor(.primary)
 
@@ -327,7 +328,7 @@ struct ChannelSelector: View {
       }) {
         HStack {
           VStack(alignment: .leading, spacing: 4) {
-            Text(selectedChannel?.name ?? "No channel selected")
+            Text(selectedChannel?.name ?? LocalizableStrings.channelNoSelection)
               .font(.title2)
               .fontWeight(.semibold)
               .foregroundColor(.primary)
@@ -371,7 +372,7 @@ struct MainPTTButton: View {
           .font(.system(size: 40))
           .foregroundColor(.white)
 
-        Text("JOIN CHANNEL")
+        Text(LocalizableStrings.mainJoinChannel)
           .font(.headline)
           .fontWeight(.bold)
           .foregroundColor(.white)
@@ -420,7 +421,7 @@ struct EmergencyButton: View {
           .font(.title2)
           .foregroundColor(.white)
 
-        Text("SOS")
+        Text(LocalizableStrings.emergencyChannelButton)
           .font(.caption)
           .fontWeight(.bold)
           .foregroundColor(.white)
@@ -476,12 +477,12 @@ struct ChannelSelectionSheet: View {
           }
         }
       }
-      .navigationTitle("Sélectionner un canal")
+      .navigationTitle(LocalizableStrings.channelSelectTitle)
       .navigationBarTitleDisplayMode(.inline)
       .navigationBarBackButtonHidden()
       .toolbar {
         ToolbarItem(placement: .navigationBarTrailing) {
-          Button("Fermer") {
+          Button(LocalizableStrings.generalClose) {
             dismiss()
           }
         }

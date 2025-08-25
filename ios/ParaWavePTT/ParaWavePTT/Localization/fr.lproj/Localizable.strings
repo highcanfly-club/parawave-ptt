@@ -41,6 +41,7 @@
 "channel.join.success" = "Rejoint le canal avec succès";
 "channel.join.failed" = "Impossible de rejoindre le canal";
 "channel.leave.success" = "Canal quitté";
+"general.close" = "Fermer";
 
 /* Emergency */
 "emergency.title" = "Urgence";
@@ -78,6 +79,8 @@
 "error.network.message" = "Vérifiez votre connexion internet et réessayez.";
 "error.retry.button" = "Réessayer";
 "error.ok.button" = "OK";
+
+"error.generic.title" = "Erreur";
 
 /* Flying Sites */
 "site.annecy.name" = "Annecy - Forclaz";
