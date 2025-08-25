@@ -7,7 +7,7 @@ import { Chip } from "@heroui/chip";
 import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
 import { useSecuredApi, useAuth } from "@/authentication";
-import { APIResponse, PTTChannel, ChannelParticipantsResponse, ChannelParticipant } from "@/types/ptt";
+import { APIResponse, PTTChannel, ChannelParticipant } from "@/types/ptt";
 
 export default function ChannelPage() {
     const { t } = useTranslation();
@@ -63,10 +63,13 @@ export default function ChannelPage() {
                 setParticipantsLoading(true);
                 const response = await getJson(
                     `${import.meta.env.API_BASE_URL}/v1/channels/${uuid}/participants`,
-                ) as APIResponse<ChannelParticipantsResponse>;
+                ) as APIResponse<ChannelParticipant[]>;
 
-                if (response.data) {
-                    setParticipants(response.data.participants || []);
+                console.log("Fetched participants response:", response);
+
+                if (response.data && Array.isArray(response.data)) {
+                    // The API return directly an array of participants
+                    setParticipants(response.data);
                 } else {
                     setParticipants([]);
                 }
