@@ -775,7 +775,7 @@ export class PTTAPIHandler {
 		env: Env,
 	): Promise<Response> {
 		// Check read permission
-		if (!permissions.includes(env.READ_PERMISSION)) {
+		if (!permissions.includes(env.READ_PERMISSION) && !permissions.includes(env.ADMIN_PERMISSION)) {
 			return this.errorResponse("Insufficient permissions", 403);
 		}
 
@@ -794,8 +794,10 @@ export class PTTAPIHandler {
 				lon: parseFloat(lon),
 			};
 		}
-
-		const radiusKm = radius ? parseFloat(radius) : undefined;
+		// Only admin users can specify a radius greater than 100km
+		// others are limited to 100km
+		const radiusLimit = permissions.includes(env.ADMIN_PERMISSION) ? Infinity : 100;
+		const radiusKm = radius ? Math.min(parseFloat(radius), radiusLimit) : undefined;
 
 		const result = await this.channelService.getChannels(
 			type,
