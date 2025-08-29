@@ -19,6 +19,7 @@
 		1A0001001F000009001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000009000 /* MainViewController.swift */; };
 		1A0001001F000010001 /* PTTAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000010000 /* PTTAudioManager.swift */; };
 		1A0001001F000011001 /* LocalizableStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000011000 /* LocalizableStrings.swift */; };
+		AC1048B82E61D9EC000AFA5C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1048B72E61D9EC000AFA5C /* SettingsView.swift */; };
 		AC6E32C72E5C70E8007349BA /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = AC6E32C52E5C70E8007349BA /* Localizable.strings */; };
 		ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */; };
 		ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */; };
@@ -44,6 +45,7 @@
 		1A0001001F000011000 /* LocalizableStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizableStrings.swift; sourceTree = "<group>"; };
 		1A000100ENT000000 /* ParaWavePTT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ParaWavePTT.entitlements; sourceTree = "<group>"; };
 		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC1048B72E61D9EC000AFA5C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AC6E32BA2E5C6965007349BA /* copy_env_to_bundle.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = copy_env_to_bundle.sh; sourceTree = "<group>"; };
 		AC6E32C62E5C70E8007349BA /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		AC6E32C82E5C7121007349BA /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -122,6 +124,7 @@
 		1A000100000000006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				AC1048B72E61D9EC000AFA5C /* SettingsView.swift */,
 				ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */,
 				ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */,
 				1A0001001F000002000 /* ContentView.swift */,
@@ -319,6 +322,7 @@
 				ACB6DA1F2E5A541600C242EF /* ChannelViews.swift in Sources */,
 				ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */,
 				1A0001001F000008001 /* Models.swift in Sources */,
+				AC1048B82E61D9EC000AFA5C /* SettingsView.swift in Sources */,
 				ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */,
 				ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */,
 				ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */,

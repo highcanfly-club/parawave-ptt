@@ -95,6 +95,13 @@ class ConfigurationManager: ObservableObject {
         }
     }
     
+    @Published var searchRadius: Double {
+        didSet { 
+            UserDefaults.standard.set(searchRadius, forKey: "searchRadius")
+            NotificationCenter.default.post(name: .configurationDidChange, object: nil)
+        }
+    }
+    
     // MARK: - Initialization
     
     private init() {
@@ -107,6 +114,7 @@ class ConfigurationManager: ObservableObject {
         self.selectedRegion = UserDefaults.standard.object(forKey: "selectedRegion") as? String ?? "france_alps"
         self.preferredLanguage = UserDefaults.standard.object(forKey: "preferredLanguage") as? String ??
         Locale.current.language.languageCode?.identifier ?? "fr"
+        self.searchRadius = UserDefaults.standard.object(forKey: "searchRadius") as? Double ?? 50.0
         
         // Load environment configuration
         EnvironmentReader.loadEnvironment()

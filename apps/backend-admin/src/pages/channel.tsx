@@ -238,6 +238,7 @@ export default function ChannelPage() {
                                                 <div>
                                                     <p className="font-semibold">{t("username")}:</p>
                                                     <p>{participant.username}</p>
+                                                    <p className="text-xs text-default-500">{participant.ephemeral_push_token || "no ephemeral token"}</p>
                                                 </div>
 
                                                 <div>

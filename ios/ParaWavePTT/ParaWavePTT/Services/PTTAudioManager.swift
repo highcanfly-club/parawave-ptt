@@ -30,6 +30,7 @@ class PTTAudioManager: NSObject, ObservableObject {
     private let audioEngine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let audioFormat: AVAudioFormat
+    private var mixerFormat: AVAudioFormat?
     private let pttChannelManager: PTTChannelManager?
     
     @Published var isRecording = false
@@ -48,7 +49,7 @@ class PTTAudioManager: NSObject, ObservableObject {
     
     // Configuration AAC-LC
     private var aacEncoder: AVAudioConverter?
-    private let aacSettings: [String: Any] = [
+    private var aacSettings: [String: Any] = [
         AVFormatIDKey: kAudioFormatMPEG4AAC,
         AVSampleRateKey: 22050,
         AVNumberOfChannelsKey: 1,
@@ -69,8 +70,8 @@ class PTTAudioManager: NSObject, ObservableObject {
         
         super.init()
         
-        setupAudioEngine()
         setupAudioSession()
+        setupAudioEngine()
         setupAACEncoder()
     }
     
@@ -86,13 +87,29 @@ class PTTAudioManager: NSObject, ObservableObject {
     private func setupAudioEngine() {
         // Configure playback node
         audioEngine.attach(playerNode)
+        
+        // Connect player node with the audio format (will be converted if needed)
         audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: audioFormat)
         
-    // Prepare the audio engine
-    audioEngine.prepare()
+        // Prepare the audio engine to get the correct formats
+        audioEngine.prepare()
+        
+        // Get the main mixer output format (determined by audio session)
+        let mixerFormat = audioEngine.mainMixerNode.outputFormat(forBus: 0)
+        self.mixerFormat = mixerFormat
+        
+        // Debug: Log the formats
+        print("Audio engine setup:")
+        print("  Configured format - Sample rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)")
+        print("  Mixer output format - Sample rate: \(mixerFormat.sampleRate), Channels: \(mixerFormat.channelCount)")
+        
+        // Get input node format if available
+        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+        print("  Input node format - Sample rate: \(inputFormat.sampleRate), Channels: \(inputFormat.channelCount)")
         
         do {
             try audioEngine.start()
+            print("Audio engine started successfully")
         } catch {
             print("Error starting audio engine: \(error)")
         }
@@ -128,13 +145,19 @@ class PTTAudioManager: NSObject, ObservableObject {
         }
     }
     
-    private func setupAACEncoder() {
+    private func setupAACEncoder(with inputFormat: AVAudioFormat? = nil) {
+        let sourceFormat = inputFormat ?? audioFormat
+        
+        // Update AAC settings to match the input format
+        aacSettings[AVSampleRateKey] = sourceFormat.sampleRate
+        aacSettings[AVNumberOfChannelsKey] = sourceFormat.channelCount
+        
         guard let aacFormat = AVAudioFormat(settings: aacSettings) else {
             print("Error creating AAC format")
             return
         }
         
-        aacEncoder = AVAudioConverter(from: audioFormat, to: aacFormat)
+        aacEncoder = AVAudioConverter(from: sourceFormat, to: aacFormat)
         
         // Configure the encoder for optimal real-time quality
         aacEncoder?.bitRate = 32000
@@ -147,33 +170,26 @@ class PTTAudioManager: NSObject, ObservableObject {
     func startRecording() async throws {
         guard !isRecording else { return }
         
-    print("Starting PTT recording")
+        print("Starting PTT recording")
         
-    // Reset parameters
+        // Reset parameters
         sequenceNumber = 0
         audioChunks.removeAll()
         
-    // Recording buffer configuration
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: bufferSize) else {
-            throw PTTAudioError.bufferCreationFailed
-        }
-        
-        recordingBuffer = buffer
-        
-    // Install audio tap on the input
+        // Get the actual input format from the hardware
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
         
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
-            self?.processAudioBuffer(buffer, at: time)
+            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
+                self?.processAudioBuffer(buffer, at: time)
         }
         
         self.isRecording = true
         
-    // Start transmission on the PTT manager
-    try await pttChannelManager?.startTransmission()
+        // Start transmission on the PTT manager
+        try await pttChannelManager?.startTransmission()
 
-    print("PTT recording started successfully")
+        print("PTT recording started successfully")
     }
     
     /// Stop audio recording
@@ -181,22 +197,22 @@ class PTTAudioManager: NSObject, ObservableObject {
     func stopRecording() async {
         guard isRecording else { return }
         
-    print("Stopping PTT recording")
+        print("Stopping PTT recording")
         
-    // Remove the audio tap
+        // Remove the audio tap
         audioEngine.inputNode.removeTap(onBus: 0)
         
         self.isRecording = false
         self.audioLevel = 0.0
         
-    // Stop transmission on the PTT manager
-    await pttChannelManager?.stopTransmission()
+        // Stop transmission on the PTT manager
+        await pttChannelManager?.stopTransmission()
 
-    // Clean buffers
+        // Clean buffers
         audioChunks.removeAll()
         recordingBuffer = nil
         
-    print("PTT recording stopped")
+        print("PTT recording stopped")
     }
     
     // MARK: - Audio Processing
@@ -305,9 +321,12 @@ class PTTAudioManager: NSObject, ObservableObject {
     }
     
     private func decodeAACData(_ aacData: Data) throws -> AVAudioPCMBuffer {
-    // Configure AAC decoder to PCM
+        // Use the mixer format for output (determined by audio session)
+        let outputFormat = mixerFormat ?? audioFormat
+        
+        // Configure AAC decoder to PCM
         guard let aacFormat = AVAudioFormat(settings: aacSettings),
-              let decoder = AVAudioConverter(from: aacFormat, to: audioFormat) else {
+              let decoder = AVAudioConverter(from: aacFormat, to: outputFormat) else {
             throw PTTAudioError.decodingFailed
         }
         
@@ -319,12 +338,12 @@ class PTTAudioManager: NSObject, ObservableObject {
         aacBuffer.byteLength = UInt32(aacData.count)
         aacBuffer.packetCount = 1
         
-    // Create the output PCM buffer
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: bufferSize) else {
+        // Create the output PCM buffer
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: bufferSize) else {
             throw PTTAudioError.bufferCreationFailed
         }
         
-    // Configure the callback for decoding
+        // Configure the callback for decoding
         var inputBuffer: AVAudioBuffer? = aacBuffer
         let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
             outStatus.pointee = .haveData
@@ -333,7 +352,7 @@ class PTTAudioManager: NSObject, ObservableObject {
             return result
         }
         
-    // Perform the conversion
+        // Perform the conversion
         var error: NSError?
         let status = decoder.convert(to: pcmBuffer, error: &error, withInputFrom: inputBlock)
         

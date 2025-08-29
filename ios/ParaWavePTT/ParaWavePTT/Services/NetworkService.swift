@@ -298,7 +298,12 @@ class ParapenteNetworkService: NSObject, ObservableObject {
         var request = try createAuthenticatedRequest(endpoint: endpoint, method: "PUT")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: updateRequest)
-
+        
+        #if DEBUG
+            print("Updating ephemeral push token for channel \(uuid)")
+            print("New token: \(token)")
+        print("Request: \(request.httpBody)")
+        #endif
         let response: APIResponse<Bool> = try await performRequest(request)
         return response.success
     }

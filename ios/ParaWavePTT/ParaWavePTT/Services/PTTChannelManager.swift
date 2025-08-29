@@ -45,6 +45,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // Configuration PTT
     private var ephemeralPushToken: String?
+    private var pendingPushToken: String? // Token temporaire en attente d'un canal
     private var currentSessionId: String?
 
     // MARK: - Initialization
@@ -333,6 +334,16 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         self.currentChannelDescriptor = channelDescriptor
         self.isJoined = true
 
+        // Send pending push token if available
+        if let pendingToken = self.pendingPushToken {
+            print("📤 Sending pending push token (\(pendingToken.prefix(20))...) now that channel is ready...")
+            Task {
+                await updateEphemeralPushToken(pendingToken)
+                self.pendingPushToken = nil // Clear the pending token
+                print("🧹 Pending token sent and cleared")
+            }
+        }
+
         // Load participants
         await loadParticipants()
 
@@ -400,18 +411,25 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     /// Met à jour le token push éphémère
     func updateEphemeralPushToken(_ token: String) async {
+        print("🔄 Updating ephemeral push token for channel...")
         self.ephemeralPushToken = token
 
-        guard let channel = currentChannel else { return }
+        guard let channel = currentChannel else {
+            print("❌ No current channel found, cannot update push token")
+            return
+        }
 
         do {
+            print("🌐 Sending push token to server...")
             let success = try await networkService.updateEphemeralPushToken(
                 channel.uuid, token: token)
             if success {
-                print("Ephemeral push token updated successfully")
+                print("✅ Ephemeral push token updated successfully")
+            } else {
+                print("❌ Server returned false for push token update")
             }
         } catch {
-            print("Error updating push token: \(error)")
+            print("❌ Error updating push token: \(error.localizedDescription)")
         }
     }
 
@@ -656,12 +674,22 @@ extension PTTChannelManager: PTChannelManagerDelegate {
     func channelManager(
         _ channelManager: PTChannelManager, receivedEphemeralPushToken pushToken: Data
     ) {
-        print(
-            "Received PTT push token: \(pushToken.prefix(20).map { String(format: "%02x", $0) }.joined())"
-        )
+        // Convertir le token binaire en hexadécimal
+        let tokenHex = pushToken.map { String(format: "%02x", $0) }.joined()
+        print("🔑 Received PTT push token: \(tokenHex.prefix(20))...")
 
-        Task {
-            await updateEphemeralPushToken(String(data: pushToken, encoding: .utf8) ?? "")
+        // Stocker temporairement le token
+        self.pendingPushToken = tokenHex
+        print("📦 Token stored temporarily, waiting for channel to be ready...")
+
+        // Essayer d'envoyer immédiatement si le canal est déjà défini
+        if currentChannel != nil {
+            print("� Channel already available, sending token immediately...")
+            Task {
+                await updateEphemeralPushToken(tokenHex)
+            }
+        } else {
+            print("⏳ Channel not ready yet, token will be sent when channel is joined")
         }
     }
 

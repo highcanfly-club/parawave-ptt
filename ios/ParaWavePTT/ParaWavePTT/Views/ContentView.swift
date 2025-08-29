@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreLocation
 import SwiftUI
+import Combine
 
 //
 // Copyright © 2025 Ronan Le Meillat
@@ -171,6 +172,7 @@ struct MainPTTView: View {
   @State private var selectedChannel: PTTChannel?
   @State private var availableChannels: [PTTChannel] = []
   @State private var showChannelSelection = false
+  @State private var showSettings = false
 
   var body: some View {
     VStack(spacing: 20) {
@@ -204,7 +206,7 @@ struct MainPTTView: View {
       HStack(spacing: 20) {
         // Settings button
         Button(action: {
-          // Open the settings
+          showSettings = true
         }) {
           Image(systemName: "gearshape")
             .font(.title2)
@@ -227,6 +229,11 @@ struct MainPTTView: View {
     .task {
       await loadAvailableChannels()
     }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ConfigurationDidChange"))) { _ in
+      Task {
+        await loadAvailableChannels()
+      }
+    }
     .sheet(isPresented: $showChannelSelection) {
       ChannelSelectionSheet(
         channels: availableChannels,
@@ -234,13 +241,16 @@ struct MainPTTView: View {
         userPermissions: userPermissions
       )
     }
+    .sheet(isPresented: $showSettings) {
+      SettingsView()
+    }
   }
 
   private func loadAvailableChannels() async {
     do {
       let channels = try await networkService.getChannels(
         location: locationManager.currentLocation,
-        radius: 50.0
+        radius: ConfigurationManager.shared.searchRadius
       )
 
       await MainActor.run {
