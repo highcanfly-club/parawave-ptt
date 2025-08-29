@@ -10360,7 +10360,6 @@ __metadata:
     i18next-http-backend: "npm:^3.0.2"
     jose: "npm:^6.0.12"
     oidc-client-ts: "npm:^3.3.0"
-    postcss: "npm:^8.5.6"
     prettier: "npm:^3.6.2"
     react: "npm:19.1.1"
     react-dom: "npm:19.1.1"
@@ -10397,6 +10396,7 @@ __metadata:
     jest: "npm:^30.0.5"
     jiti: "npm:^2.5.1"
     jose: "npm:^6.0.12"
+    prettier: "npm:^3.6.2"
     ts-jest: "npm:^29.4.1"
     typescript: "npm:^5.9.2"
     vitest: "npm:~3.2.4"
@@ -10491,7 +10491,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-dom@npm:19.1.1":
+"react-dom@npm:^19.1.1":
   version: 19.1.1
   resolution: "react-dom@npm:19.1.1"
   dependencies:
@@ -10651,7 +10651,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react@npm:19.1.1":
+"react@npm:^19.1.1":
   version: 19.1.1
   resolution: "react@npm:19.1.1"
   checksum: 10/9801530fdc939e1a7a499422e930515b2400809cb39c2872984e99f832d233f61659a693871183dac3155c2f9b2c9dcf4440a56bd18983277ae92860e38c3a61

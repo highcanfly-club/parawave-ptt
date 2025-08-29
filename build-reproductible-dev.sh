@@ -1,5 +1,7 @@
 #!/bin/bash
-
+echo "Now does nothing"
+exit 0
+# Kept only for reference
 # Reproducible build script for local development
 # Uses the npm workaround to avoid Yarn workspaces resolution conflicts
 
