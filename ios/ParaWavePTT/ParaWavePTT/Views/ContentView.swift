@@ -204,7 +204,7 @@ struct MainPTTView: View {
       HStack(spacing: 20) {
         // Settings button
         Button(action: {
-          // Ouvrir les paramètres
+          // Open the settings
         }) {
           Image(systemName: "gearshape")
             .font(.title2)
