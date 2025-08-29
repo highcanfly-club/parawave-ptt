@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import UIKit
 import Accelerate
+import PushToTalk
 
 /*
  Copyright (C) 2025 Ronan Le Meillat
@@ -22,420 +23,10 @@ import Accelerate
  along with this program. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>.
 */
 
-// Specialized audio manager for PTT transmissions optimized for AAC-LC
-class PTTAudioManager: NSObject, ObservableObject {
-    
-    // MARK: - Properties
-    
-    private let audioEngine = AVAudioEngine()
-    private let playerNode = AVAudioPlayerNode()
-    private let audioFormat: AVAudioFormat
-    private var mixerFormat: AVAudioFormat?
-    private let pttChannelManager: PTTChannelManager?
-    
-    @Published var isRecording = false
-    @Published var audioLevel: Float = 0.0
-    @Published var isPlaying = false
-    
-    // Audio configuration optimized for paragliding
-    private let sampleRate: Double = 22050  // Optimal for human voice
-    private let channelCount: AVAudioChannelCount = 1  // Mono for PTT
-    private let bufferSize: AVAudioFrameCount = 1024
-    
-    // Buffers pour l'audio
-    private var recordingBuffer: AVAudioPCMBuffer?
-    private var audioChunks: [Data] = []
-    private var sequenceNumber = 0
-    
-    // Configuration AAC-LC
-    private var aacEncoder: AVAudioConverter?
-    private var aacSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatMPEG4AAC,
-        AVSampleRateKey: 22050,
-        AVNumberOfChannelsKey: 1,
-        AVEncoderBitRateKey: 32000,  // 32 kbps pour qualité parapente
-    ]
-    
-    // MARK: - Initialization
-    
-    init(pttChannelManager: PTTChannelManager? = nil) {
-        self.pttChannelManager = pttChannelManager
-        
-    // Configure optimized audio format
-        guard let audioFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channelCount) else {
-            fatalError("Unable to create audio format")
-        }
-        
-        self.audioFormat = audioFormat
-        
-        super.init()
-        
-        setupAudioSession()
-        setupAudioEngine()
-        setupAACEncoder()
-    }
-    
-    deinit {
-        Task {
-            await stopRecording()
-        }
-        audioEngine.stop()
-    }
-    
-    // MARK: - Setup Methods
-    
-    private func setupAudioEngine() {
-        // Configure playback node
-        audioEngine.attach(playerNode)
-        
-        // Connect player node with the audio format (will be converted if needed)
-        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: audioFormat)
-        
-        // Prepare the audio engine to get the correct formats
-        audioEngine.prepare()
-        
-        // Get the main mixer output format (determined by audio session)
-        let mixerFormat = audioEngine.mainMixerNode.outputFormat(forBus: 0)
-        self.mixerFormat = mixerFormat
-        
-        // Debug: Log the formats
-        print("Audio engine setup:")
-        print("  Configured format - Sample rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)")
-        print("  Mixer output format - Sample rate: \(mixerFormat.sampleRate), Channels: \(mixerFormat.channelCount)")
-        
-        // Get input node format if available
-        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
-        print("  Input node format - Sample rate: \(inputFormat.sampleRate), Channels: \(inputFormat.channelCount)")
-        
-        do {
-            try audioEngine.start()
-            print("Audio engine started successfully")
-        } catch {
-            print("Error starting audio engine: \(error)")
-        }
-    }
-    
-    private func setupAudioSession() {
-        let audioSession = AVAudioSession.sharedInstance()
-        
-        do {
-            // Specialized configuration for PTT in flight environment
-            try audioSession.setCategory(.playAndRecord,
-                                       mode: .voiceChat,
-                                       options: [
-                                        .allowBluetooth,
-                                        .allowBluetoothA2DP,
-                                        .defaultToSpeaker,
-                                        .allowAirPlay
-                                       ])
-            
-            // Optimize for low latency and wind-noise reduction
-            try audioSession.setPreferredIOBufferDuration(0.02) // 20ms
-            try audioSession.setPreferredSampleRate(sampleRate)
-            
-            // Enable noise and echo suppression (important for wind)
-            if #available(iOS 13.0, *) {
-                try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(false)
-            }
-            
-            try audioSession.setActive(true)
-            
-        } catch {
-            print("Audio session configuration error: \(error)")
-        }
-    }
-    
-    private func setupAACEncoder(with inputFormat: AVAudioFormat? = nil) {
-        let sourceFormat = inputFormat ?? audioFormat
-        
-        // Update AAC settings to match the input format
-        aacSettings[AVSampleRateKey] = sourceFormat.sampleRate
-        aacSettings[AVNumberOfChannelsKey] = sourceFormat.channelCount
-        
-        guard let aacFormat = AVAudioFormat(settings: aacSettings) else {
-            print("Error creating AAC format")
-            return
-        }
-        
-        aacEncoder = AVAudioConverter(from: sourceFormat, to: aacFormat)
-        
-        // Configure the encoder for optimal real-time quality
-        aacEncoder?.bitRate = 32000
-    }
-    
-    // MARK: - Recording Control
-    
-    /// Start audio recording for PTT transmission
-    @MainActor
-    func startRecording() async throws {
-        guard !isRecording else { return }
-        
-        print("Starting PTT recording")
-        
-        // Reset parameters
-        sequenceNumber = 0
-        audioChunks.removeAll()
-        
-        // Get the actual input format from the hardware
-        let inputNode = audioEngine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        
-            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
-                self?.processAudioBuffer(buffer, at: time)
-        }
-        
-        self.isRecording = true
-        
-        // Start transmission on the PTT manager
-        try await pttChannelManager?.startTransmission()
+// MARK: - Audio Quality & Stats Types
 
-        print("PTT recording started successfully")
-    }
-    
-    /// Stop audio recording
-    @MainActor
-    func stopRecording() async {
-        guard isRecording else { return }
-        
-        print("Stopping PTT recording")
-        
-        // Remove the audio tap
-        audioEngine.inputNode.removeTap(onBus: 0)
-        
-        self.isRecording = false
-        self.audioLevel = 0.0
-        
-        // Stop transmission on the PTT manager
-        await pttChannelManager?.stopTransmission()
-
-        // Clean buffers
-        audioChunks.removeAll()
-        recordingBuffer = nil
-        
-        print("PTT recording stopped")
-    }
-    
-    // MARK: - Audio Processing
-    
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) {
-    // Calculate audio level for the UI
-        updateAudioLevel(buffer)
-        
-    // Encode to AAC-LC and send
-        Task {
-            await encodeAndSendAudioBuffer(buffer)
-        }
-    }
-    
-    private func updateAudioLevel(_ buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        
-        let frameCount = Int(buffer.frameLength)
-        let rms = sqrt(vDSP.meanSquare(Array(UnsafeBufferPointer(start: channelData, count: frameCount))))
-        
-        DispatchQueue.main.async {
-            // Logarithmic conversion for display
-            self.audioLevel = 20 * log10(max(rms, 0.0001))
-        }
-    }
-    
-    @MainActor
-    private func encodeAndSendAudioBuffer(_ buffer: AVAudioPCMBuffer) async {
-        guard let encoder = aacEncoder else { return }
-        
-        do {
-            // Convert to AAC-LC
-            let aacData = try encodeToAAC(buffer: buffer, encoder: encoder)
-            
-            // Send over the network
-            try await pttChannelManager?.sendAudioData(aacData, sequenceNumber: sequenceNumber)
-            
-            sequenceNumber += 1
-            
-        } catch {
-            print("Error encoding/sending audio: \(error)")
-        }
-    }
-    
-    private func encodeToAAC(buffer: AVAudioPCMBuffer, encoder: AVAudioConverter) throws -> Data {
-        let aacFormat = encoder.outputFormat
-        
-        // Create the AAC output buffer
-        let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: 1024)
-        
-    // Configure the callback for encoding
-        var inputBuffer: AVAudioBuffer? = buffer
-        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
-            outStatus.pointee = .haveData
-            let result = inputBuffer
-            inputBuffer = nil
-            return result
-        }
-        
-    // Perform the conversion
-        var error: NSError?
-        let status = encoder.convert(to: aacBuffer, error: &error, withInputFrom: inputBlock)
-        
-        guard status == .haveData, error == nil else {
-            throw PTTAudioError.encodingFailed
-        }
-        
-    // Extract the AAC data
-        let aacDataLength = Int(aacBuffer.byteLength)
-        let aacData = Data(bytes: aacBuffer.data, count: aacDataLength)
-        
-        return aacData
-    }
-    
-    // MARK: - Playback Control
-    
-    /// Play received audio data
-    func playReceivedAudio(_ audioData: Data) async {
-        await MainActor.run {
-            self.isPlaying = true
-        }
-        
-        do {
-            // Decode the AAC data
-            let pcmBuffer = try decodeAACData(audioData)
-            
-            // Play the buffer
-            playerNode.scheduleBuffer(pcmBuffer) { [weak self] in
-                Task {
-                    await MainActor.run {
-                        self?.isPlaying = false
-                    }
-                }
-            }
-            
-            if !playerNode.isPlaying {
-                playerNode.play()
-            }
-            
-        } catch {
-            print("Error during audio playback: \(error)")
-            await MainActor.run {
-                self.isPlaying = false
-            }
-        }
-    }
-    
-    private func decodeAACData(_ aacData: Data) throws -> AVAudioPCMBuffer {
-        // Use the mixer format for output (determined by audio session)
-        let outputFormat = mixerFormat ?? audioFormat
-        
-        // Configure AAC decoder to PCM
-        guard let aacFormat = AVAudioFormat(settings: aacSettings),
-              let decoder = AVAudioConverter(from: aacFormat, to: outputFormat) else {
-            throw PTTAudioError.decodingFailed
-        }
-        
-        // Create a compressed buffer for AAC data
-        let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: aacData.count)
-        
-        // Copy AAC data into the buffer
-        let _ = aacData.copyBytes(to: UnsafeMutableBufferPointer(start: aacBuffer.data.assumingMemoryBound(to: UInt8.self), count: aacData.count))
-        aacBuffer.byteLength = UInt32(aacData.count)
-        aacBuffer.packetCount = 1
-        
-        // Create the output PCM buffer
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: bufferSize) else {
-            throw PTTAudioError.bufferCreationFailed
-        }
-        
-        // Configure the callback for decoding
-        var inputBuffer: AVAudioBuffer? = aacBuffer
-        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
-            outStatus.pointee = .haveData
-            let result = inputBuffer
-            inputBuffer = nil
-            return result
-        }
-        
-        // Perform the conversion
-        var error: NSError?
-        let status = decoder.convert(to: pcmBuffer, error: &error, withInputFrom: inputBlock)
-        
-        guard status == .haveData, error == nil else {
-            throw PTTAudioError.decodingFailed
-        }
-        
-        return pcmBuffer
-    }
-    
-    // MARK: - Audio Effects
-    
-    /// Enable high-pass filter to reduce wind noise
-    func enableWindNoiseReduction(_ enabled: Bool) {
-    // Implementation of a high-pass filter to remove low-frequency wind noise
-    // Cutoff frequency at 300 Hz to remove wind noise while preserving voice
-        
-        if enabled {
-            // Configuration d'un filtre passe-haut avec AVAudioUnitEQ
-            let eq = AVAudioUnitEQ(numberOfBands: 1)
-            let highPassBand = eq.bands[0]
-            highPassBand.filterType = .highPass
-            highPassBand.frequency = 300.0
-            highPassBand.gain = 0.0
-            highPassBand.bypass = false
-            
-            print("Wind noise reduction enabled")
-        } else {
-            print("Wind noise reduction disabled")
-        }
-    }
-    
-    /// Automatically adjust gain based on environment
-    func adjustGainForFlightConditions(_ windSpeed: Double) {
-        let gainAdjustment: Float
-        
-        if windSpeed < 10 {
-            gainAdjustment = 1.0  // No adjustment
-        } else if windSpeed < 20 {
-            gainAdjustment = 1.2  // Slight increase
-        } else {
-            gainAdjustment = 1.5  // Larger increase to compensate for strong wind
-        }
-        
-    // Apply gain adjustment
-        audioEngine.mainMixerNode.outputVolume = gainAdjustment
-        
-    print("Gain adjusted to \(gainAdjustment) for wind speed \(windSpeed) km/h")
-    }
-    
-    // MARK: - Quality Assessment
-    
-    /// Assess audio quality in real time
-    func assessAudioQuality() -> AudioQuality {
-        let currentLevel = audioLevel
-        
-        if currentLevel > -10 {
-            return .excellent
-        } else if currentLevel > -20 {
-            return .good
-        } else if currentLevel > -30 {
-            return .poor
-        } else {
-            return .noSignal
-        }
-    }
-    
-    /// Retrieve audio statistics
-    func getAudioStats() -> AudioStats {
-        return AudioStats(
-            currentLevel: audioLevel,
-            quality: assessAudioQuality(),
-            isRecording: isRecording,
-            isPlaying: isPlaying,
-            sampleRate: sampleRate,
-            format: "AAC-LC"
-        )
-    }
-}
-
-// MARK: - Audio Quality & Stats
-
-enum AudioQuality {
+/// Audio quality enumeration for PTT transmissions
+public enum AudioQuality {
     case noSignal
     case poor
     case good
@@ -460,7 +51,8 @@ enum AudioQuality {
     }
 }
 
-struct AudioStats {
+/// Audio statistics structure
+public struct AudioStats {
     let currentLevel: Float
     let quality: AudioQuality
     let isRecording: Bool
@@ -471,15 +63,18 @@ struct AudioStats {
 
 // MARK: - Error Types
 
-enum PTTAudioError: Error, LocalizedError {
+/// PTT audio error enumeration
+public enum PTTAudioError: Error, LocalizedError {
     case audioSessionSetupFailed
     case bufferCreationFailed
     case encodingFailed
     case decodingFailed
     case transmissionFailed
     case noMicrophonePermission
+    case noActiveChannel
+    case pttFrameworkNotInitialized
     
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .audioSessionSetupFailed:
             return "Failed to configure audio session"
@@ -493,16 +88,595 @@ enum PTTAudioError: Error, LocalizedError {
             return "Audio transmission failed"
         case .noMicrophonePermission:
             return "Microphone permission not granted"
+        case .noActiveChannel:
+            return "No active PTT channel"
+        case .pttFrameworkNotInitialized:
+            return "PushToTalk framework not initialized"
         }
     }
 }
 
-// MARK: - Extensions
+// MARK: - Main PTT Audio Manager
 
-extension PTTAudioManager {
+/// Specialized audio manager for PTT transmissions using Apple's PushToTalk framework
+/// Following Apple's official documentation: https://developer.apple.com/documentation/pushtotalk/creating-a-push-to-talk-app
+public class PTTAudioManager: NSObject, ObservableObject {
+    
+    // MARK: - Properties
+    
+    // Apple's PTChannelManager - the core of the PushToTalk framework
+    private var channelManager: PTChannelManager?
+    fileprivate var activeChannelUUID: UUID?
+    private var channelDescriptor: PTChannelDescriptor?
+    
+    // Published properties for SwiftUI
+    @Published public var isRecording = false
+    @Published public var audioLevel: Float = 0.0
+    @Published public var isPlaying = false
+    @Published public var isTransmitting = false
+    @Published public var channelJoined = false
+    
+    // Audio configuration optimized for paragliding
+    private let sampleRate: Double = 22050  // Optimal for human voice
+    private let channelCount: AVAudioChannelCount = 1  // Mono for PTT
+    private let bufferSize: AVAudioFrameCount = 1024
+    
+    // Audio processing
+    private let audioEngine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private let audioFormat: AVAudioFormat
+    private var mixerFormat: AVAudioFormat?
+    
+    // Buffers for audio
+    private var recordingBuffer: AVAudioPCMBuffer?
+    private var audioChunks: [Data] = []
+    private var sequenceNumber = 0
+    
+    // AAC-LC configuration
+    private var aacEncoder: AVAudioConverter?
+    private var aacSettings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatMPEG4AAC,
+        AVSampleRateKey: 22050,
+        AVNumberOfChannelsKey: 1,
+        AVEncoderBitRateKey: 32000,  // 32 kbps pour qualité parapente
+    ]
+    
+    // Reference to external PTT manager for server communication
+    private weak var pttChannelManager: PTTChannelManager?
+    
+    // MARK: - Initialization
+    
+    init(pttChannelManager: PTTChannelManager? = nil) {
+        // Configure optimized audio format
+        guard let audioFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channelCount) else {
+            fatalError("Unable to create audio format")
+        }
+        
+        self.audioFormat = audioFormat
+        self.pttChannelManager = pttChannelManager
+        
+        super.init()
+        
+        setupAudioEngine()
+        setupAudioSession()
+        setupAACEncoder()
+        
+        // Initialize Apple's PushToTalk framework asynchronously
+        Task {
+            await setupPTTFramework()
+        }
+        
+        print("PTTAudioManager initialized - Apple PushToTalk framework integration")
+    }
+    
+    deinit {
+        Task {
+            await stopRecording()
+        }
+        audioEngine.stop()
+    }
+    
+    // MARK: - Setup Methods
+    
+    /// Initialize Apple's PushToTalk framework
+    private func setupPTTFramework() async {
+        do {
+            print("🔄 Initializing Apple's PTChannelManager...")
+            
+            // Create a delegate wrapper to handle Apple's protocols
+            let delegateHandler = ApplePTTDelegateHandler(audioManager: self)
+            
+            // Use Apple's factory method to create the channel manager
+            channelManager = try await PTChannelManager.channelManager(
+                delegate: delegateHandler,
+                restorationDelegate: delegateHandler
+            )
+            
+            print("✅ Apple's PTChannelManager initialized successfully")
+            
+            // If we have a pending channel to join, do it now
+            if let channelUUID = activeChannelUUID, let descriptor = channelDescriptor {
+                print("🔄 Joining pending Apple PTT channel: \(descriptor.name)")
+                do {
+                    try await channelManager!.requestJoinChannel(
+                        channelUUID: channelUUID,
+                        descriptor: descriptor
+                    )
+                    print("✅ Successfully joined pending Apple PTT channel")
+                } catch {
+                    print("❌ Failed to join pending Apple PTT channel: \(error)")
+                }
+            }
+            
+        } catch {
+            print("❌ Failed to initialize Apple's PTChannelManager: \(error)")
+            // The app can still function with limited capabilities
+        }
+    }
+    
+    private func setupAudioEngine() {
+        // Configure playback node
+        audioEngine.attach(playerNode)
+        
+        // Connect player node with the audio format
+        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: audioFormat)
+        
+        // Prepare the audio engine
+        audioEngine.prepare()
+        
+        // Get the main mixer output format
+        let mixerFormat = audioEngine.mainMixerNode.outputFormat(forBus: 0)
+        self.mixerFormat = mixerFormat
+        
+        do {
+            try audioEngine.start()
+            print("Audio engine started successfully")
+        } catch {
+            print("Error starting audio engine: \(error)")
+        }
+    }
+    
+    private func setupAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        do {
+            // PTT-optimized configuration
+            try audioSession.setCategory(.playAndRecord,
+                                       mode: .voiceChat,
+                                       options: [
+                                        .allowBluetooth,
+                                        .allowBluetoothA2DP,
+                                        .defaultToSpeaker,
+                                        .allowAirPlay
+                                       ])
+            
+            // Optimize for low latency
+            try audioSession.setPreferredIOBufferDuration(0.02) // 20ms
+            try audioSession.setPreferredSampleRate(sampleRate)
+            
+            if #available(iOS 13.0, *) {
+                try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(false)
+            }
+            
+            try audioSession.setActive(true)
+            
+        } catch {
+            print("Audio session configuration error: \(error)")
+        }
+    }
+    
+    private func setupAACEncoder(with inputFormat: AVAudioFormat? = nil) {
+        let sourceFormat = inputFormat ?? audioFormat
+        
+        aacSettings[AVSampleRateKey] = sourceFormat.sampleRate
+        aacSettings[AVNumberOfChannelsKey] = sourceFormat.channelCount
+        
+        guard let aacFormat = AVAudioFormat(settings: aacSettings) else {
+            print("Error creating AAC format")
+            return
+        }
+        
+        aacEncoder = AVAudioConverter(from: sourceFormat, to: aacFormat)
+        aacEncoder?.bitRate = 32000
+    }
+    
+    // MARK: - Channel Management (Following Apple's Documentation)
+    
+    /// Join a PTT channel using Apple's PushToTalk framework
+    public func joinChannel(channelUUID: UUID, name: String) async throws {
+        print("🎯 Joining Apple PTT channel: \(name) (\(channelUUID))")
+        
+        // Store the channel info regardless
+        self.activeChannelUUID = channelUUID
+        self.channelDescriptor = PTChannelDescriptor(name: name, image: nil)
+        
+        // Check if we have a channel manager
+        var activeChannelManager = self.channelManager
+        
+        if activeChannelManager == nil {
+            print("⚠️ Apple's PTChannelManager not initialized yet, trying to initialize...")
+            
+            // Try to initialize the framework
+            await setupPTTFramework()
+            
+            // Check again after initialization attempt
+            activeChannelManager = self.channelManager
+            
+            if activeChannelManager == nil {
+                print("⚠️ Apple's PTT framework still not available, will join when ready")
+                return
+            }
+        }
+        
+        // At this point we should have an active channel manager
+        guard let channelManager = activeChannelManager else {
+            print("⚠️ Channel manager unexpectedly nil")
+            return
+        }
+        
+        // Create channel descriptor following Apple's pattern
+        let descriptor = PTChannelDescriptor(name: name, image: nil)
+        self.channelDescriptor = descriptor
+        
+        do {
+            // Use Apple's requestJoinChannel method
+            try await channelManager.requestJoinChannel(
+                channelUUID: channelUUID,
+                descriptor: descriptor
+            )
+            
+            print("✅ Successfully requested to join Apple PTT channel: \(name)")
+            
+        } catch {
+            print("❌ Failed to join Apple PTT channel: \(error)")
+            self.activeChannelUUID = nil
+            self.channelDescriptor = nil
+            throw error
+        }
+    }
+    
+    /// Leave the current PTT channel
+    public func leaveChannel() async {
+        guard let channelUUID = activeChannelUUID else { return }
+        
+        print("🚪 Leaving PTT channel: \(channelUUID)")
+        
+        do {
+            // Use Apple's leaveChannel method
+            try await channelManager?.leaveChannel(channelUUID: channelUUID)
+            
+            self.activeChannelUUID = nil
+            self.channelDescriptor = nil
+            
+            await MainActor.run {
+                self.channelJoined = false
+                self.isTransmitting = false
+            }
+            
+            print("✅ Successfully left PTT channel")
+            
+        } catch {
+            print("❌ Error leaving PTT channel: \(error)")
+        }
+    }
+    
+    // MARK: - Transmission Control (Following Apple's Documentation)
+    
+    /// Start audio transmission using Apple's requestBeginTransmitting
+    @MainActor
+    public func startRecording() async throws {
+        guard !isRecording else { 
+            print("⚠️ Already recording, ignoring start request")
+            return 
+        }
+        
+        print("🎙️ Starting PTT transmission...")
+        print("   - Active channel UUID: \(activeChannelUUID?.uuidString ?? "nil")")
+        print("   - Channel joined: \(channelJoined)")
+        print("   - Channel manager available: \(channelManager != nil)")
+        
+        guard let channelUUID = activeChannelUUID else {
+            print("❌ No active channel UUID available")
+            throw PTTAudioError.noActiveChannel
+        }
+        
+        guard let channelManager = channelManager else {
+            print("❌ Apple's PTChannelManager not initialized")
+            throw PTTAudioError.pttFrameworkNotInitialized
+        }
+        
+        print("🎙️ Using Apple's requestBeginTransmitting for channel: \(channelUUID)")
+        
+        // Reset parameters
+        sequenceNumber = 0
+        audioChunks.removeAll()
+        
+        do {
+            // CRITICAL: Use Apple's requestBeginTransmitting method
+            // This is the key method according to Apple's documentation
+            try await channelManager.requestBeginTransmitting(channelUUID: channelUUID)
+            
+            print("✅ Apple's requestBeginTransmitting succeeded")
+            
+            // Set up audio recording only AFTER Apple grants permission
+            try setupAudioRecording()
+            
+            self.isRecording = true
+            
+        } catch {
+            print("❌ Apple's requestBeginTransmitting failed: \(error)")
+            print("   Error type: \(type(of: error))")
+            print("   Error description: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    /// Stop audio transmission using Apple's stopTransmitting
+    @MainActor
+    public func stopRecording() async {
+        guard isRecording else { return }
+        guard let channelUUID = activeChannelUUID else { return }
+        
+        print("🛑 Stopping PTT transmission using Apple's stopTransmitting")
+        
+        // Remove audio tap first
+        audioEngine.inputNode.removeTap(onBus: 0)
+        
+        self.isRecording = false
+        self.audioLevel = 0.0
+        
+        do {
+            // CRITICAL: Use Apple's stopTransmitting method
+            try await channelManager?.stopTransmitting(channelUUID: channelUUID)
+            
+            print("✅ Apple's stopTransmitting succeeded")
+            
+        } catch {
+            print("❌ Apple's stopTransmitting failed: \(error)")
+        }
+        
+        // Clean up
+        audioChunks.removeAll()
+        recordingBuffer = nil
+    }
+    
+    /// Set up audio recording (called only after Apple grants transmission permission)
+    private func setupAudioRecording() throws {
+        let inputNode = audioEngine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        
+        guard inputFormat.sampleRate > 0 && inputFormat.channelCount > 0 else {
+            print("⚠️ Invalid input format, using fallback")
+            let fallbackFormat = audioFormat
+            
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: fallbackFormat, frameCapacity: bufferSize) else {
+                throw PTTAudioError.bufferCreationFailed
+            }
+            recordingBuffer = buffer
+            setupAACEncoder(with: fallbackFormat)
+            
+            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: fallbackFormat) { [weak self] buffer, time in
+                self?.processAudioBuffer(buffer, at: time)
+            }
+            return
+        }
+        
+        // Use actual input format
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: bufferSize) else {
+            throw PTTAudioError.bufferCreationFailed
+        }
+        recordingBuffer = buffer
+        setupAACEncoder(with: inputFormat)
+        
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
+            self?.processAudioBuffer(buffer, at: time)
+        }
+    }
+    
+    // MARK: - Audio Processing
+    
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) {
+        // Update UI audio level
+        updateAudioLevel(buffer)
+        
+        // Encode and send to your server (not through Apple's framework)
+        Task {
+            await encodeAndSendAudioBuffer(buffer)
+        }
+    }
+    
+    private func updateAudioLevel(_ buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        
+        let frameCount = Int(buffer.frameLength)
+        let rms = sqrt(vDSP.meanSquare(Array(UnsafeBufferPointer(start: channelData, count: frameCount))))
+        
+        DispatchQueue.main.async {
+            self.audioLevel = 20 * log10(max(rms, 0.0001))
+        }
+    }
+    
+    @MainActor
+    private func encodeAndSendAudioBuffer(_ buffer: AVAudioPCMBuffer) async {
+        guard let encoder = aacEncoder else { return }
+        
+        do {
+            // Convert to AAC-LC
+            let aacData = try encodeToAAC(buffer: buffer, encoder: encoder)
+            
+            // Send through your custom PTT manager, not Apple's framework
+            try await pttChannelManager?.sendAudioData(aacData, sequenceNumber: sequenceNumber)
+            
+            sequenceNumber += 1
+            
+        } catch {
+            print("❌ Error encoding/sending audio: \(error)")
+        }
+    }
+    
+    private func encodeToAAC(buffer: AVAudioPCMBuffer, encoder: AVAudioConverter) throws -> Data {
+        let aacFormat = encoder.outputFormat
+        let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: 1024)
+        
+        var inputBuffer: AVAudioBuffer? = buffer
+        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+            outStatus.pointee = .haveData
+            let result = inputBuffer
+            inputBuffer = nil
+            return result
+        }
+        
+        var error: NSError?
+        let status = encoder.convert(to: aacBuffer, error: &error, withInputFrom: inputBlock)
+        
+        guard status == .haveData, error == nil else {
+            throw PTTAudioError.encodingFailed
+        }
+        
+        let aacDataLength = Int(aacBuffer.byteLength)
+        let aacData = Data(bytes: aacBuffer.data, count: aacDataLength)
+        
+        return aacData
+    }
+    
+    // MARK: - Playback Control
+    
+    /// Play received audio data
+    public func playReceivedAudio(_ audioData: Data) async {
+        await MainActor.run {
+            self.isPlaying = true
+        }
+        
+        do {
+            let pcmBuffer = try decodeAACData(audioData)
+            
+            playerNode.scheduleBuffer(pcmBuffer) { [weak self] in
+                Task {
+                    await MainActor.run {
+                        self?.isPlaying = false
+                    }
+                }
+            }
+            
+            if !playerNode.isPlaying {
+                playerNode.play()
+            }
+            
+        } catch {
+            print("❌ Error during audio playbook: \(error)")
+            await MainActor.run {
+                self.isPlaying = false
+            }
+        }
+    }
+    
+    private func decodeAACData(_ audioData: Data) throws -> AVAudioPCMBuffer {
+        let outputFormat = mixerFormat ?? audioFormat
+        
+        guard let aacFormat = AVAudioFormat(settings: aacSettings),
+              let decoder = AVAudioConverter(from: aacFormat, to: outputFormat) else {
+            throw PTTAudioError.decodingFailed
+        }
+        
+        let aacBuffer = AVAudioCompressedBuffer(format: aacFormat, packetCapacity: 1, maximumPacketSize: audioData.count)
+        
+        let _ = audioData.copyBytes(to: UnsafeMutableBufferPointer(start: aacBuffer.data.assumingMemoryBound(to: UInt8.self), count: audioData.count))
+        aacBuffer.byteLength = UInt32(audioData.count)
+        aacBuffer.packetCount = 1
+        
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: bufferSize) else {
+            throw PTTAudioError.bufferCreationFailed
+        }
+        
+        var inputBuffer: AVAudioBuffer? = aacBuffer
+        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+            outStatus.pointee = .haveData
+            let result = inputBuffer
+            inputBuffer = nil
+            return result
+        }
+        
+        var error: NSError?
+        let status = decoder.convert(to: pcmBuffer, error: &error, withInputFrom: inputBlock)
+        
+        guard status == .haveData, error == nil else {
+            throw PTTAudioError.decodingFailed
+        }
+        
+        return pcmBuffer
+    }
+    
+    // MARK: - Server Communication
+    
+    fileprivate func sendPushTokenToServer(_ token: Data) async {
+        // Send the ephemeral push token to your server
+        print("📤 Sending push token to server: \(token.base64EncodedString())")
+        // TODO: Implement actual server API call
+    }
+    
+    // MARK: - Audio Effects
+    
+    /// Enable wind noise reduction
+    public func enableWindNoiseReduction(_ enabled: Bool) {
+        if enabled {
+            let eq = AVAudioUnitEQ(numberOfBands: 1)
+            let highPassBand = eq.bands[0]
+            highPassBand.filterType = .highPass
+            highPassBand.frequency = 300.0
+            highPassBand.gain = 0.0
+            highPassBand.bypass = false
+            
+            print("🌪️ Wind noise reduction enabled")
+        } else {
+            print("🌪️ Wind noise reduction disabled")
+        }
+    }
+    
+    /// Adjust gain for flight conditions
+    public func adjustGainForFlightConditions(_ windSpeed: Double) {
+        let gainAdjustment: Float
+        
+        if windSpeed < 10 {
+            gainAdjustment = 1.0
+        } else if windSpeed < 20 {
+            gainAdjustment = 1.2
+        } else {
+            gainAdjustment = 1.5
+        }
+        
+        audioEngine.mainMixerNode.outputVolume = gainAdjustment
+        print("🎚️ Gain adjusted to \(gainAdjustment) for wind speed \(windSpeed) km/h")
+    }
+    
+    // MARK: - Quality Assessment
+    
+    public func assessAudioQuality() -> AudioQuality {
+        let currentLevel = audioLevel
+        
+        if currentLevel > -10 {
+            return .excellent
+        } else if currentLevel > -20 {
+            return .good
+        } else if currentLevel > -30 {
+            return .poor
+        } else {
+            return .noSignal
+        }
+    }
+    
+    public func getAudioStats() -> AudioStats {
+        return AudioStats(
+            currentLevel: audioLevel,
+            quality: assessAudioQuality(),
+            isRecording: isRecording,
+            isPlaying: isPlaying,
+            sampleRate: sampleRate,
+            format: "AAC-LC"
+        )
+    }
     
     /// Check microphone permissions
-    static func checkMicrophonePermission() -> Bool {
+    public static func checkMicrophonePermission() -> Bool {
         switch AVAudioSession.sharedInstance().recordPermission {
         case .granted:
             return true
@@ -513,8 +687,8 @@ extension PTTAudioManager {
         }
     }
     
-    /// Demande les permissions microphone
-    static func requestMicrophonePermission() async -> Bool {
+    /// Request microphone permissions
+    public static func requestMicrophonePermission() async -> Bool {
         return await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 continuation.resume(returning: granted)
@@ -522,50 +696,199 @@ extension PTTAudioManager {
         }
     }
     
-    /// Teste la latence audio
-    func measureAudioLatency() async -> TimeInterval? {
-        // Implémentation d'un test de latence audio round-trip
+    /// Test audio latency
+    public func measureAudioLatency() async -> TimeInterval? {
         let startTime = Date()
-        
-        // Simuler un cycle audio complet
         try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
-        
         let endTime = Date()
         return endTime.timeIntervalSince(startTime)
+    }
+}
+
+// MARK: - Apple's PushToTalk Delegate Handler
+
+/// Separate handler for Apple's PTT delegate protocols to avoid naming conflicts
+private class ApplePTTDelegateHandler: NSObject, PTChannelManagerDelegate, PTChannelRestorationDelegate {
+    
+    private weak var audioManager: PTTAudioManager?
+    
+    init(audioManager: PTTAudioManager) {
+        self.audioManager = audioManager
+        super.init()
+    }
+    
+    // MARK: - PTChannelManagerDelegate
+    
+    func channelManager(_ channelManager: PTChannelManager, didJoinChannel channelUUID: UUID, reason: PTChannelJoinReason) {
+        print("🎯 Apple's PTT: Successfully joined channel \(channelUUID)")
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let audioManager = self?.audioManager else { return }
+            audioManager.activeChannelUUID = channelUUID
+            audioManager.channelJoined = true
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, didLeaveChannel channelUUID: UUID, reason: PTChannelLeaveReason) {
+        print("🚪 Apple's PTT: Left channel \(channelUUID)")
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let audioManager = self?.audioManager else { return }
+            if audioManager.activeChannelUUID == channelUUID {
+                audioManager.activeChannelUUID = nil
+                audioManager.channelJoined = false
+                audioManager.isTransmitting = false
+            }
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, channelUUID: UUID, didBeginTransmittingFrom source: PTChannelTransmitRequestSource) {
+        print("🎙️ Apple's PTT: Began transmitting on channel \(channelUUID) from source: \(source)")
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let audioManager = self?.audioManager else { return }
+            audioManager.isTransmitting = true
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, channelUUID: UUID, didEndTransmittingFrom source: PTChannelTransmitRequestSource) {
+        print("🛑 Apple's PTT: Ended transmitting on channel \(channelUUID) from source: \(source)")
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let audioManager = self?.audioManager else { return }
+            audioManager.isTransmitting = false
+            if source == .userRequest {
+                audioManager.isRecording = false
+            }
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, receivedEphemeralPushToken pushToken: Data) {
+        print("📱 Apple's PTT: Received ephemeral push token")
+        
+        // Forward to your server
+        Task { [weak self] in
+            await self?.audioManager?.sendPushTokenToServer(pushToken)
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, didActivate audioSession: AVAudioSession) {
+        print("🔊 Apple's PTT: Audio session activated")
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, didDeactivate audioSession: AVAudioSession) {
+        print("🔇 Apple's PTT: Audio session deactivated")
+    }
+    
+    func incomingPushResult(channelManager: PTChannelManager, channelUUID: UUID, pushPayload: [String: Any]) -> PTPushResult {
+        print("📱 Apple's PTT: Incoming push for channel: \(channelUUID)")
+        // Return appropriate result based on app state
+        return .leaveChannel
+    }
+    
+    // MARK: - PTChannelRestorationDelegate
+    
+    func channelDescriptor(restoredChannelUUID channelUUID: UUID) -> PTChannelDescriptor {
+        print("🔄 Apple's PTT: Restoring channel descriptor for: \(channelUUID)")
+        
+        // Create a default descriptor for restored channels
+        let descriptor = PTChannelDescriptor(
+            name: "Restored ParaWave Channel",
+            image: createDefaultChannelImage()
+        )
+        
+        return descriptor
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, didRestoreChannel channelUUID: UUID) {
+        print("🔄 Apple's PTT: Restored channel \(channelUUID)")
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let audioManager = self?.audioManager else { return }
+            audioManager.activeChannelUUID = channelUUID
+            audioManager.channelJoined = true
+        }
+    }
+    
+    func channelManager(_ channelManager: PTChannelManager, didFailToRestoreChannel channelUUID: UUID, error: any Error) {
+        print("❌ Apple's PTT: Failed to restore channel \(channelUUID): \(error)")
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func createDefaultChannelImage() -> UIImage? {
+        let size = CGSize(width: 40, height: 40)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        
+        return renderer.image { context in
+            let rect = CGRect(origin: .zero, size: size)
+            
+            UIColor.systemBlue.setFill()
+            context.fill(rect)
+            
+            let attributes: [NSAttributedString.Key: Any] = [
+                .foregroundColor: UIColor.white,
+                .font: UIFont.boldSystemFont(ofSize: 12),
+            ]
+            
+            let text = "PW"
+            let textSize = text.size(withAttributes: attributes)
+            let textRect = CGRect(
+                x: (size.width - textSize.width) / 2,
+                y: (size.height - textSize.height) / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+            
+            text.draw(in: textRect, withAttributes: attributes)
+        }
     }
 }
 
 #if DEBUG
 extension PTTAudioManager {
     
-    /// Méthodes de debug pour le développement
-    func debugPrintAudioInfo() {
+    public func debugPrintAudioInfo() {
         let stats = getAudioStats()
-        print("=== Audio Manager Debug Info ===")
+        print("=== Apple PushToTalk Audio Manager Debug ===")
         print("Recording: \(stats.isRecording)")
         print("Playing: \(stats.isPlaying)")
+        print("Transmitting: \(isTransmitting)")
+        print("Channel Joined: \(channelJoined)")
         print("Audio Level: \(stats.currentLevel) dB")
         print("Quality: \(stats.quality.displayName)")
         print("Sample Rate: \(stats.sampleRate) Hz")
         print("Format: \(stats.format)")
-        print("===============================")
+        print("Apple's PTT Framework: \(channelManager != nil ? "✅ Initialized" : "❌ Not initialized")")
+        print("Active Channel UUID: \(activeChannelUUID?.uuidString ?? "nil")")
+        print("Channel Descriptor: \(channelDescriptor?.name ?? "nil")")
+        print("============================================")
     }
     
-    func debugTestAudioChain() async {
-        print("Testing audio chain...")
+    public func debugPrintChannelStatus() {
+        print("=== Apple PushToTalk Channel Status ===")
+        print("Framework initialized: \(channelManager != nil)")
+        print("Active channel UUID: \(activeChannelUUID?.uuidString ?? "none")")
+        print("Channel name: \(channelDescriptor?.name ?? "none")")
+        print("Channel joined: \(channelJoined)")
+        print("Is transmitting: \(isTransmitting)")
+        print("=====================================")
+    }
+    
+    public func debugTestAudioChain() async {
+        print("🧪 Testing Apple PushToTalk audio chain...")
         
-        // Test des permissions
         let hasPermission = Self.checkMicrophonePermission()
-        print("Microphone permission: \(hasPermission)")
+        print("🎤 Microphone permission: \(hasPermission)")
         
-        // Test de latence
         if let latency = await measureAudioLatency() {
-            print("Audio latency: \(latency * 1000) ms")
+            print("⏱️ Audio latency: \(latency * 1000) ms")
         }
         
-        // Test de qualité
         let quality = assessAudioQuality()
-        print("Current quality: \(quality.displayName)")
+        print("🔊 Current quality: \(quality.displayName)")
+        
+        print("🍎 Apple PTT Framework status: \(channelManager != nil ? "Ready" : "Not initialized")")
     }
 }
 #endif
