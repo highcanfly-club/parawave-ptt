@@ -250,6 +250,12 @@ extension LocalizableStrings {
             return audioQualityGood
         case .excellent:
             return audioQualityExcellent
+        case .unknown:
+            return NSLocalizedString("audio.quality.unknown", comment: "Unknown quality")
+        case .transmitting:
+            return statusTransmitting
+        case .listening:
+            return statusReceiving
         }
     }
 }
