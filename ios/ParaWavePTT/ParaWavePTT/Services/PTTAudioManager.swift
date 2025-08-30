@@ -399,7 +399,31 @@ public class PTTAudioManager: NSObject, ObservableObject {
             print("✅ Apple's requestBeginTransmitting succeeded")
             
             // Set up audio recording only AFTER Apple grants permission
-            try setupAudioRecording()
+            do {
+                // Ensure audio session is active before setting up recording
+                let audioSession = AVAudioSession.sharedInstance()
+                if !audioSession.isOtherAudioPlaying {
+                    try audioSession.setActive(true)
+                }
+                
+                try setupAudioRecording()
+                print("✅ Audio recording setup completed")
+            } catch {
+                print("❌ Failed to setup audio recording: \(error)")
+                // Try to restart the audio engine and try again
+                print("🔄 Attempting to restart audio engine...")
+                audioEngine.stop()
+                do {
+                    try audioEngine.start()
+                    // Give the audio engine time to initialize
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    try setupAudioRecording()
+                    print("✅ Audio recording setup completed after restart")
+                } catch {
+                    print("❌ Failed to setup audio recording even after restart: \(error)")
+                    throw error
+                }
+            }
             
             self.isRecording = true
             
@@ -419,8 +443,13 @@ public class PTTAudioManager: NSObject, ObservableObject {
         
         print("🛑 Stopping PTT transmission using Apple's stopTransmitting")
         
-        // Remove audio tap first
-        audioEngine.inputNode.removeTap(onBus: 0)
+        // Remove audio tap first with error handling
+        do {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            print("✅ Audio tap removed successfully")
+        } catch {
+            print("⚠️ Error removing audio tap (this may be normal): \(error)")
+        }
         
         self.isRecording = false
         self.audioLevel = 0.0
@@ -445,31 +474,40 @@ public class PTTAudioManager: NSObject, ObservableObject {
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
         
-        guard inputFormat.sampleRate > 0 && inputFormat.channelCount > 0 else {
-            print("⚠️ Invalid input format, using fallback")
-            let fallbackFormat = audioFormat
+        print("🎧 Input node format:")
+        print("   - Sample rate: \(inputFormat.sampleRate) Hz")
+        print("   - Channels: \(inputFormat.channelCount)")
+        print("   - Format: \(inputFormat)")
+        
+        // Check if the input format is valid (sample rate > 0)
+        if inputFormat.sampleRate <= 0 {
+            print("⚠️ Invalid input format detected, using fallback format")
             
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: fallbackFormat, frameCapacity: bufferSize) else {
+            // Use our predefined audioFormat as fallback
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: bufferSize) else {
                 throw PTTAudioError.bufferCreationFailed
             }
             recordingBuffer = buffer
-            setupAACEncoder(with: fallbackFormat)
+            setupAACEncoder(with: audioFormat)
             
-            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: fallbackFormat) { [weak self] buffer, time in
+            print("✅ Installing audio tap with fallback format: \(audioFormat)")
+            
+            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: audioFormat) { [weak self] buffer, time in
                 self?.processAudioBuffer(buffer, at: time)
             }
-            return
-        }
-        
-        // Use actual input format
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: bufferSize) else {
-            throw PTTAudioError.bufferCreationFailed
-        }
-        recordingBuffer = buffer
-        setupAACEncoder(with: inputFormat)
-        
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
-            self?.processAudioBuffer(buffer, at: time)
+        } else {
+            // Use the input node's actual format for the tap
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: bufferSize) else {
+                throw PTTAudioError.bufferCreationFailed
+            }
+            recordingBuffer = buffer
+            setupAACEncoder(with: inputFormat)
+            
+            print("✅ Installing audio tap with input format: \(inputFormat)")
+            
+            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
+                self?.processAudioBuffer(buffer, at: time)
+            }
         }
     }
     
