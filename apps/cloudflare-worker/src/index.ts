@@ -65,6 +65,12 @@ async function handleChannelDurableObjectRequest(request: Request, env: Env): Pr
 	// Add CORS headers to response
 	const origin = request.headers.get('Origin') || '';
 	const corsHeaders = corsHeader(env, origin);
+
+	if (!corsHeaders) {
+		// Origin not allowed - return 403
+		return new Response('CORS policy violation', { status: 403 });
+	}
+
 	const newHeaders = new Headers(response.headers);
 	Object.entries(corsHeaders).forEach(([key, value]) => {
 		newHeaders.set(key, value);
@@ -212,6 +218,9 @@ export default {
 		if (!success) {
 			const origin = request.headers.get('Origin') || '';
 			const corsHeaders = corsHeader(env, origin);
+			if (!corsHeaders) {
+				return new Response('CORS policy violation', { status: 403 });
+			}
 			return new Response(
 				JSON.stringify({
 					error: `Rate limit exceeded for ${pathname}`,
@@ -231,6 +240,9 @@ export default {
 		if (request.method === "OPTIONS") {
 			const origin = request.headers.get('Origin') || '';
 			const corsHeaders = corsHeader(env, origin);
+			if (!corsHeaders) {
+				return new Response('CORS policy violation', { status: 403 });
+			}
 			return new Response(null, {
 				status: 204,
 				headers: {
@@ -266,6 +278,9 @@ export default {
 			if (pathname === "/" || pathname === "/health") {
 				const origin = request.headers.get('Origin') || '';
 				const corsHeaders = corsHeader(env, origin);
+				if (!corsHeaders) {
+					return new Response('CORS policy violation', { status: 403 });
+				}
 				return new Response(
 					JSON.stringify({
 						service: "ParaWave PTT Backend",
@@ -290,6 +305,9 @@ export default {
 
 			const origin = request.headers.get('Origin') || '';
 			const corsHeaders = corsHeader(env, origin);
+			if (!corsHeaders) {
+				return new Response('CORS policy violation', { status: 403 });
+			}
 			return new Response(
 				JSON.stringify({
 					error: "Endpoint not found",
@@ -303,11 +321,13 @@ export default {
 					},
 				}
 			);
-
 		} catch (error) {
 			console.error('Worker error:', error);
 			const origin = request.headers.get('Origin') || '';
 			const corsHeaders = corsHeader(env, origin);
+			if (!corsHeaders) {
+				return new Response('CORS policy violation', { status: 403 });
+			}
 			return new Response(
 				JSON.stringify({
 					error: "Internal server error",

@@ -426,12 +426,13 @@ export class PTTAPIHandler {
 	private permissionsService: Auth0PermissionsService;
 	private env: Env;
 	private origin: string;
+	private corsHeaders: Record<string, string> | null;
 
 	constructor(
 		db: D1Database,
 		kv: KVNamespace,
 		env: Env,
-		corsOrigin: string = "*",
+		corsOrigin: string,
 	) {
 		this.channelService = new ChannelService(db, kv);
 		this.audioService = new PTTAudioService(env);
@@ -439,6 +440,7 @@ export class PTTAPIHandler {
 		this.permissionsService = new Auth0PermissionsService(this.managementTokenService, env);
 		this.env = env;
 		this.origin = '';
+		this.corsHeaders = null;
 	}
 
 	/**
@@ -452,14 +454,17 @@ export class PTTAPIHandler {
 		const pathname = url.pathname;
 		const origin = request.headers.get('Origin') || '';
 		this.origin = origin;
-		const corsHeaders = corsHeader(this.env, origin);
+		this.corsHeaders = corsHeader(this.env, origin);
 
 		// Handle CORS preflight requests
 		if (request.method === "OPTIONS") {
+			if (!this.corsHeaders) {
+				return new Response('CORS policy violation', { status: 403 });
+			}
 			return new Response(null, {
 				status: 204,
 				headers: {
-					...corsHeaders,
+					...this.corsHeaders,
 					"Access-Control-Allow-Credentials": "true",
 				},
 			});
@@ -1769,7 +1774,7 @@ export class PTTAPIHandler {
 			version: "1.0.0",
 		};
 
-		const headers = corsHeaders || corsHeader(this.env, this.origin);
+		const headers = corsHeaders || this.corsHeaders || {};
 
 		return new Response(JSON.stringify(response), {
 			status,
@@ -1907,7 +1912,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: corsHeader(this.env, this.origin),
+				headers: this.corsHeaders || {},
 			});
 		} catch (error) {
 			console.error("Join channel error:", error);
@@ -2017,7 +2022,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: corsHeader(this.env, this.origin),
+				headers: this.corsHeaders || {},
 			});
 		} catch (error) {
 			console.error("Leave channel error:", error);
@@ -2134,7 +2139,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(responseWithCount), {
 				status: 200,
-				headers: corsHeader(this.env, this.origin),
+				headers: this.corsHeaders || {},
 			});
 		} catch (error) {
 			console.error("Get channel participants error:", error);
@@ -2250,7 +2255,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: corsHeader(this.env, this.origin),
+				headers: this.corsHeaders || {},
 			});
 		} catch (error) {
 			console.error("Update participant token error:", error);
@@ -2501,7 +2506,7 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: corsHeader(this.env, this.origin),
+					headers: this.corsHeaders || {},
 				});
 			} else {
 				return this.errorResponse(
@@ -2645,7 +2650,7 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: corsHeader(this.env, this.origin),
+					headers: this.corsHeaders || {},
 				});
 			} else {
 				return this.errorResponse(
@@ -2767,7 +2772,7 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: corsHeader(this.env, this.origin),
+					headers: this.corsHeaders || {},
 				});
 			} else {
 				return this.errorResponse(
@@ -2865,7 +2870,7 @@ export class PTTAPIHandler {
 				}),
 				{
 					status: 200,
-					headers: corsHeader(this.env, this.origin),
+					headers: this.corsHeaders || {},
 				},
 			);
 		} catch (error) {
@@ -3125,7 +3130,7 @@ export class PTTAPIHandler {
 			version: "1.0.0",
 		};
 
-		const headers = corsHeaders || corsHeader(this.env, this.origin);
+		const headers = corsHeaders || this.corsHeaders || {};
 
 		return new Response(JSON.stringify(response), {
 			status,

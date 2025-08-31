@@ -26,30 +26,39 @@
  * Generate CORS headers based on the request origin and allowed origins
  * @param env Environment variables containing CORS_ORIGIN
  * @param origin The origin from the request
- * @returns CORS headers object
+ * @returns CORS headers object or null if origin is not allowed
  */
-export function corsHeader(env: Env, origin: string): Record<string, string> {
+export function corsHeader(env: Env, origin: string): Record<string, string> | null {
+    // Validate origin format
+    if (!origin || typeof origin !== 'string') {
+        return null;
+    }
+
+    // Basic URL validation
+    try {
+        new URL(origin);
+    } catch {
+        return null;
+    }
+
     // Get allowed origins from env.CORS_ORIGIN (comma-separated list)
-    const allowedOrigins = env.CORS_ORIGIN ? env.CORS_ORIGIN.split(',').map(o => o.trim()) : ['*'];
+    const allowedOrigins = env.CORS_ORIGIN ? env.CORS_ORIGIN.split(',').map(o => o.trim()) : [];
 
     // Check if origin is in the allowed list
     const isAllowed = allowedOrigins.includes('*') || allowedOrigins.includes(origin);
 
-    let allowOrigin: string;
-    if (isAllowed) {
-        allowOrigin = origin;
-    } else {
-        // Generate a random hostname and domain
-        const randomId = crypto.randomUUID().substring(0, 8);
-        allowOrigin = `random-${randomId}.invalid`;
-        console.warn('CORS Check:', { origin, isAllowed, allowedOrigins });
+    if (!isAllowed) {
+        // Log security event without exposing sensitive data
+        console.warn(`CORS: Origin ${origin} not in allowed list`);
+        return null; // Don't return headers for unauthorized origins
     }
 
     return {
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Origin": allowOrigin,
+        "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
         "Access-Control-Max-Age": "86400",
+        "Access-Control-Allow-Credentials": "true", // Only if credentials are needed
         "Content-Type": "application/json",
     };
 }
