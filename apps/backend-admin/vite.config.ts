@@ -108,6 +108,24 @@ export default defineConfig({
     "import.meta.env.AUTH0_MANAGEMENT_AUDIENCE": JSON.stringify(process.env.AUTH0_MANAGEMENT_AUDIENCE),
   },
   plugins: [react(), tsconfigPaths(), tailwindcss(), githubPagesSpa()],
+  server: {
+    allowedHosts: (() => {
+      const corsOrigin = process.env.CORS_ORIGIN;
+      if (!corsOrigin || corsOrigin.includes('*')) {
+        return true;
+      }
+      // Parse comma-separated URLs and extract hostnames
+      return corsOrigin.split(',').map(url => {
+        try {
+          const parsedUrl = new URL(url.trim());
+          return parsedUrl.hostname;
+        } catch {
+          // If URL parsing fails, return the original string
+          return url.trim();
+        }
+      }).filter(host => host.length > 0);
+    })(),
+  },
   build: {
     // Inline assets smaller than 1KB
     // This is for demonstration purposes only

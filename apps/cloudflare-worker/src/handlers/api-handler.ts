@@ -27,6 +27,7 @@ import { ChannelService } from "../services/channel-service";
 import { PTTAudioService } from "../services/ptt-audio-service";
 import { Auth0ManagementTokenService } from "../services/auth0-management-token-service";
 import { Auth0PermissionsService } from "../services/auth0-permissions-service";
+import { corsHeader } from "../utils/cors";
 import {
 	CreateChannelRequest,
 	CreateChannelWithUuidRequest,
@@ -423,7 +424,8 @@ export class PTTAPIHandler {
 	private audioService: PTTAudioService;
 	private managementTokenService: Auth0ManagementTokenService;
 	private permissionsService: Auth0PermissionsService;
-	private corsHeaders: Record<string, string>;
+	private env: Env;
+	private origin: string;
 
 	constructor(
 		db: D1Database,
@@ -435,13 +437,8 @@ export class PTTAPIHandler {
 		this.audioService = new PTTAudioService(env);
 		this.managementTokenService = new Auth0ManagementTokenService(kv, env);
 		this.permissionsService = new Auth0PermissionsService(this.managementTokenService, env);
-		this.corsHeaders = {
-			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-			"Access-Control-Allow-Origin": corsOrigin,
-			"Access-Control-Allow-Headers": "Content-Type, Authorization",
-			"Access-Control-Max-Age": "86400",
-			"Content-Type": "application/json",
-		};
+		this.env = env;
+		this.origin = '';
 	}
 
 	/**
@@ -453,13 +450,16 @@ export class PTTAPIHandler {
 	async handleAPIRequest(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 		const pathname = url.pathname;
+		const origin = request.headers.get('Origin') || '';
+		this.origin = origin;
+		const corsHeaders = corsHeader(this.env, origin);
 
 		// Handle CORS preflight requests
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
 				headers: {
-					...this.corsHeaders,
+					...corsHeaders,
 					"Access-Control-Allow-Credentials": "true",
 				},
 			});
@@ -1761,7 +1761,7 @@ export class PTTAPIHandler {
 	/**
 	 * Create success response
 	 */
-	private successResponse<T = any>(data: T, status: number = 200): Response {
+	private successResponse<T = any>(data: T, status: number = 200, corsHeaders?: Record<string, string>): Response {
 		const response: APIResponse<T> = {
 			success: true,
 			data,
@@ -1769,9 +1769,11 @@ export class PTTAPIHandler {
 			version: "1.0.0",
 		};
 
+		const headers = corsHeaders || corsHeader(this.env, this.origin);
+
 		return new Response(JSON.stringify(response), {
 			status,
-			headers: this.corsHeaders,
+			headers,
 		});
 	}
 
@@ -1905,7 +1907,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: this.corsHeaders,
+				headers: corsHeader(this.env, this.origin),
 			});
 		} catch (error) {
 			console.error("Join channel error:", error);
@@ -2015,7 +2017,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: this.corsHeaders,
+				headers: corsHeader(this.env, this.origin),
 			});
 		} catch (error) {
 			console.error("Leave channel error:", error);
@@ -2132,7 +2134,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(responseWithCount), {
 				status: 200,
-				headers: this.corsHeaders,
+				headers: corsHeader(this.env, this.origin),
 			});
 		} catch (error) {
 			console.error("Get channel participants error:", error);
@@ -2248,7 +2250,7 @@ export class PTTAPIHandler {
 
 			return new Response(JSON.stringify(response), {
 				status: 200,
-				headers: this.corsHeaders,
+				headers: corsHeader(this.env, this.origin),
 			});
 		} catch (error) {
 			console.error("Update participant token error:", error);
@@ -2499,7 +2501,7 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: this.corsHeaders,
+					headers: corsHeader(this.env, this.origin),
 				});
 			} else {
 				return this.errorResponse(
@@ -2643,7 +2645,7 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: this.corsHeaders,
+					headers: corsHeader(this.env, this.origin),
 				});
 			} else {
 				return this.errorResponse(
@@ -2765,7 +2767,7 @@ export class PTTAPIHandler {
 			if (result.success) {
 				return new Response(JSON.stringify(result), {
 					status: 200,
-					headers: this.corsHeaders,
+					headers: corsHeader(this.env, this.origin),
 				});
 			} else {
 				return this.errorResponse(
@@ -2863,7 +2865,7 @@ export class PTTAPIHandler {
 				}),
 				{
 					status: 200,
-					headers: this.corsHeaders,
+					headers: corsHeader(this.env, this.origin),
 				},
 			);
 		} catch (error) {
@@ -3115,7 +3117,7 @@ export class PTTAPIHandler {
 	/**
 	 * Create error response
 	 */
-	private errorResponse(error: string, status: number = 400): Response {
+	private errorResponse(error: string, status: number = 400, corsHeaders?: Record<string, string>): Response {
 		const response: APIResponse = {
 			success: false,
 			error,
@@ -3123,9 +3125,11 @@ export class PTTAPIHandler {
 			version: "1.0.0",
 		};
 
+		const headers = corsHeaders || corsHeader(this.env, this.origin);
+
 		return new Response(JSON.stringify(response), {
 			status,
-			headers: this.corsHeaders,
+			headers,
 		});
 	}
 }

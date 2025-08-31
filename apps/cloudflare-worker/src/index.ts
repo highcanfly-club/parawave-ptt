@@ -25,21 +25,10 @@
 import { checkPermissions } from "./auth0";
 import { PTTAPIHandler } from "./handlers/api-handler";
 import { PTTChannelDurableObject } from "./durable-objects/ptt-channel-do";
+import { corsHeader } from "./utils/cors";
 
 // Export Durable Object class
 export { PTTChannelDurableObject };
-
-/**
- * CORS headers configuration
- */
-const corsHeaders = (env: Env) => {
-	return {
-		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-		"Access-Control-Allow-Origin": env.CORS_ORIGIN || "*",
-		"Access-Control-Allow-Headers": "Content-Type, Authorization",
-		"Access-Control-Max-Age": "86400",
-	};
-};
 
 /**
  * Handle requests to channel Durable Objects for real-time operations
@@ -74,8 +63,10 @@ async function handleChannelDurableObjectRequest(request: Request, env: Env): Pr
 	const response = await durableObject.fetch(forwardedRequest);
 
 	// Add CORS headers to response
+	const origin = request.headers.get('Origin') || '';
+	const corsHeaders = corsHeader(env, origin);
 	const newHeaders = new Headers(response.headers);
-	Object.entries(corsHeaders(env)).forEach(([key, value]) => {
+	Object.entries(corsHeaders).forEach(([key, value]) => {
 		newHeaders.set(key, value);
 	});
 
@@ -92,6 +83,8 @@ async function handleChannelDurableObjectRequest(request: Request, env: Env): Pr
  */
 async function handleLegacyRequest(request: Request, env: Env): Promise<Response> {
 	const token = request.headers.get("Authorization")?.split(" ")[1];
+	const origin = request.headers.get('Origin') || '';
+	const corsHeaders = corsHeader(env, origin);
 
 	if (!token) {
 		return new Response(
@@ -102,7 +95,7 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 			{
 				status: 401,
 				headers: {
-					...corsHeaders(env),
+					...corsHeaders,
 					'Content-Type': 'application/json'
 				},
 			}
@@ -135,7 +128,7 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 				}),
 				{
 					headers: {
-						...corsHeaders(env),
+						...corsHeaders,
 						'Content-Type': 'application/json'
 					},
 				}
@@ -150,7 +143,7 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 			{
 				status: 403,
 				headers: {
-					...corsHeaders(env),
+					...corsHeaders,
 					'Content-Type': 'application/json'
 				},
 			}
@@ -166,7 +159,7 @@ async function handleLegacyRequest(request: Request, env: Env): Promise<Response
 			{
 				status: 401,
 				headers: {
-					...corsHeaders(env),
+					...corsHeaders,
 					'Content-Type': 'application/json'
 				},
 			}
@@ -217,6 +210,8 @@ export default {
 		// Rate limiting
 		const { success } = await env.RATE_LIMITER.limit({ key: pathname });
 		if (!success) {
+			const origin = request.headers.get('Origin') || '';
+			const corsHeaders = corsHeader(env, origin);
 			return new Response(
 				JSON.stringify({
 					error: `Rate limit exceeded for ${pathname}`,
@@ -225,7 +220,7 @@ export default {
 				{
 					status: 429,
 					headers: {
-						...corsHeaders(env),
+						...corsHeaders,
 						'Content-Type': 'application/json'
 					},
 				},
@@ -234,10 +229,12 @@ export default {
 
 		// Handle CORS preflight requests
 		if (request.method === "OPTIONS") {
+			const origin = request.headers.get('Origin') || '';
+			const corsHeaders = corsHeader(env, origin);
 			return new Response(null, {
 				status: 204,
 				headers: {
-					...corsHeaders(env),
+					...corsHeaders,
 					"Access-Control-Allow-Credentials": "true",
 				},
 			});
@@ -267,6 +264,8 @@ export default {
 
 			// Default health check
 			if (pathname === "/" || pathname === "/health") {
+				const origin = request.headers.get('Origin') || '';
+				const corsHeaders = corsHeader(env, origin);
 				return new Response(
 					JSON.stringify({
 						service: "ParaWave PTT Backend",
@@ -282,13 +281,15 @@ export default {
 					}),
 					{
 						headers: {
-							...corsHeaders(env),
+							...corsHeaders,
 							'Content-Type': 'application/json'
 						},
 					}
 				);
 			}
 
+			const origin = request.headers.get('Origin') || '';
+			const corsHeaders = corsHeader(env, origin);
 			return new Response(
 				JSON.stringify({
 					error: "Endpoint not found",
@@ -297,7 +298,7 @@ export default {
 				{
 					status: 404,
 					headers: {
-						...corsHeaders(env),
+						...corsHeaders,
 						'Content-Type': 'application/json'
 					},
 				}
@@ -305,6 +306,8 @@ export default {
 
 		} catch (error) {
 			console.error('Worker error:', error);
+			const origin = request.headers.get('Origin') || '';
+			const corsHeaders = corsHeader(env, origin);
 			return new Response(
 				JSON.stringify({
 					error: "Internal server error",
@@ -313,7 +316,7 @@ export default {
 				{
 					status: 500,
 					headers: {
-						...corsHeaders(env),
+						...corsHeaders,
 						'Content-Type': 'application/json'
 					},
 				}
