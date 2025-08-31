@@ -169,4 +169,15 @@ dist
 # wrangler project
 
 .dev.vars
+.dev.vars.local
+.secrets.json
+wrangler.toml
 .wrangler/
+
+# Security: Never commit these files
+.env.local
+.env.production
+*.key
+*.pem
+*secret*
+*token*
