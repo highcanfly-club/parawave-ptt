@@ -312,6 +312,9 @@ struct LeaveChannelResponse: Codable {
 struct PTTStartTransmissionRequest: Codable {
     let channelUuid: String
     let audioFormat: AudioFormat
+    let sampleRate: Int
+    let bitrate: Int
+    let networkQuality: NetworkQuality
     let deviceInfo: DeviceInfo?
     let expectedDuration: Int?
     let location: Coordinates?
@@ -319,6 +322,9 @@ struct PTTStartTransmissionRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case channelUuid = "channel_uuid"
         case audioFormat = "audio_format"
+        case sampleRate = "sample_rate"
+        case bitrate
+        case networkQuality = "network_quality"
         case deviceInfo = "device_info"
         case expectedDuration = "expected_duration"
         case location
@@ -374,22 +380,63 @@ struct PTTAudioChunkResponse: Codable {
 }
 
 struct PTTEndTransmissionRequest: Codable {
+    let sessionId: String
+    let totalDurationMs: Int
+    let finalLocation: Coordinates?
     let reason: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case totalDurationMs = "total_duration_ms"
+        case finalLocation = "final_location"
+        case reason
+    }
+    
+    init(sessionId: String, totalDurationMs: Int, finalLocation: Coordinates? = nil, reason: String = "completed") {
+        self.sessionId = sessionId
+        self.totalDurationMs = totalDurationMs
+        self.finalLocation = finalLocation
+        self.reason = reason
+    }
 }
 
 struct PTTEndTransmissionResponse: Codable {
     let success: Bool
-    let totalDuration: Double?
-    let totalChunks: Int?
-    let participantsReached: Int?
+    let sessionSummary: SessionSummary?
     let error: String?
 
     enum CodingKeys: String, CodingKey {
         case success
-        case totalDuration = "total_duration"
-        case totalChunks = "total_chunks"
-        case participantsReached = "participants_reached"
+        case sessionSummary = "session_summary"
         case error
+    }
+    
+    struct SessionSummary: Codable {
+        let totalDurationMs: Int
+        let chunksReceived: Int
+        let totalBytes: Int
+        let participantsNotified: Int
+        
+        enum CodingKeys: String, CodingKey {
+            case totalDurationMs = "total_duration_ms"
+            case chunksReceived = "chunks_received"
+            case totalBytes = "total_bytes"
+            case participantsNotified = "participants_notified"
+        }
+    }
+    
+    // Computed properties for backward compatibility
+    var totalDuration: Double? {
+        guard let summary = sessionSummary else { return nil }
+        return Double(summary.totalDurationMs) / 1000.0
+    }
+    
+    var totalChunks: Int? {
+        return sessionSummary?.chunksReceived
+    }
+    
+    var participantsReached: Int? {
+        return sessionSummary?.participantsNotified
     }
 }
 
@@ -594,6 +641,14 @@ struct NetworkConfiguration {
 
     static var maxTransmissionDuration: TimeInterval {
         return config.maxTransmissionDuration
+    }
+    
+    static var audioSampleRate: Double {
+        return config.audioSampleRate
+    }
+    
+    static var audioBitrate: Int {
+        return config.audioBitrate
     }
 
     static let audioChunkSize = 1024

@@ -336,7 +336,32 @@ import { Auth0ManagementTokenData } from "../types/auth0-management";
  *           description: Error message if success is false
  *     PTTEndTransmissionRequest:
  *       type: object
+ *       required:
+ *         - session_id
+ *         - total_duration_ms
  *       properties:
+ *         session_id:
+ *           type: string
+ *           format: uuid
+ *           description: The transmission session ID (must match path parameter)
+ *         total_duration_ms:
+ *           type: integer
+ *           minimum: 1
+ *           description: Total transmission duration in milliseconds
+ *         final_location:
+ *           type: object
+ *           properties:
+ *             lat:
+ *               type: number
+ *               minimum: -90
+ *               maximum: 90
+ *               description: Final latitude
+ *             lon:
+ *               type: number
+ *               minimum: -180
+ *               maximum: 180
+ *               description: Final longitude
+ *           description: Optional final location when transmission ended
  *         reason:
  *           type: string
  *           enum: [completed, cancelled, timeout, error]
@@ -348,15 +373,22 @@ import { Auth0ManagementTokenData } from "../types/auth0-management";
  *         success:
  *           type: boolean
  *           example: true
- *         total_duration:
- *           type: number
- *           description: Total transmission duration in seconds
- *         total_chunks:
- *           type: integer
- *           description: Total number of audio chunks received
- *         participants_reached:
- *           type: integer
- *           description: Number of participants who received the transmission
+ *         session_summary:
+ *           type: object
+ *           properties:
+ *             total_duration_ms:
+ *               type: integer
+ *               description: Total transmission duration in milliseconds
+ *             chunks_received:
+ *               type: integer
+ *               description: Total number of audio chunks received
+ *             total_bytes:
+ *               type: integer
+ *               description: Total bytes of audio data received
+ *             participants_notified:
+ *               type: integer
+ *               description: Number of participants who were notified of the transmission
+ *           description: Transmission session summary (only present on success)
  *         error:
  *           type: string
  *           description: Error message if success is false
@@ -2316,9 +2348,13 @@ export class PTTAPIHandler {
 				if (resourceId === "start") {
 					return await this.handleStartTransmission(request, userId, username);
 				} else if (resourceId && subResource === "chunk") {
-					return await this.handleAudioChunk(request, resourceId);
+					// Decode the session ID from URL parameter
+					const decodedSessionId = decodeURIComponent(resourceId);
+					return await this.handleAudioChunk(request, decodedSessionId);
 				} else if (resourceId && subResource === "end") {
-					return await this.handleEndTransmission(request, resourceId);
+					// Decode the session ID from URL parameter
+					const decodedSessionId = decodeURIComponent(resourceId);
+					return await this.handleEndTransmission(request, decodedSessionId);
 				} else {
 					return this.errorResponse("Invalid transmission endpoint", 400);
 				}
@@ -2442,7 +2478,6 @@ export class PTTAPIHandler {
 	): Promise<Response> {
 		try {
 			const body = (await request.json()) as PTTStartTransmissionRequest;
-
 			// Validate required fields
 			if (!body.channel_uuid) {
 				return this.errorResponse("channel_uuid is required", 400);
@@ -2688,15 +2723,53 @@ export class PTTAPIHandler {
 	 *       content:
 	 *         application/json:
 	 *           schema:
-	 *             $ref: '#/components/schemas/PTTEndTransmissionRequest'
+	 *             type: object
+	 *             required:
+	 *               - session_id
+	 *               - total_duration_ms
+	 *             properties:
+	 *               session_id:
+	 *                 type: string
+	 *                 format: uuid
+	 *                 description: The transmission session ID (must match path parameter)
+	 *               total_duration_ms:
+	 *                 type: integer
+	 *                 minimum: 1
+	 *                 description: Total transmission duration in milliseconds
+	 *               final_location:
+	 *                 type: object
+	 *                 properties:
+	 *                   lat:
+	 *                     type: number
+	 *                     minimum: -90
+	 *                     maximum: 90
+	 *                     description: Final latitude
+	 *                   lon:
+	 *                     type: number
+	 *                     minimum: -180
+	 *                     maximum: 180
+	 *                     description: Final longitude
+	 *                 description: Optional final location when transmission ended
+	 *               reason:
+	 *                 type: string
+	 *                 enum: [completed, cancelled, timeout, error]
+	 *                 default: completed
+	 *                 description: Reason for ending the transmission
 	 *           examples:
 	 *             completed:
-	 *               summary: Normal completion
+	 *               summary: Normal completion with location
 	 *               value:
+	 *                 session_id: "ptt_04b242cb-91b5-4e6d-a10a-27099fb6e866_user123_1640995200_abc123"
+	 *                 total_duration_ms: 5200
+	 *                 final_location:
+	 *                   lat: 45.929681
+	 *                   lon: 6.876345
 	 *                 reason: "completed"
 	 *             cancelled:
-	 *               summary: User cancelled
+	 *               summary: User cancelled without location
 	 *               value:
+	 *                 session_id: "ptt_04b242cb-91b5-4e6d-a10a-27099fb6e866_user456_1640995300_def456"
+	 *                 total_duration_ms: 1500
 	 *                 reason: "cancelled"
 	 *     responses:
 	 *       200:
@@ -2709,9 +2782,11 @@ export class PTTAPIHandler {
 	 *               success:
 	 *                 value:
 	 *                   success: true
-	 *                   total_duration: 5.2
-	 *                   total_chunks: 52
-	 *                   participants_reached: 3
+	 *                   session_summary:
+	 *                     total_duration_ms: 5200
+	 *                     chunks_received: 52
+	 *                     total_bytes: 524288
+	 *                     participants_notified: 3
 	 *       400:
 	 *         description: Invalid request parameters
 	 *         content:
@@ -2723,6 +2798,10 @@ export class PTTAPIHandler {
 	 *                 value:
 	 *                   success: false
 	 *                   error: "session_id mismatch"
+	 *               invalid_duration:
+	 *                 value:
+	 *                   success: false
+	 *                   error: "Valid total_duration_ms is required"
 	 *       401:
 	 *         description: Authentication required
 	 *         content:
@@ -2753,10 +2832,10 @@ export class PTTAPIHandler {
 	): Promise<Response> {
 		try {
 			const body = (await request.json()) as PTTEndTransmissionRequest;
-
+			
 			// Validate required fields
 			if (!body.session_id || body.session_id !== sessionId) {
-				return this.errorResponse("session_id mismatch", 400);
+				return this.errorResponse(`session_id mismatch. Expected: "${sessionId}", Got: "${body.session_id}"`, 400);
 			}
 
 			if (

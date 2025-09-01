@@ -41,9 +41,10 @@ class ConfigurationManager: ObservableObject {
         static let maxRetryAttempts = 3
         
         // PTT
-        static let maxTransmissionDuration: TimeInterval = 60.0
+        static let maxTransmissionDuration: TimeInterval = 30.0
         static let audioSampleRate: Double = 44100.0
         static let audioChannels: UInt32 = 1
+        static let audioBitrate: Int = 128000 // 128 kbps for AAC-LC
         
         // Emergency
         static let emergencyChannelId = "emergency-global"
@@ -182,6 +183,7 @@ class ConfigurationManager: ObservableObject {
     
     var audioSampleRate: Double { Defaults.audioSampleRate }
     var audioChannels: UInt32 { Defaults.audioChannels }
+    var audioBitrate: Int { Defaults.audioBitrate }
     
     /// Emergency Configuration
     var emergencyChannelId: String {

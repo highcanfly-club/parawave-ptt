@@ -35,7 +35,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
 
     @Published var isConnected = false
     @Published var connectionType: NWInterface.InterfaceType = .other
-    @Published var networkQuality: NetworkQuality = .unknown
+    @Published var networkQuality: NetworkQuality = .fair
 
     // MARK: - Initialization
 
@@ -76,7 +76,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
                     self?.connectionType = .other
                 }
 
-                self?.networkQuality = self?.evaluateNetworkQuality(path: path) ?? .unknown
+                self?.networkQuality = self?.evaluateNetworkQuality(path: path) ?? .fair
             }
         }
 
@@ -91,7 +91,7 @@ class ParapenteNetworkService: NSObject, ObservableObject {
         } else if path.usesInterfaceType(.cellular) {
             return .good
         } else {
-            return .unknown
+            return .fair
         }
     }
 
@@ -321,7 +321,10 @@ class ParapenteNetworkService: NSObject, ObservableObject {
 
         let transmissionRequest = PTTStartTransmissionRequest(
             channelUuid: channelUuid.lowercased(),
-            audioFormat: .aacLc,
+            audioFormat: AudioFormat.aacLc,
+            sampleRate: Int(NetworkConfiguration.audioSampleRate),
+            bitrate: NetworkConfiguration.audioBitrate,
+            networkQuality: getCurrentNetworkQuality(),
             deviceInfo: DeviceInfo.current,
             expectedDuration: expectedDuration,
             location: location?.coordinate.toCoordinates()
@@ -360,12 +363,17 @@ class ParapenteNetworkService: NSObject, ObservableObject {
     }
 
     /// End a PTT transmission
-    func endTransmission(sessionId: String, reason: String = "completed") async throws
+    func endTransmission(sessionId: String, totalDurationMs: Int, finalLocation: Coordinates? = nil, reason: String = "completed") async throws
         -> PTTEndTransmissionResponse
     {
         let endpoint = "/v1/transmissions/\(sessionId)/end"
 
-        let endRequest = PTTEndTransmissionRequest(reason: reason)
+        let endRequest = PTTEndTransmissionRequest(
+            sessionId: sessionId, 
+            totalDurationMs: totalDurationMs, 
+            finalLocation: finalLocation, 
+            reason: reason
+        )
 
         var request = try createAuthenticatedRequest(endpoint: endpoint, method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -477,26 +485,26 @@ class ParapenteNetworkService: NSObject, ObservableObject {
 
 // MARK: - Network Quality
 
-enum NetworkQuality {
-    case unknown
-    case poor
-    case good
-    case excellent
+enum NetworkQuality: String, Codable, CaseIterable {
+    case excellent = "excellent"
+    case good = "good"
+    case fair = "fair"
+    case poor = "poor"
 
     var displayName: String {
         switch self {
-        case .unknown: return "Unknown"
-        case .poor: return "Poor"
-        case .good: return "Good"
         case .excellent: return "Excellent"
+        case .good: return "Good"
+        case .fair: return "Fair"
+        case .poor: return "Poor"
         }
     }
 
     var color: UIColor {
         switch self {
-        case .unknown: return .systemGray
         case .poor: return .systemRed
-        case .good: return .systemOrange
+        case .fair: return .systemOrange
+        case .good: return .systemYellow
         case .excellent: return .systemGreen
         }
     }
@@ -599,6 +607,33 @@ extension ParapenteNetworkService {
         }
 
         throw lastError ?? ParapenteError.unknown("Retry failed")
+    }
+    
+    // MARK: - Network Quality Detection
+    
+    /// Get current network quality for transmission requests
+    private func getCurrentNetworkQuality() -> NetworkQuality {
+        // Base assessment on network reachability and connection type
+        guard isConnected else {
+            return NetworkQuality.poor
+        }
+        
+        // For now, use a simple mapping based on connection type
+        // In a more sophisticated implementation, you might:
+        // - Measure actual network latency and bandwidth
+        // - Consider signal strength for cellular connections
+        // - Track recent transmission success rates
+        
+        switch connectionType {
+        case .wifi:
+            return NetworkQuality.excellent
+        case .cellular:
+            return NetworkQuality.good
+        case .other:
+            return NetworkQuality.fair
+        default:
+            return NetworkQuality.fair
+        }
     }
 }
 

@@ -99,6 +99,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var ephemeralPushToken: String?
     private var pendingPushToken: String? // Token temporaire en attente d'un canal
     private var currentSessionId: String?
+    private var transmissionStartTime: Date?
 
     // MARK: - Initialization
 
@@ -462,6 +463,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if isTransmitting {
             self.isTransmitting = false
             self.currentSessionId = nil
+            self.transmissionStartTime = nil
         }
 
         print("Channel leave process completed: \(channel.name)")
@@ -768,6 +770,7 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         Task { @MainActor in
             // Update local state
             self.isTransmitting = true
+            self.transmissionStartTime = Date()
             
             // Start server transmission session
             if let channel = self.currentChannel {
@@ -806,11 +809,31 @@ extension PTTChannelManager: PTChannelManagerDelegate {
             // Update local state
             self.isTransmitting = false
             
+            // Calculate transmission duration
+            let durationMs: Int
+            if let startTime = self.transmissionStartTime {
+                let duration = Date().timeIntervalSince(startTime)
+                durationMs = Int(duration * 1000) // Convert to milliseconds
+                print("📊 Transmission duration: \(duration)s (\(durationMs)ms)")
+            } else {
+                durationMs = 0
+                print("⚠️ No start time recorded, using 0 duration")
+            }
+            
             // End server transmission session
             if let sessionId = self.currentSessionId {
                 do {
                     print("📡 Ending server transmission session: \(sessionId)")
-                    let endResponse = try await self.networkService.endTransmission(sessionId: sessionId)
+                    let location = self.locationManager.location
+                    let coordinates = location.map { loc in
+                        Coordinates(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+                    }
+                    
+                    let endResponse = try await self.networkService.endTransmission(
+                        sessionId: sessionId, 
+                        totalDurationMs: durationMs, 
+                        finalLocation: coordinates
+                    )
                     
                     if endResponse.success {
                         print("✅ Server transmission ended. Duration: \(endResponse.totalDuration ?? 0)s, Participants: \(endResponse.participantsReached ?? 0)")
@@ -823,6 +846,9 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                 
                 self.currentSessionId = nil
             }
+            
+            // Clear transmission timing
+            self.transmissionStartTime = nil
             
             // Reload participants to update state
             await self.loadParticipants()
@@ -897,10 +923,30 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                 if let sessionId = self.currentSessionId {
                     print("🧹 Cleaning up server transmission session after audio deactivation: \(sessionId)")
                     
+                    // Calculate duration if we have a start time
+                    let durationMs: Int
+                    if let startTime = self.transmissionStartTime {
+                        let duration = Date().timeIntervalSince(startTime)
+                        durationMs = Int(duration * 1000)
+                        print("📊 Emergency cleanup - transmission duration: \(duration)s")
+                    } else {
+                        durationMs = 1000 // Default 1 second for emergency cleanup
+                        print("⚠️ No start time recorded for emergency cleanup, using 1s")
+                    }
+                    
                     // Attempt to end the server session
                     Task {
                         do {
-                            let endResponse = try await self.networkService.endTransmission(sessionId: sessionId)
+                            let location = self.locationManager.location
+                            let coordinates = location.map { loc in
+                                Coordinates(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+                            }
+                            
+                            let endResponse = try await self.networkService.endTransmission(
+                                sessionId: sessionId, 
+                                totalDurationMs: durationMs, 
+                                finalLocation: coordinates
+                            )
                             if endResponse.success {
                                 print("✅ Server session cleaned up after audio deactivation")
                             } else {
@@ -913,6 +959,9 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                     
                     self.currentSessionId = nil
                 }
+                
+                // Clear transmission timing
+                self.transmissionStartTime = nil
                 
                 // Reload participants to update state
                 await self.loadParticipants()

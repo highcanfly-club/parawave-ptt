@@ -43,6 +43,7 @@ struct LocalizableStrings {
     static let network5G = NSLocalizedString("status.network.5g", comment: "5G disponible")
     static let networkOffline = NSLocalizedString("status.network.offline", comment: "Hors ligne")
     static let networkPoor = NSLocalizedString("status.network.poor", comment: "Poor connection")
+    static let networkFair = NSLocalizedString("status.network.fair", comment: "Fair connection")
     static let networkGood = NSLocalizedString("status.network.good", comment: "Good connection")
     static let networkExcellent = NSLocalizedString(
         "status.network.excellent", comment: "Excellent connection")
@@ -228,10 +229,10 @@ extension LocalizableStrings {
     /// Return the localized string for a network quality
     static func networkQualityName(_ quality: NetworkQuality) -> String {
         switch quality {
-        case .unknown:
-            return "Inconnue"
         case .poor:
             return networkPoor
+        case .fair:
+            return networkFair
         case .good:
             return networkGood
         case .excellent:
