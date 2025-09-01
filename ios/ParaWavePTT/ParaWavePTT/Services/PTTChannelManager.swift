@@ -24,6 +24,58 @@ import UserNotifications
  along with this program. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>.
 */
 
+// MARK: - Audio Quality & Stats Types
+
+/// Audio quality enumeration for PTT transmissions
+public enum AudioQuality {
+    case unknown
+    case noSignal
+    case poor
+    case good
+    case excellent
+    case transmitting
+    case listening
+    
+    var displayName: String {
+        switch self {
+        case .unknown: return "Unknown"
+        case .noSignal: return "No Signal"
+        case .poor: return "Poor"
+        case .good: return "Good"
+        case .excellent: return "Excellent"
+        case .transmitting: return "Transmitting"
+        case .listening: return "Listening"
+        }
+    }
+    
+    var color: UIColor {
+        switch self {
+        case .unknown: return .systemGray
+        case .noSignal: return .systemRed
+        case .poor: return .systemOrange
+        case .good: return .systemYellow
+        case .excellent: return .systemGreen
+        case .transmitting: return .systemBlue
+        case .listening: return .systemTeal
+        }
+    }
+}
+
+// MARK: - Audio Statistics
+public struct AudioStats {
+    let quality: AudioQuality
+    let signalStrength: Float
+    let noiseLevel: Float
+    let latency: TimeInterval
+    
+    public init(quality: AudioQuality = .unknown, signalStrength: Float = 0.0, noiseLevel: Float = 0.0, latency: TimeInterval = 0.0) {
+        self.quality = quality
+        self.signalStrength = signalStrength
+        self.noiseLevel = noiseLevel
+        self.latency = latency
+    }
+}
+
 // Main manager for Push-to-Talk operations
 class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
@@ -298,7 +350,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             image: createChannelImage(for: channel)
         )
 
-        // Join the channel via API
+        // Join the channel via API first
         let location = locationManager.location
         let joinResponse = try await networkService.joinChannel(
             channel.uuid,
@@ -315,31 +367,40 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     ]))
         }
 
-        // Join via the PTT framework (if available)
+        // Store channel info immediately (before PTT framework call)
+        self.currentChannel = channel
+        self.currentChannelDescriptor = channelDescriptor
+
+        // Join via the Apple PTT framework (if available)
         if let channelManager = channelManager {
             // Create a UUID for this channel session
             let channelUUID = UUID()
-            channelManager.requestJoinChannel(
-                channelUUID: channelUUID, descriptor: channelDescriptor)
             self.currentChannelUUID = channelUUID
-            print("✅ PTT Channel Manager join request sent")
+            
+            print("🔄 Requesting join to Apple PTT framework...")
+            
+            // Use the correct Apple API - this triggers didJoinChannel delegate when successful
+            try await channelManager.requestJoinChannel(
+                channelUUID: channelUUID, 
+                descriptor: channelDescriptor
+            )
+            
+            print("✅ Apple PTT join request sent, waiting for delegate callback...")
+            // The actual join confirmation will come via didJoinChannel delegate
         } else {
             print("⚠️ PTT Channel Manager not available - continuing with API-only mode")
             print("💡 For full PTT functionality, test on a physical device with iOS 16+")
             self.currentChannelUUID = nil
+            // Set joined manually since we won't get the delegate callback
+            self.isJoined = true
         }
-
-        // Update state
-        self.currentChannel = channel
-        self.currentChannelDescriptor = channelDescriptor
-        self.isJoined = true
 
         // Send pending push token if available
         if let pendingToken = self.pendingPushToken {
             print("📤 Sending pending push token (\(pendingToken.prefix(20))...) now that channel is ready...")
             Task {
                 await updateEphemeralPushToken(pendingToken)
-                self.pendingPushToken = nil // Clear the pending token
+                self.pendingPushToken = nil
                 print("🧹 Pending token sent and cleared")
             }
         }
@@ -347,9 +408,9 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Load participants
         await loadParticipants()
 
-        print("Channel joined successfully: \(channel.name)")
+        print("Channel join process initiated: \(channel.name)")
         if channelManager != nil {
-            print("Mode: Full PTT integration")
+            print("Mode: Full Apple PTT integration - waiting for framework confirmation")
         } else {
             print("Mode: API-only (PTT framework unavailable)")
         }
@@ -364,29 +425,46 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         print("Leaving channel: \(channel.name)")
 
-        // Quitter via l'API
-        let leaveResponse = try await networkService.leaveChannel(channel.uuid)
-
-        if !leaveResponse.success {
-            print("Warning: Failed to leave channel on server")
-        }
-
-        // Leave via the PTT framework
+        // Leave via the Apple PTT framework first (if available)
         if let channelUUID = currentChannelUUID,
             let channelManager = channelManager
         {
-            channelManager.leaveChannel(channelUUID: channelUUID)
+            print("🔄 Requesting leave from Apple PTT framework...")
+            try await channelManager.leaveChannel(channelUUID: channelUUID)
+            print("✅ Apple PTT leave request sent, waiting for delegate callback...")
+            // The actual leave confirmation will come via didLeaveChannel delegate
+        } else {
+            // Set state manually if no PTT framework
+            self.isJoined = false
         }
 
-        // Reset state
+        // Leave via the API
+        do {
+            let leaveResponse = try await networkService.leaveChannel(channel.uuid)
+            if !leaveResponse.success {
+                print("Warning: Failed to leave channel on server")
+            } else {
+                print("✅ Successfully left channel on server")
+            }
+        } catch {
+            print("Error leaving channel on server: \(error)")
+            // Continue with cleanup even if server call fails
+        }
+
+        // Reset state (will be confirmed by delegate if using PTT framework)
         self.currentChannel = nil
         self.currentChannelDescriptor = nil
         self.currentChannelUUID = nil
-        self.isJoined = false
         self.participants = []
         self.activeTransmission = nil
+        
+        // Reset transmission state
+        if isTransmitting {
+            self.isTransmitting = false
+            self.currentSessionId = nil
+        }
 
-        print("Channel left successfully")
+        print("Channel leave process completed: \(channel.name)")
     }
 
     // MARK: - Participants Management
@@ -433,96 +511,69 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    // MARK: - Transmission Control
-
-    /// Start an audio transmission
+    // MARK: - Transmission Control (Apple PTT Framework)
+    
+    /// Request to start transmission via Apple's PTT framework
+    /// This will show the Apple PTT interface and begin transmission if successful
     @MainActor
-    func startTransmission() async throws {
-        guard let channel = currentChannel else {
+    func requestStartTransmission() async throws {
+        guard let channelManager = channelManager else {
+            throw ParapenteError.transmissionFailed
+        }
+        
+        guard let channelUUID = currentChannelUUID else {
             throw ParapenteError.channelNotFound
         }
-
+        
         guard !isTransmitting else {
             print("Transmission already in progress")
             return
         }
-
-        print("Starting transmission on channel: \(channel.name)")
-
-        // Start the transmission via the API
-        let location = locationManager.location
-        let transmissionResponse = try await networkService.startTransmission(
-            channelUuid: channel.uuid,
-            expectedDuration: Int(NetworkConfiguration.maxTransmissionDuration),
-            location: location
-        )
-
-        guard transmissionResponse.success, let sessionId = transmissionResponse.sessionId else {
-            throw ParapenteError.transmissionFailed
+        
+        print("🎙️ Requesting transmission start via Apple's PTT framework...")
+        
+        do {
+            try await channelManager.requestBeginTransmitting(channelUUID: channelUUID)
+            print("✅ Apple PTT transmission request sent, waiting for delegate callback...")
+            // The actual transmission start will come via didBeginTransmittingFrom delegate
+        } catch {
+            print("❌ Failed to request transmission start: \(error)")
+            throw error
         }
-
-        self.currentSessionId = sessionId
-        self.isTransmitting = true
-
-        // Notify participants of the new transmission via the PTT framework
-        if let channelUUID = currentChannelUUID,
-            let channelManager = channelManager
-        {
-            channelManager.setActiveRemoteParticipant(
-                nil, channelUUID: channelUUID,
-                completionHandler: { error in
-                    if let error = error {
-                        print("Error notifying PTT: \(error)")
-                    }
-                })
-        }
-
-        print("Transmission started successfully. Session ID: \(sessionId)")
     }
-
-    /// Arrête la transmission actuelle
+    
+    /// Request to stop transmission via Apple's PTT framework
     @MainActor
-    func stopTransmission() async {
-        guard isTransmitting, let sessionId = currentSessionId else {
+    func requestStopTransmission() {
+        guard let channelManager = channelManager else {
+            print("❌ Apple PTT framework not available")
             return
         }
-
-        print("Stopping transmission. Session ID: \(sessionId)")
-
-        do {
-            let endResponse = try await networkService.endTransmission(sessionId: sessionId)
-
-            if endResponse.success {
-                print(
-                    "Transmission ended. Duration: \(endResponse.totalDuration ?? 0)s, Participants reached: \(endResponse.participantsReached ?? 0)"
-                )
-            }
-        } catch {
-            print("Error stopping transmission: \(error)")
+        
+        guard let channelUUID = currentChannelUUID else {
+            print("❌ No active channel to stop transmission on")
+            return
         }
-
-        // Stop transmitting on the PTT framework
-        if let channelUUID = currentChannelUUID,
-            let channelManager = channelManager
-        {
-            channelManager.stopTransmitting(channelUUID: channelUUID)
-        }
-
-        // Reset state
-        self.isTransmitting = false
-        self.currentSessionId = nil
-
-        // Reload participants to update state
-        await loadParticipants()
+        
+        print("🛑 Requesting transmission end via Apple's PTT framework...")
+        
+        // Apple's stopTransmitting is synchronous
+        channelManager.stopTransmitting(channelUUID: channelUUID)
+        print("✅ Apple PTT transmission stop request sent")
+        // The actual transmission end will come via didEndTransmittingFrom delegate
     }
 
-    // MARK: - Audio Data Transmission
-
-    /// Send audio data (called by the audio manager)
+    // MARK: - Server Communication
+    
+    /// Handle audio data transmission to server (called by Apple PTT framework internally)
+    /// Note: With Apple's PushToTalk framework, audio data is handled automatically
+    /// This method is kept for compatibility but may not be needed
     func sendAudioData(_ audioData: Data, sequenceNumber: Int) async throws {
         guard let sessionId = currentSessionId else {
             throw ParapenteError.transmissionFailed
         }
+        
+        print("📡 Sending audio chunk to server (session: \(sessionId), seq: \(sequenceNumber), size: \(audioData.count) bytes)")
 
         do {
             let response = try await networkService.sendAudioChunk(
@@ -532,15 +583,43 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             )
 
             if !response.success {
-                print("Error sending audio chunk: \(response.error ?? "Unknown error")")
+                print("❌ Server rejected audio chunk: \(response.error ?? "Unknown error")")
             }
         } catch {
-            print("Network error while sending audio: \(error)")
+            print("❌ Network error while sending audio: \(error)")
             throw error
         }
     }
 
     // MARK: - Helper Methods
+
+    /// Check if Apple PTT framework is available and initialized
+    var isPTTFrameworkAvailable: Bool {
+        return channelManager != nil
+    }
+    
+    /// Get current PTT status for debugging
+    func debugPrintPTTStatus() {
+        print("=== Apple PushToTalk Status ===")
+        print("Framework available: \(isPTTFrameworkAvailable)")
+        print("Current channel: \(currentChannel?.name ?? "none")")
+        print("Channel UUID: \(currentChannelUUID?.uuidString ?? "none")")
+        print("Is joined: \(isJoined)")
+        print("Is transmitting: \(isTransmitting)")
+        print("Current session ID: \(currentSessionId ?? "none")")
+        print("Participants count: \(participants.count)")
+        
+        if isPTTFrameworkAvailable {
+            print("📱 Expected behavior:")
+            print("  1. Blue PTT button in iOS status bar when joined")
+            print("  2. Tap button or use Apple's interface to transmit")
+            print("  3. All audio processing handled by Apple")
+            print("  4. Server communication triggered by delegates")
+        } else {
+            print("⚠️ PTT framework not available - limited functionality")
+        }
+        print("==============================")
+    }
 
     private func createChannelImage(for channel: PTTChannel) -> UIImage? {
         // Create an image for the channel based on its type
@@ -608,6 +687,22 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
     }
+    
+    // MARK: - Permission Management
+    
+    /// Request microphone permissions - Static method for compatibility
+    public static func requestMicrophonePermission() async -> Bool {
+        print("🎤 Requesting microphone permission...")
+        
+        // With Apple's PTT framework, microphone permissions are handled automatically
+        // when the user first attempts to use PTT functionality
+        return await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                print(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
+                continuation.resume(returning: granted)
+            }
+        }
+    }
 }
 
 // MARK: - PTChannelManagerDelegate
@@ -618,13 +713,24 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         _ channelManager: PTChannelManager, didJoinChannel channelUUID: UUID,
         reason: PTChannelJoinReason
     ) {
-        print("Successfully joined PTT channel: \(channelUUID)")
+        print("✅ Successfully joined Apple PTT channel: \(channelUUID), reason: \(reason)")
+        print("📱 Blue PTT button should now appear in iOS status bar")
 
-        Task {
-            await MainActor.run {
-                self.isJoined = true
-                NotificationCenter.default.post(name: .pttChannelJoined, object: channelUUID)
+        Task { @MainActor in
+            self.isJoined = true
+            
+            // Confirm the channel UUID matches what we expect
+            if self.currentChannelUUID == channelUUID {
+                print("🎯 Channel UUID matches our expectation")
+                if let channelName = self.currentChannel?.name {
+                    print("🔗 Linked to channel: \(channelName)")
+                }
+            } else {
+                print("⚠️ Channel UUID mismatch - updating to match Apple's framework")
+                self.currentChannelUUID = channelUUID
             }
+            
+            NotificationCenter.default.post(name: .pttChannelJoined, object: channelUUID)
         }
     }
 
@@ -632,14 +738,24 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         _ channelManager: PTChannelManager, didLeaveChannel channelUUID: UUID,
         reason: PTChannelLeaveReason
     ) {
-        print("Left PTT channel: \(channelUUID), reason: \(reason)")
+        print("👋 Left Apple PTT channel: \(channelUUID), reason: \(reason)")
+        print("📱 Blue PTT button should now disappear from iOS status bar")
 
-        Task {
-            await MainActor.run {
-                self.isJoined = false
+        Task { @MainActor in
+            self.isJoined = false
+            
+            // Stop any ongoing transmission
+            if self.isTransmitting {
                 self.isTransmitting = false
-                NotificationCenter.default.post(name: .pttChannelLeft, object: channelUUID)
+                
+                // Clean up server session if active
+                if let sessionId = self.currentSessionId {
+                    print("🧹 Cleaning up server transmission session: \(sessionId)")
+                    self.currentSessionId = nil
+                }
             }
+            
+            NotificationCenter.default.post(name: .pttChannelLeft, object: channelUUID)
         }
     }
 
@@ -647,13 +763,36 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         _ channelManager: PTChannelManager, channelUUID: UUID,
         didBeginTransmittingFrom source: PTChannelTransmitRequestSource
     ) {
-        print("Started transmitting on channel: \(channelUUID), source: \(source)")
+        print("🎙️ Started transmitting on channel: \(channelUUID), source: \(source)")
 
-        Task {
-            await MainActor.run {
-                self.isTransmitting = true
-                NotificationCenter.default.post(name: .pttTransmissionStarted, object: channelUUID)
+        Task { @MainActor in
+            // Update local state
+            self.isTransmitting = true
+            
+            // Start server transmission session
+            if let channel = self.currentChannel {
+                do {
+                    print("📡 Starting server transmission session...")
+                    let location = self.locationManager.location
+                    let transmissionResponse = try await self.networkService.startTransmission(
+                        channelUuid: channel.uuid,
+                        expectedDuration: Int(NetworkConfiguration.maxTransmissionDuration),
+                        location: location
+                    )
+                    
+                    if transmissionResponse.success, let sessionId = transmissionResponse.sessionId {
+                        self.currentSessionId = sessionId
+                        print("✅ Server transmission session started: \(sessionId)")
+                    } else {
+                        print("❌ Failed to start server transmission session")
+                    }
+                } catch {
+                    print("❌ Error starting server transmission: \(error)")
+                }
             }
+            
+            // Notify UI
+            NotificationCenter.default.post(name: .pttTransmissionStarted, object: channelUUID)
         }
     }
 
@@ -661,13 +800,35 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         _ channelManager: PTChannelManager, channelUUID: UUID,
         didEndTransmittingFrom source: PTChannelTransmitRequestSource
     ) {
-        print("Stopped transmitting on channel: \(channelUUID), source: \(source)")
+        print("🛑 Stopped transmitting on channel: \(channelUUID), source: \(source)")
 
-        Task {
-            await MainActor.run {
-                self.isTransmitting = false
-                NotificationCenter.default.post(name: .pttTransmissionStopped, object: channelUUID)
+        Task { @MainActor in
+            // Update local state
+            self.isTransmitting = false
+            
+            // End server transmission session
+            if let sessionId = self.currentSessionId {
+                do {
+                    print("📡 Ending server transmission session: \(sessionId)")
+                    let endResponse = try await self.networkService.endTransmission(sessionId: sessionId)
+                    
+                    if endResponse.success {
+                        print("✅ Server transmission ended. Duration: \(endResponse.totalDuration ?? 0)s, Participants: \(endResponse.participantsReached ?? 0)")
+                    } else {
+                        print("❌ Failed to end server transmission session")
+                    }
+                } catch {
+                    print("❌ Error ending server transmission: \(error)")
+                }
+                
+                self.currentSessionId = nil
             }
+            
+            // Reload participants to update state
+            await self.loadParticipants()
+            
+            // Notify UI
+            NotificationCenter.default.post(name: .pttTransmissionStopped, object: channelUUID)
         }
     }
 
@@ -722,15 +883,39 @@ extension PTTChannelManager: PTChannelManagerDelegate {
     func channelManager(
         _ channelManager: PTChannelManager, didDeactivate audioSession: AVAudioSession
     ) {
-        print("PTT audio session deactivated")
+        print("🔇 PTT audio session deactivated")
 
-        Task {
-            await MainActor.run {
-                if self.isTransmitting {
+        Task { @MainActor in
+            // Clean up transmission state if needed
+            // Note: When Apple deactivates the audio session, it usually means
+            // the transmission has already ended, so we just clean up our state
+            if self.isTransmitting {
+                print("⚠️ Audio session deactivated while transmitting - cleaning up state")
+                self.isTransmitting = false
+                
+                // Clean up server session if active
+                if let sessionId = self.currentSessionId {
+                    print("🧹 Cleaning up server transmission session after audio deactivation: \(sessionId)")
+                    
+                    // Attempt to end the server session
                     Task {
-                        await self.stopTransmission()
+                        do {
+                            let endResponse = try await self.networkService.endTransmission(sessionId: sessionId)
+                            if endResponse.success {
+                                print("✅ Server session cleaned up after audio deactivation")
+                            } else {
+                                print("⚠️ Server session cleanup warning: \(endResponse.error ?? "unknown error")")
+                            }
+                        } catch {
+                            print("❌ Error cleaning up server session: \(error)")
+                        }
                     }
+                    
+                    self.currentSessionId = nil
                 }
+                
+                // Reload participants to update state
+                await self.loadParticipants()
             }
         }
     }

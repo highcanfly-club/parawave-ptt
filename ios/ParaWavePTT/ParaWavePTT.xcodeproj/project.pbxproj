@@ -17,7 +17,6 @@
 		1A0001001F000007001 /* NetworkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000007000 /* NetworkService.swift */; };
 		1A0001001F000008001 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000008000 /* Models.swift */; };
 		1A0001001F000009001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000009000 /* MainViewController.swift */; };
-		1A0001001F000010001 /* PTTAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000010000 /* PTTAudioManager.swift */; };
 		1A0001001F000011001 /* LocalizableStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000011000 /* LocalizableStrings.swift */; };
 		AC1048B82E61D9EC000AFA5C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1048B72E61D9EC000AFA5C /* SettingsView.swift */; };
 		AC6E32C72E5C70E8007349BA /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = AC6E32C52E5C70E8007349BA /* Localizable.strings */; };
@@ -41,7 +40,6 @@
 		1A0001001F000007000 /* NetworkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkService.swift; sourceTree = "<group>"; };
 		1A0001001F000008000 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		1A0001001F000009000 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
-		1A0001001F000010000 /* PTTAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTAudioManager.swift; sourceTree = "<group>"; };
 		1A0001001F000011000 /* LocalizableStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizableStrings.swift; sourceTree = "<group>"; };
 		1A000100ENT000000 /* ParaWavePTT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ParaWavePTT.entitlements; sourceTree = "<group>"; };
 		1A000100INFO000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -140,7 +138,6 @@
 				1A0001001F000005000 /* Auth0KeychainManager.swift */,
 				1A0001001F000006000 /* PTTChannelManager.swift */,
 				1A0001001F000007000 /* NetworkService.swift */,
-				1A0001001F000010000 /* PTTAudioManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -327,7 +324,6 @@
 				ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */,
 				ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */,
 				1A0001001F000009001 /* MainViewController.swift in Sources */,
-				1A0001001F000010001 /* PTTAudioManager.swift in Sources */,
 				1A0001001F000011001 /* LocalizableStrings.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
