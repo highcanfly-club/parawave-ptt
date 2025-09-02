@@ -805,6 +805,12 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return 
         }
         
+        // Don't send chunks if transmission has ended
+        guard isTransmitting else {
+            print("🎵 Audio buffer received but transmission has ended - dropping chunk")
+            return
+        }
+        
         // Use Opus encoding for optimal voice transmission
         guard let audioData = convertBufferToOpusData(buffer) else {
             print("⚠️ Failed to convert audio buffer to Opus data")
@@ -1182,8 +1188,12 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                 print("⚠️ No start time recorded, using 0 duration")
             }
             
-            // End server transmission session
+            // End server transmission session with a small delay to allow final chunks to be sent
             if let sessionId = self.currentSessionId {
+                // Wait a short moment to let any remaining audio chunks be processed
+                print("⏳ Waiting 500ms for final audio chunks to be sent...")
+                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+                
                 do {
                     print("📡 Ending server transmission session: \(sessionId)")
                     let location = self.locationManager.location

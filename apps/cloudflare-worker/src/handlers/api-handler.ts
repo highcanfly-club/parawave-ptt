@@ -2655,7 +2655,7 @@ export class PTTAPIHandler {
 	): Promise<Response> {
 		try {
 			const body = (await request.json()) as PTTAudioChunkRequest;
-			console.error("Audio chunk received:", JSON.stringify(body));
+
 			// Validate required fields
 			if (!body.session_id || body.session_id !== sessionId) {
 				return this.errorResponse("session_id mismatch", 400);
