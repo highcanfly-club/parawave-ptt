@@ -136,14 +136,65 @@ To use Auth0, follow these steps:
    - Configure token settings as needed (expiration, etc.)
    - Include permissions in the access token
 
-7. **Set Environment Variables:**
-   Add the following to your `.env` file:
+7. **Set Environment Variables (example - anonymized):**
+   The repository uses a number of environment variables. Below is an anonymized example that mirrors the keys in the project's `.env` file — values are masked and must be replaced with your real credentials/URLs.
 
    ```env
+   # --- Local .env and GitHub Secrets (anonymized examples) ---
+   # Replace placeholders with real values. NEVER commit real secrets.
+
+   # App bundle identifier (used by iOS builds)
+   APPLE_APP_BUNDLE_ID=club.highcanfly.parawave-ptt
+
+   # Cloudflare (used for publishing workers and optional dev tunnels)
+   CLOUDFLARE_ACCOUNT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   CLOUDFLARE_API_TOKEN=REDACTED_CLOUDFLARE_TOKEN
+   CLOUDFLARE_TUNNEL_TOKEN=REDACTED_TUNNEL_TOKEN
+   CLOUDFLARE_TUNNEL_FRONTEND_TOKEN=REDACTED_FRONTEND_TOKEN
+
+   # Encryption key for storing/restoring encrypted development artifacts
+   # (used only by the repository's helper scripts)
+   CRYPTOKEN=REDACTED
+
+   # Authentication provider selection
    AUTHENTICATION_PROVIDER_TYPE=auth0
-   AUTH0_AUDIENCE=your-api-identifier
-   AUTH0_SCOPE="openid profile email read:api write:api"
-   API_BASE_URL=http://your-api-url.com
+
+   # Auth0 tenant credentials (replace with your tenant values)
+   AUTH0_CLIENT_ID=REDACTED_CLIENT_ID
+   AUTH0_CLIENT_SECRET=REDACTED_CLIENT_SECRET
+   AUTH0_DOMAIN=REDACTED_AUTH0_DOMAIN
+   AUTH0_SCOPE="openid profile email read:api write:api admin:api"
+   AUTH0_AUDIENCE=http://localhost:5173
+
+   # Optional: pre-fetched token for local tests ONLY (do not use in CI or prod)
+   AUTH0_TOKEN=REDACTED
+
+   # API endpoints and CORS origins
+   API_BASE_URL=https://parawave-ptt.example/api
+   CORS_ORIGIN=https://parawave-ptt-admin.example,http://localhost:5173
+
+   # Permissions / application flags
+   READ_PERMISSION=read:api
+   WRITE_PERMISSION=write:api
+   ADMIN_PERMISSION=admin:api
+   ACCESS_PERMISSION_PREFIX=access
+   TENANT_ADMIN_PERMISSION=tenant:admin
+
+   # Auth0 management (M2M) used by backend services
+   AUTH0_MANAGEMENT_AUDIENCE=https://your-auth0-tenant/api/v2/
+   AUTH0_MANAGEMENT_CLIENT_ID=REDACTED_M2M_CLIENT_ID
+   AUTH0_MANAGEMENT_CLIENT_SECRET=REDACTED_M2M_CLIENT_SECRET
+
+   # Misc
+   API_VERSION="1.0.0"
+   ENVIRONMENT=development
+   DEX_JWKS_ENDPOINT=
+
+   # SECURITY NOTE:
+   # - Keep all real tokens/credentials out of the repository. Use GitHub Secrets or
+   #   your CI/CD secret store for deployment keys.
+   # - .env files should be added to .gitignore. Treat AUTH0_TOKEN, CLOUDFLARE_API_TOKEN,
+   #   and all CLIENT_SECRET values as high‑sensitivity secrets.
    ```
 
 8. **Sample Configuration:**
