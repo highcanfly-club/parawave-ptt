@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import CoreLocation
 import Foundation
 import PushToTalk
@@ -601,7 +602,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("📊 Audio format - Sample Rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)")
         
         // Install tap to capture audio data
-        let bufferSize: AVAudioFrameCount = 1024 // Small buffer for low latency
+        let bufferSize: AVAudioFrameCount = 4096 // Small buffer for low latency
         
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: audioFormat) { [weak self] (buffer, time) in
             Task {
@@ -642,11 +643,16 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         
         // Convert audio buffer to data
-        guard let audioData = convertBufferToData(buffer) else {
+        guard let audioData = convertBufferToPCMData(buffer) else {
             print("⚠️ Failed to convert audio buffer to data")
             return
         }
-        
+
+        // guard let audioData = convertBufferToAACData(buffer) else {
+        //     print("⚠️ Failed to convert audio buffer to data")
+        //     return
+        // }
+
         // Create audio chunk for backend
         let chunkSize = audioData.count
         let timestampMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -673,7 +679,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding)
-    private func convertBufferToData(_ buffer: AVAudioPCMBuffer) -> Data? {
+    private func convertBufferToPCMData(_ buffer: AVAudioPCMBuffer) -> Data? {
         guard let channelData = buffer.floatChannelData?[0] else {
             return nil
         }
@@ -693,6 +699,58 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // For now, we'll send PCM data. In production, you might want to encode to AAC-LC
         // This would require additional AudioToolbox integration
         return pcmData
+    }
+
+    /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding)
+    private func convertBufferToAACData(_ buffer: AVAudioPCMBuffer) -> Data? {
+        let inputFormat = buffer.format
+        
+        // Create AAC-LC output format
+        var aacDescription = AudioStreamBasicDescription(
+            mSampleRate: inputFormat.sampleRate,
+            mFormatID: kAudioFormatMPEG4AAC,
+            mFormatFlags: 0,
+            mBytesPerPacket: 0,
+            mFramesPerPacket: 1024,
+            mBytesPerFrame: 0,
+            mChannelsPerFrame: UInt32(inputFormat.channelCount),
+            mBitsPerChannel: 0,
+            mReserved: 0
+        )
+        
+        guard let outputFormat = AVAudioFormat(streamDescription: &aacDescription) else {
+            print("❌ Failed to create AAC output format")
+            return nil
+        }
+        
+        // Create converter
+        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            print("❌ Failed to create AAC converter")
+            return nil
+        }
+        
+        // Create compressed buffer for AAC output
+        let maxOutputSize = AVAudioFrameCount(inputFormat.sampleRate * 0.1) // 100ms worth
+        let compressedBuffer = AVAudioCompressedBuffer(
+            format: outputFormat,
+            packetCapacity: maxOutputSize,
+            maximumPacketSize: 1024
+        )
+        
+        var error: NSError?
+        let status = converter.convert(to: compressedBuffer, error: &error) { inNumPackets, outStatus in
+            outStatus.pointee = .haveData
+            return buffer
+        }
+        
+        if status == .error {
+            print("❌ AAC conversion failed: \(error?.localizedDescription ?? "Unknown error")")
+            return nil
+        }
+        
+        // Extract AAC data
+        let aacData = Data(bytes: compressedBuffer.data, count: Int(compressedBuffer.byteLength))
+        return aacData
     }
 
     // MARK: - Helper Methods
