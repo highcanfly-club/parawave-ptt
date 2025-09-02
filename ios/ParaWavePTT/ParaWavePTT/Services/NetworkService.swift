@@ -344,13 +344,15 @@ class ParapenteNetworkService: NSObject, ObservableObject {
         audioData: Data,
         sequenceNumber: Int
     ) async throws -> PTTAudioChunkResponse {
+        print("📤 NetworkService.sendAudioChunk called - session: \(sessionId), sequence: \(sequenceNumber), size: \(audioData.count) bytes")
         let endpoint = "/v1/transmissions/\(sessionId)/chunk"
 
         let chunkRequest = PTTAudioChunkRequest(
+            sessionId: sessionId,
             audioData: audioData.base64EncodedString(),
-            sequenceNumber: sequenceNumber,
-            timestamp: Int(Date().timeIntervalSince1970 * 1000),
-            durationMs: nil
+            chunkSequence: sequenceNumber,
+            chunkSizeBytes: audioData.count,
+            timestampMs: Int(Date().timeIntervalSince1970 * 1000)
         )
 
         var request = try createAuthenticatedRequest(endpoint: endpoint, method: "POST")

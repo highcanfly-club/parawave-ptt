@@ -350,16 +350,18 @@ struct PTTStartTransmissionResponse: Codable {
 }
 
 struct PTTAudioChunkRequest: Codable {
+    let sessionId: String
     let audioData: String
-    let sequenceNumber: Int
-    let timestamp: Int?
-    let durationMs: Int?
+    let chunkSequence: Int
+    let chunkSizeBytes: Int
+    let timestampMs: Int
 
     enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
         case audioData = "audio_data"
-        case sequenceNumber = "sequence_number"
-        case timestamp
-        case durationMs = "duration_ms"
+        case chunkSequence = "chunk_sequence"
+        case chunkSizeBytes = "chunk_size_bytes"
+        case timestampMs = "timestamp_ms"
     }
 }
 
