@@ -344,7 +344,6 @@ class ParapenteNetworkService: NSObject, ObservableObject {
         audioData: Data,
         sequenceNumber: Int
     ) async throws -> PTTAudioChunkResponse {
-
         let endpoint = "/v1/transmissions/\(sessionId)/chunk"
 
         let chunkRequest = PTTAudioChunkRequest(

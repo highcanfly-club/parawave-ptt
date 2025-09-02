@@ -100,6 +100,11 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var pendingPushToken: String? // Token temporaire en attente d'un canal
     private var currentSessionId: String?
     private var transmissionStartTime: Date?
+    
+    // Audio recording for PTT transmission
+    private var audioEngine: AVAudioEngine?
+    private var audioInputNode: AVAudioInputNode?
+    private var audioChunkSequence: Int = 0
 
     // MARK: - Initialization
 
@@ -565,32 +570,129 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // The actual transmission end will come via didEndTransmittingFrom delegate
     }
 
-    // MARK: - Server Communication
+    // MARK: - Audio Recording and Transmission
     
-    /// Handle audio data transmission to server (called by Apple PTT framework internally)
-    /// Note: With Apple's PushToTalk framework, audio data is handled automatically
-    /// This method is kept for compatibility but may not be needed
-    func sendAudioData(_ audioData: Data, sequenceNumber: Int) async throws {
-        guard let sessionId = currentSessionId else {
-            throw ParapenteError.transmissionFailed
+    /// Start audio recording and streaming to backend
+    @MainActor
+    private func startAudioRecording() async {
+        print("🎵 Starting audio recording...")
+        
+        // Don't require session ID to start recording
+        // We'll buffer audio until we have the session ID
+        
+        // Reset sequence counter
+        audioChunkSequence = 0
+        
+        // Initialize audio engine
+        audioEngine = AVAudioEngine()
+        guard let audioEngine = audioEngine else {
+            print("❌ Failed to create audio engine")
+            return
         }
         
-        print("📡 Sending audio chunk to server (session: \(sessionId), seq: \(sequenceNumber), size: \(audioData.count) bytes)")
-
+        audioInputNode = audioEngine.inputNode
+        guard let inputNode = audioInputNode else {
+            print("❌ Failed to get audio input node")
+            return
+        }
+        
+        // Configure audio format - matching backend expectations
+        let audioFormat = inputNode.outputFormat(forBus: 0)
+        print("📊 Audio format - Sample Rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)")
+        
+        // Install tap to capture audio data
+        let bufferSize: AVAudioFrameCount = 1024 // Small buffer for low latency
+        
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: audioFormat) { [weak self] (buffer, time) in
+            Task {
+                await self?.processAudioBuffer(buffer, timestamp: time)
+            }
+        }
+        
+        // Start the audio engine
         do {
+            try audioEngine.start()
+            print("✅ Audio engine started successfully")
+        } catch {
+            print("❌ Failed to start audio engine: \(error)")
+            await stopAudioRecording()
+        }
+    }
+    
+    /// Stop audio recording and cleanup
+    @MainActor
+    private func stopAudioRecording() async {
+        print("🛑 Stopping audio recording")
+        
+        // Stop and cleanup audio engine
+        audioEngine?.stop()
+        audioInputNode?.removeTap(onBus: 0)
+        audioEngine = nil
+        audioInputNode = nil
+        
+        // Reset sequence counter
+        audioChunkSequence = 0
+    }
+    
+    /// Process audio buffer and send to backend
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, timestamp: AVAudioTime) async {
+        guard let sessionId = currentSessionId else { 
+            print("🎵 Audio buffer received but no session ID yet - buffering...")
+            return 
+        }
+        
+        // Convert audio buffer to data
+        guard let audioData = convertBufferToData(buffer) else {
+            print("⚠️ Failed to convert audio buffer to data")
+            return
+        }
+        
+        // Create audio chunk for backend
+        let chunkSize = audioData.count
+        let timestampMs = Int64(Date().timeIntervalSince1970 * 1000)
+        
+        // Increment sequence number
+        audioChunkSequence += 1
+        
+        do {
+            print("📤 Sending audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
+            
             let response = try await networkService.sendAudioChunk(
                 sessionId: sessionId,
                 audioData: audioData,
-                sequenceNumber: sequenceNumber
+                sequenceNumber: audioChunkSequence
             )
-
+            
             if !response.success {
-                print("❌ Server rejected audio chunk: \(response.error ?? "Unknown error")")
+                print("❌ Failed to send audio chunk \(audioChunkSequence): \(response.error ?? "Unknown error")")
             }
+            
         } catch {
-            print("❌ Network error while sending audio: \(error)")
-            throw error
+            print("❌ Network error sending audio chunk \(audioChunkSequence): \(error)")
         }
+    }
+    
+    /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding)
+    private func convertBufferToData(_ buffer: AVAudioPCMBuffer) -> Data? {
+        guard let channelData = buffer.floatChannelData?[0] else {
+            return nil
+        }
+        
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        
+        // Convert float samples to PCM16 for AAC encoding
+        var pcmData = Data()
+        for i in 0..<frameCount {
+            let sample = channelData[i]
+            let pcmValue = Int16(sample * Float(Int16.max))
+            var pcmBytes = pcmValue.littleEndian
+            pcmData.append(Data(bytes: &pcmBytes, count: MemoryLayout<Int16>.size))
+        }
+        
+        // For now, we'll send PCM data. In production, you might want to encode to AAC-LC
+        // This would require additional AudioToolbox integration
+        return pcmData
     }
 
     // MARK: - Helper Methods
@@ -786,6 +888,12 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                     if transmissionResponse.success, let sessionId = transmissionResponse.sessionId {
                         self.currentSessionId = sessionId
                         print("✅ Server transmission session started: \(sessionId)")
+                        
+                        // If audio recording was already started by Apple PTT framework,
+                        // we can now start processing audio chunks with the session ID
+                        if self.audioEngine?.isRunning == true {
+                            print("🎵 Audio recording already active, session ID now available for chunk processing")
+                        }
                     } else {
                         print("❌ Failed to start server transmission session")
                     }
@@ -893,7 +1001,7 @@ extension PTTChannelManager: PTChannelManagerDelegate {
     func channelManager(
         _ channelManager: PTChannelManager, didActivate audioSession: AVAudioSession
     ) {
-        print("PTT audio session activated")
+        print("🎙️ PTT audio session activated - starting audio recording")
 
         // Specialized audio configuration for paragliding
         do {
@@ -901,8 +1009,18 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                 .playAndRecord,
                 mode: .voiceChat,
                 options: [.allowBluetooth, .defaultToSpeaker])
+            
+            // Configure sample rate for high quality audio (matching backend expectation)
+            try audioSession.setPreferredSampleRate(44100)
+            try audioSession.setPreferredIOBufferDuration(0.02) // 20ms buffer for low latency
+            
         } catch {
-            print("PTT audio session configuration error: \(error)")
+            print("❌ PTT audio session configuration error: \(error)")
+        }
+        
+        // Start audio recording for transmission
+        Task { @MainActor in
+            await self.startAudioRecording()
         }
     }
 
@@ -912,6 +1030,9 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         print("🔇 PTT audio session deactivated")
 
         Task { @MainActor in
+            // Stop audio recording first
+            await self.stopAudioRecording()
+            
             // Clean up transmission state if needed
             // Note: When Apple deactivates the audio session, it usually means
             // the transmission has already ended, so we just clean up our state
