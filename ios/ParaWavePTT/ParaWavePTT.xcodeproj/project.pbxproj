@@ -19,6 +19,8 @@
 		1A0001001F000009001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000009000 /* MainViewController.swift */; };
 		1A0001001F000011001 /* LocalizableStrings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0001001F000011000 /* LocalizableStrings.swift */; };
 		AC1048B82E61D9EC000AFA5C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1048B72E61D9EC000AFA5C /* SettingsView.swift */; };
+		AC4270F72E674B780002F139 /* Copus in Frameworks */ = {isa = PBXBuildFile; productRef = AC4270F62E674B780002F139 /* Copus */; };
+		AC4270F92E674B780002F139 /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = AC4270F82E674B780002F139 /* Opus */; };
 		AC6E32C72E5C70E8007349BA /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = AC6E32C52E5C70E8007349BA /* Localizable.strings */; };
 		ACA08DB82E5B4EDC004F46BB /* ConfigurationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB62E5B4EDC004F46BB /* ConfigurationManager.swift */; };
 		ACA08DBA2E5B4F2D004F46BB /* EnvironmentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA08DB92E5B4F2D004F46BB /* EnvironmentReader.swift */; };
@@ -68,6 +70,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				ACA08DBE2E5B56E7004F46BB /* Auth0 in Frameworks */,
+				AC4270F72E674B780002F139 /* Copus in Frameworks */,
+				AC4270F92E674B780002F139 /* Opus in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -226,6 +230,8 @@
 			name = ParaWavePTT;
 			packageProductDependencies = (
 				ACA08DBD2E5B56E7004F46BB /* Auth0 */,
+				AC4270F62E674B780002F139 /* Copus */,
+				AC4270F82E674B780002F139 /* Opus */,
 			);
 			productName = ParaWavePTT;
 			productReference = 1A000100000000000 /* ParaWavePTT.app */;
@@ -261,6 +267,7 @@
 			mainGroup = 1A000100000000002;
 			packageReferences = (
 				ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */,
+				AC4270F52E674B780002F139 /* XCRemoteSwiftPackageReference "swift-opus" */,
 			);
 			productRefGroup = 1A000100000000004 /* Products */;
 			projectDirPath = "";
@@ -553,6 +560,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		AC4270F52E674B780002F139 /* XCRemoteSwiftPackageReference "swift-opus" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/alta/swift-opus";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.0.2;
+			};
+		};
 		ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/auth0/Auth0.swift";
@@ -564,6 +579,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AC4270F62E674B780002F139 /* Copus */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AC4270F52E674B780002F139 /* XCRemoteSwiftPackageReference "swift-opus" */;
+			productName = Copus;
+		};
+		AC4270F82E674B780002F139 /* Opus */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AC4270F52E674B780002F139 /* XCRemoteSwiftPackageReference "swift-opus" */;
+			productName = Opus;
+		};
 		ACA08DBD2E5B56E7004F46BB /* Auth0 */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */;

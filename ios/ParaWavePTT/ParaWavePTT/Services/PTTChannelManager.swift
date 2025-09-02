@@ -5,6 +5,7 @@ import Foundation
 import PushToTalk
 import UIKit
 import UserNotifications
+import Opus
 
 /*
  Copyright (C) 2025 Ronan Le Meillat
@@ -106,6 +107,14 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var audioEngine: AVAudioEngine?
     private var audioInputNode: AVAudioInputNode?
     private var audioChunkSequence: Int = 0
+    
+    // Hardware-accelerated AAC encoder
+    private var aacConverter: AVAudioConverter?
+    private var aacOutputFormat: AVAudioFormat?
+    
+    // Opus encoder for low-latency voice transmission
+    private var opusEncoder: Opus.Encoder?
+    private var opusDecoder: Opus.Decoder?
 
     // MARK: - Initialization
 
@@ -601,6 +610,12 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let audioFormat = inputNode.outputFormat(forBus: 0)
         print("📊 Audio format - Sample Rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)")
         
+        // Initialize hardware-accelerated AAC encoder
+        setupAACEncoder(with: audioFormat)
+        
+        // Initialize Opus encoder for voice optimization
+        setupOpusEncoder(with: audioFormat)
+        
         // Install tap to capture audio data
         let bufferSize: AVAudioFrameCount = 4096 // Small buffer for low latency
         
@@ -631,8 +646,156 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         audioEngine = nil
         audioInputNode = nil
         
+        // Cleanup AAC encoder
+        aacConverter = nil
+        aacOutputFormat = nil
+        
+        // Cleanup Opus encoder
+        opusEncoder = nil
+        opusDecoder = nil
+        
         // Reset sequence counter
         audioChunkSequence = 0
+    }
+    
+    /// Setup hardware-accelerated AAC encoder
+    private func setupAACEncoder(with inputFormat: AVAudioFormat) {
+        print("🔧 Setting up hardware-accelerated AAC encoder...")
+        
+        // Create AAC-LC output format optimized for hardware encoding
+        var aacDescription = AudioStreamBasicDescription(
+            mSampleRate: inputFormat.sampleRate,
+            mFormatID: kAudioFormatMPEG4AAC,
+            mFormatFlags: 0, // Let the system choose optimal flags for hardware
+            mBytesPerPacket: 0,
+            mFramesPerPacket: 1024,
+            mBytesPerFrame: 0,
+            mChannelsPerFrame: UInt32(inputFormat.channelCount),
+            mBitsPerChannel: 0,
+            mReserved: 0
+        )
+        
+        guard let outputFormat = AVAudioFormat(streamDescription: &aacDescription) else {
+            print("❌ Failed to create AAC output format")
+            return
+        }
+        
+        // Create converter with hardware acceleration hints
+        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            print("❌ Failed to create AAC converter")
+            return
+        }
+        
+        // Optimize converter settings for hardware acceleration
+        converter.bitRate = 64000 // 64kbps for good quality/battery balance
+        converter.bitRateStrategy = "AVAudioBitRateStrategy_Constant"
+        
+        // Store for reuse
+        self.aacConverter = converter
+        self.aacOutputFormat = outputFormat
+        
+        print("✅ Hardware-accelerated AAC encoder ready")
+    }
+    
+    /// Setup Opus encoder optimized for voice transmission
+    private func setupOpusEncoder(with inputFormat: AVAudioFormat) {
+        print("🔧 Setting up Opus encoder for voice transmission...")
+        
+        do {
+            // Create Opus-compatible format (16kHz mono for voice)
+            guard let opusFormat = AVAudioFormat(opusPCMFormat: .float32, sampleRate: .opus16khz, channels: 1) else {
+                print("❌ Failed to create Opus format")
+                return
+            }
+            
+            // Create Opus encoder with VOIP application for voice optimization
+            self.opusEncoder = try Opus.Encoder(format: opusFormat, application: .voip)
+            
+            // Create decoder for testing/debugging
+            self.opusDecoder = try Opus.Decoder(format: opusFormat)
+            
+            print("✅ Opus encoder ready (16kHz mono, VOIP-optimized)")
+        } catch {
+            print("❌ Failed to setup Opus encoder: \(error)")
+            opusEncoder = nil
+            opusDecoder = nil
+        }
+    }
+    
+    /// Convert AVAudioPCMBuffer to Opus Data optimized for voice
+    private func convertBufferToOpusData(_ buffer: AVAudioPCMBuffer) -> Data? {
+        guard let encoder = opusEncoder else {
+            print("❌ Opus encoder not initialized, falling back to PCM")
+            return convertBufferToPCMData(buffer)
+        }
+        
+        guard let channelData = buffer.floatChannelData?[0] else {
+            print("❌ No audio data in buffer")
+            return nil
+        }
+        
+        let frameCount = Int(buffer.frameLength)
+        
+        // Convert to 16kHz mono format expected by Opus encoder
+        let targetSampleRate: Double = 16000
+        let inputSampleRate = buffer.format.sampleRate
+        let resampleRatio = targetSampleRate / inputSampleRate
+        
+        let targetFrameCount = Int(Double(frameCount) * resampleRatio)
+        var resampledData = [Float32]()
+        resampledData.reserveCapacity(targetFrameCount)
+        
+        // Simple downsampling - take every nth sample
+        let step = Int(inputSampleRate / targetSampleRate)
+        
+        for i in stride(from: 0, to: frameCount, by: step) {
+            if i < frameCount {
+                resampledData.append(channelData[i])
+            }
+        }
+        
+        // Create Opus-compatible buffer (16kHz mono float32)
+        guard let opusFormat = AVAudioFormat(opusPCMFormat: .float32, sampleRate: .opus16khz, channels: 1) else {
+            print("❌ Failed to create Opus format for encoding")
+            return convertBufferToPCMData(buffer)
+        }
+        
+        // Create PCM buffer with resampled data
+        let opusFrameSize = min(resampledData.count, Int(AVAudioFrameCount.opusMax)) // Limit to max Opus frame size
+        guard let opusBuffer = AVAudioPCMBuffer(pcmFormat: opusFormat, frameCapacity: AVAudioFrameCount(opusFrameSize)) else {
+            print("❌ Failed to create Opus PCM buffer")
+            return convertBufferToPCMData(buffer)
+        }
+        
+        // Copy resampled data to Opus buffer
+        guard let opusChannelData = opusBuffer.floatChannelData?[0] else {
+            print("❌ Failed to get Opus buffer channel data")
+            return convertBufferToPCMData(buffer)
+        }
+        
+        let copyCount = min(opusFrameSize, resampledData.count)
+        for i in 0..<copyCount {
+            opusChannelData[i] = resampledData[i]
+        }
+        opusBuffer.frameLength = AVAudioFrameCount(copyCount)
+        
+        do {
+            // Encode with swift-opus
+            var opusData = Data(count: 1500) // Max Opus packet size
+            let encodedBytes = try encoder.encode(opusBuffer, to: &opusData)
+            opusData = Data(opusData.prefix(encodedBytes)) // Trim to actual size
+            
+            // Debug info
+            let compressionRatio = Double(copyCount * 4) / Double(encodedBytes) // Float32 = 4 bytes per sample
+            print("🎵 Opus: \(copyCount) samples → \(encodedBytes) bytes (compression: \(String(format: "%.1f", compressionRatio))x)")
+            
+            return opusData
+            
+        } catch {
+            print("❌ Opus encoding failed: \(error)")
+            // Fallback to PCM
+            return convertBufferToPCMData(buffer)
+        }
     }
     
     /// Process audio buffer and send to backend
@@ -642,14 +805,13 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return 
         }
         
-        // Convert audio buffer to data
-        guard let audioData = convertBufferToPCMData(buffer) else {
-            print("⚠️ Failed to convert audio buffer to data")
+        // Use Opus encoding for optimal voice transmission
+        guard let audioData = convertBufferToOpusData(buffer) else {
+            print("⚠️ Failed to convert audio buffer to Opus data")
             return
         }
-
-        // guard let audioData = convertBufferToAACData(buffer) else {
-        //     print("⚠️ Failed to convert audio buffer to data")
+        // guard let audioData = convertBufferToPCMData(buffer) else {
+        //     print("⚠️ Failed to convert audio buffer to PCM data")
         //     return
         // }
 
@@ -661,7 +823,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         audioChunkSequence += 1
         
         do {
-            print("📤 Sending audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
+            print("📤 Sending Opus audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
             
             let response = try await networkService.sendAudioChunk(
                 sessionId: sessionId,
@@ -701,15 +863,15 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         return pcmData
     }
 
-    /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding)
+    /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding with hardware acceleration)
     private func convertBufferToAACData(_ buffer: AVAudioPCMBuffer) -> Data? {
         let inputFormat = buffer.format
         
-        // Create AAC-LC output format
+        // Create AAC-LC output format optimized for hardware encoding
         var aacDescription = AudioStreamBasicDescription(
             mSampleRate: inputFormat.sampleRate,
             mFormatID: kAudioFormatMPEG4AAC,
-            mFormatFlags: 0,
+            mFormatFlags: 0, // Let the system choose optimal flags for hardware
             mBytesPerPacket: 0,
             mFramesPerPacket: 1024,
             mBytesPerFrame: 0,
@@ -723,13 +885,17 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return nil
         }
         
-        // Create converter
+        // Create converter with hardware acceleration hints
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             print("❌ Failed to create AAC converter")
             return nil
         }
         
-        // Create compressed buffer for AAC output
+        // Optimize converter settings for hardware acceleration
+        converter.bitRate = 64000 // 64kbps for good quality/battery balance
+        converter.bitRateStrategy = "AVAudioBitRateStrategy_Constant"
+        
+        // Create compressed buffer with optimal size for hardware encoding
         let maxOutputSize = AVAudioFrameCount(inputFormat.sampleRate * 0.1) // 100ms worth
         let compressedBuffer = AVAudioCompressedBuffer(
             format: outputFormat,
@@ -752,8 +918,38 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let aacData = Data(bytes: compressedBuffer.data, count: Int(compressedBuffer.byteLength))
         return aacData
     }
-
-    // MARK: - Helper Methods
+    
+    /// Convert AVAudioPCMBuffer to AAC Data using pre-configured hardware-accelerated converter
+    private func convertBufferToAACDataOptimized(_ buffer: AVAudioPCMBuffer) -> Data? {
+        guard let converter = aacConverter, let outputFormat = aacOutputFormat else {
+            print("❌ AAC converter not initialized, falling back to PCM")
+            return convertBufferToPCMData(buffer)
+        }
+        
+        // Create compressed buffer with optimal size for hardware encoding
+        let maxOutputSize = AVAudioFrameCount(buffer.format.sampleRate * 0.1) // 100ms worth
+        let compressedBuffer = AVAudioCompressedBuffer(
+            format: outputFormat,
+            packetCapacity: maxOutputSize,
+            maximumPacketSize: 1024
+        )
+        
+        var error: NSError?
+        let status = converter.convert(to: compressedBuffer, error: &error) { inNumPackets, outStatus in
+            outStatus.pointee = .haveData
+            return buffer
+        }
+        
+        if status == .error {
+            print("❌ Hardware AAC conversion failed: \(error?.localizedDescription ?? "Unknown error")")
+            // Fallback to PCM if hardware encoding fails
+            return convertBufferToPCMData(buffer)
+        }
+        
+        // Extract AAC data
+        let aacData = Data(bytes: compressedBuffer.data, count: Int(compressedBuffer.byteLength))
+        return aacData
+    }
 
     /// Check if Apple PTT framework is available and initialized
     var isPTTFrameworkAvailable: Bool {
