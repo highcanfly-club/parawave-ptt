@@ -275,78 +275,6 @@ export class PTTChannelDurableObject extends DurableObject {
 	}
 
 	/**
-	 * @deprecated
-	 * Handles HTTP API requests for PTT transmission control.
-	 *
-	 * Routes incoming HTTP requests to appropriate handlers based on method and path:
-	 * - POST /ptt/start → Start new transmission
-	 * - POST /ptt/chunk → Receive audio chunk
-	 * - POST /ptt/end → End transmission
-	 * - GET /ptt/status → Get transmission status
-	 *
-	 * This method provides the traditional HTTP API interface, while the same
-	 * functionality is also available via high-performance RPC methods.
-	 *
-	 * @param request - The incoming HTTP request
-	 * @returns Promise resolving to HTTP response with JSON payload
-	 *
-	 * @throws Will return 405 for unsupported methods/paths
-	 * @throws Will return 500 for internal server errors
-	 *
-	 * @example
-	 * ```typescript
-	 * // Start transmission
-	 * const response = await fetch('/ptt/start', {
-	 *   method: 'POST',
-	 *   body: JSON.stringify({
-	 *     channel_uuid: 'channel-123',
-	 *     user_id: 'user-456',
-	 *     username: 'John Doe',
-	 *     audio_format: 'opus'
-	 *   })
-	 * });
-	 * ```
-	 */
-	private async handleHTTPRequest(request: Request): Promise<Response> {
-		const url = new URL(request.url);
-		const pathname = url.pathname;
-		const method = request.method;
-
-		try {
-			if (method === "POST" && pathname === "/ptt/start") {
-				return this.handleStartTransmission(request);
-			}
-
-			if (method === "POST" && pathname === "/ptt/chunk") {
-				return this.handleAudioChunk(request);
-			}
-
-			if (method === "POST" && pathname === "/ptt/end") {
-				return this.handleEndTransmission(request);
-			}
-
-			if (method === "GET" && pathname === "/ptt/status") {
-				return this.handleGetStatus();
-			}
-
-			return new Response("Method not allowed", { status: 405 });
-		} catch (error) {
-			console.error("Error handling HTTP request:", error);
-
-			return new Response(
-				JSON.stringify({
-					success: false,
-					error: "Internal server error",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				},
-			);
-		}
-	}
-
-	/**
 	 * Common business logic for starting a PTT transmission (DRY principle).
 	 *
 	 * This method contains the core logic for initiating a new PTT transmission,
@@ -474,22 +402,28 @@ export class PTTChannelDurableObject extends DurableObject {
 	 *
 	 * Process:
 	 * 1. Validates active transmission and session ID
-	 * 2. Validates chunk sequence number (prevents duplicates/out-of-order)
+	 * 2. Accepts chunks with tolerance to packet loss and out-of-order delivery
 	 * 3. Validates chunk size against limits
 	 * 4. Stores chunk temporarily for late-joining participants
-	 * 5. Updates transmission statistics
+	 * 5. Updates transmission statistics and expected sequence
 	 * 6. Broadcasts chunk immediately to all connected participants
+	 *
+	 * Packet Loss Tolerance:
+	 * - Accepts out-of-order chunks within reasonable bounds
+	 * - Handles duplicate chunks gracefully
+	 * - Updates expected sequence based on highest received chunk
+	 * - Logs missing chunks for debugging and monitoring
 	 *
 	 * @param request - Audio chunk request data
 	 * @param request.session_id - Transmission session identifier
-	 * @param request.chunk_sequence - Sequential chunk number (must be expected sequence)
+	 * @param request.chunk_sequence - Sequential chunk number (can be out-of-order)
 	 * @param request.audio_data - Base64-encoded audio data
 	 * @param request.timestamp_ms - Client timestamp of audio chunk
 	 * @param request.chunk_size_bytes - Size of audio data in bytes
 	 *
 	 * @returns Promise resolving to chunk processing result
 	 *
-	 * @throws Will return error for invalid session, sequence, or size
+	 * @throws Will return error for invalid session, severely out-of-order chunks, or size violations
 	 *
 	 * @example
 	 * ```typescript
@@ -521,12 +455,34 @@ export class PTTChannelDurableObject extends DurableObject {
 				};
 			}
 
-			// Validate chunk sequence
-			if (request.chunk_sequence !== this.activeTransmission.expectedSequence) {
+			// Validate chunk sequence - be tolerant to packet loss
+			const isExpectedSequence = request.chunk_sequence === this.activeTransmission.expectedSequence;
+			const isDuplicate = this.activeTransmission.audioChunks.has(request.chunk_sequence);
+			const isFutureSequence = request.chunk_sequence > this.activeTransmission.expectedSequence;
+
+			// Accept chunks that are:
+			// 1. The expected sequence (normal case)
+			// 2. Future sequences (packet arrived out of order)
+			// 3. Duplicate chunks (retransmission)
+			if (!isExpectedSequence && !isFutureSequence && !isDuplicate) {
+				// Only reject chunks that are clearly too old (more than 10 chunks behind)
+				const maxAcceptableLag = 10;
+				if (request.chunk_sequence < this.activeTransmission.expectedSequence - maxAcceptableLag) {
+					return {
+						success: false,
+						chunk_received: false,
+						error: `Chunk too old. Expected >= ${this.activeTransmission.expectedSequence - maxAcceptableLag}, got ${request.chunk_sequence}`,
+					};
+				}
+			}
+
+			// Handle duplicate chunks
+			if (isDuplicate) {
+				console.warn(`Received duplicate chunk ${request.chunk_sequence}, ignoring`);
 				return {
-					success: false,
-					chunk_received: false,
-					error: `Invalid chunk sequence. Expected ${this.activeTransmission.expectedSequence}, got ${request.chunk_sequence}`,
+					success: true,
+					chunk_received: true,
+					next_expected_sequence: this.activeTransmission.expectedSequence,
 				};
 			}
 
@@ -554,9 +510,36 @@ export class PTTChannelDurableObject extends DurableObject {
 				expires: expiresAt,
 			});
 
+			// Log sequence information for debugging
+			if (!isExpectedSequence && isFutureSequence) {
+				console.warn(`Received out-of-order chunk: expected ${this.activeTransmission.expectedSequence}, got ${request.chunk_sequence}`);
+			}
+
 			// Update transmission stats
-			this.activeTransmission.expectedSequence++;
 			this.activeTransmission.totalBytes += request.chunk_size_bytes;
+
+			// Update expected sequence - be more tolerant to packet loss
+			// If this chunk is the expected one or higher, update expected sequence
+			if (request.chunk_sequence >= this.activeTransmission.expectedSequence) {
+				// Look for the next missing sequence
+				let nextExpected = request.chunk_sequence + 1;
+				const maxLookAhead = 50; // Don't look too far ahead to avoid performance issues
+
+				for (let i = 0; i < maxLookAhead; i++) {
+					if (!this.activeTransmission.audioChunks.has(nextExpected)) {
+						break; // Found a gap
+					}
+					nextExpected++;
+				}
+
+				// Count missing chunks between old expected and new expected
+				const missingChunks = nextExpected - this.activeTransmission.expectedSequence - 1;
+				if (missingChunks > 0) {
+					console.warn(`Detected ${missingChunks} missing chunk(s) between ${this.activeTransmission.expectedSequence} and ${request.chunk_sequence}`);
+				}
+
+				this.activeTransmission.expectedSequence = nextExpected;
+			}
 
 			// Broadcast immediately to all connected participants
 			this.broadcastToParticipants({
@@ -584,7 +567,7 @@ export class PTTChannelDurableObject extends DurableObject {
 	}
 
 	/**
-	 * Common business logic for ending a PTT transmission (DRY principle).
+	 * Common business logic for ending a PTT transmission.
 	 *
 	 * This method contains the core logic for terminating an active PTT transmission,
 	 * shared between HTTP handlers and RPC methods to ensure consistent behavior.
@@ -622,6 +605,8 @@ export class PTTChannelDurableObject extends DurableObject {
 			chunks_received: number;
 			total_bytes: number;
 			participants_notified: number;
+			missing_chunks: number;
+			packet_loss_rate: number;
 		};
 	}> {
 		try {
@@ -639,6 +624,24 @@ export class PTTChannelDurableObject extends DurableObject {
 			const duration = request.total_duration_ms;
 			const chunksReceived = transmission.expectedSequence - 1;
 			const participantsCount = this.connectedParticipants.size;
+
+			// Calculate packet loss statistics
+			let missingChunks = 0;
+			const receivedSequences = Array.from(transmission.audioChunks.keys()).sort((a, b) => a - b);
+
+			if (receivedSequences.length > 0) {
+				const minSequence = Math.min(...receivedSequences);
+				const maxSequence = Math.max(...receivedSequences);
+
+				// Count gaps in sequence
+				for (let seq = minSequence; seq <= maxSequence; seq++) {
+					if (!transmission.audioChunks.has(seq)) {
+						missingChunks++;
+					}
+				}
+			}
+
+			const packetLossRate = chunksReceived > 0 ? (missingChunks / (chunksReceived + missingChunks)) * 100 : 0;
 
 			// Clear cleanup timeout
 			if (transmission.cleanupTimeout) {
@@ -662,6 +665,8 @@ export class PTTChannelDurableObject extends DurableObject {
 			// Clear transmission state
 			this.activeTransmission = null;
 
+			console.log(`Transmission ended: ${chunksReceived} chunks received, ${missingChunks} missing (${packetLossRate.toFixed(1)}% loss)`);
+
 			return {
 				success: true,
 				session_summary: {
@@ -669,6 +674,8 @@ export class PTTChannelDurableObject extends DurableObject {
 					chunks_received: chunksReceived,
 					total_bytes: transmission.totalBytes,
 					participants_notified: participantsCount,
+					missing_chunks: missingChunks,
+					packet_loss_rate: packetLossRate,
 				},
 			};
 		} catch (error) {
@@ -786,6 +793,7 @@ export class PTTChannelDurableObject extends DurableObject {
 	 *
 	 * This method serves as the HTTP endpoint wrapper around the handleAudioChunkLogic method,
 	 * handling JSON parsing, sequence validation, and HTTP response construction for real-time audio streaming.
+	 * It is tolerant to packet loss and can handle out-of-order chunk delivery.
 	 *
 	 * @param request - HTTP request containing audio chunk data
 	 * @returns Promise resolving to HTTP response with chunk processing status
@@ -1196,17 +1204,18 @@ export class PTTChannelDurableObject extends DurableObject {
 	 *
 	 * This method ensures low-latency audio streaming by immediately broadcasting
 	 * received chunks to all connected participants while maintaining sequence integrity.
+	 * It is tolerant to packet loss and can handle out-of-order chunk delivery.
 	 *
 	 * @param request - Audio chunk data
 	 * @param request.session_id - Transmission session identifier
-	 * @param request.chunk_sequence - Sequential chunk number (must match expected sequence)
+	 * @param request.chunk_sequence - Sequential chunk number (can be out-of-order due to packet loss)
 	 * @param request.audio_data - Base64-encoded audio data
 	 * @param request.timestamp_ms - Client timestamp of audio chunk
 	 * @param request.chunk_size_bytes - Size of audio data in bytes
 	 *
 	 * @returns Promise resolving to chunk processing result
 	 *
-	 * @throws Will return error for invalid session, sequence, or size violations
+	 * @throws Will return error for invalid session, severely out-of-order chunks, or size violations
 	 *
 	 * @example
 	 * ```typescript
@@ -1269,6 +1278,8 @@ export class PTTChannelDurableObject extends DurableObject {
 	 *   console.log("Chunks received:", result.session_summary.chunks_received);
 	 *   console.log("Total bytes:", result.session_summary.total_bytes);
 	 *   console.log("Participants notified:", result.session_summary.participants_notified);
+	 *   console.log("Missing chunks:", result.session_summary.missing_chunks);
+	 *   console.log("Packet loss rate:", result.session_summary.packet_loss_rate.toFixed(1), "%");
 	 * }
 	 * ```
 	 */
@@ -1280,6 +1291,8 @@ export class PTTChannelDurableObject extends DurableObject {
 			chunks_received: number;
 			total_bytes: number;
 			participants_notified: number;
+			missing_chunks: number;
+			packet_loss_rate: number;
 		};
 	}> {
 		return this.endPTTTransmissionLogic(request);

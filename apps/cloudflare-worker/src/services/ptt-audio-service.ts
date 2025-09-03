@@ -106,8 +106,7 @@ export class PTTAudioService {
 			}
 
 			// Get the Durable Object for this channel
-			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
-			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+			const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
 
 			// Use RPC method
 			const result = await (durableObject as any).pttChunk(request);

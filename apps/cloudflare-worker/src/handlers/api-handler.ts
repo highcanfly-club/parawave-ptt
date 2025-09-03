@@ -2696,6 +2696,7 @@ export class PTTAPIHandler {
 					headers: this.corsHeaders || {},
 				});
 			} else {
+				console.error("ERROR processing audio chunk:", result.error);
 				return this.errorResponse(
 					result.error || "Failed to process audio chunk",
 					400,
@@ -2840,7 +2841,7 @@ export class PTTAPIHandler {
 	): Promise<Response> {
 		try {
 			const body = (await request.json()) as PTTEndTransmissionRequest;
-			
+
 			// Validate required fields
 			if (!body.session_id || body.session_id !== sessionId) {
 				return this.errorResponse(`session_id mismatch. Expected: "${sessionId}", Got: "${body.session_id}"`, 400);
