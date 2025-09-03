@@ -93,8 +93,8 @@ export class PTTChannelDurableObject extends DurableObject {
 	/** Maximum size allowed for audio chunks (64KB) */
 	private readonly MAX_CHUNK_SIZE_BYTES = 64 * 1024;
 
-	/** Interval for periodic cleanup of expired chunks (1 second) */
-	private readonly CLEANUP_INTERVAL_MS = 1000;
+	/** Interval for periodic cleanup of expired audio chunks (30 seconds) */
+	private readonly CLEANUP_INTERVAL_MS = 30000;
 
 	/**
 	 * Creates a new PTTChannelDurableObject instance.
@@ -112,43 +112,6 @@ export class PTTChannelDurableObject extends DurableObject {
 
 		// Start periodic cleanup of expired chunks
 		this.startPeriodicCleanup();
-	}
-
-	/**
-	 * Main entry point for handling HTTP requests and WebSocket upgrades.
-	 *
-	 * Routes incoming requests to appropriate handlers:
-	 * - WebSocket upgrade requests → handleWebSocketUpgrade()
-	 * - PTT API requests (paths starting with /ptt/) → handleHTTPRequest()
-	 * - Unknown paths → 404 Not Found
-	 *
-	 * @param request - The incoming HTTP request
-	 * @returns Promise resolving to HTTP response
-	 *
-	 * @example
-	 * ```typescript
-	 * // WebSocket upgrade request
-	 * const wsResponse = await durableObject.fetch(request);
-	 *
-	 * // HTTP API request
-	 * const apiResponse = await durableObject.fetch(request);
-	 * ```
-	 */
-	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url);
-		const pathname = url.pathname;
-
-		// Handle WebSocket upgrade for real-time communication
-		if (request.headers.get("Upgrade") === "websocket") {
-			return this.handleWebSocketUpgrade(request);
-		}
-
-		// Handle HTTP API requests
-		if (pathname.startsWith("/ptt/")) {
-			return this.handleHTTPRequest(request);
-		}
-
-		return new Response("Not found", { status: 404 });
 	}
 
 	/**
@@ -312,6 +275,7 @@ export class PTTChannelDurableObject extends DurableObject {
 	}
 
 	/**
+	 * @deprecated
 	 * Handles HTTP API requests for PTT transmission control.
 	 *
 	 * Routes incoming HTTP requests to appropriate handlers based on method and path:
