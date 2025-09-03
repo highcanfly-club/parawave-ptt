@@ -33,7 +33,10 @@ import {
 
 /**
  * Service for managing PTT audio transmissions via Durable Objects
- * Provides high-level API for real-time audio communication
+ * Provides high-level API for real-time audio communication using RPC methods
+ *
+ * This service uses RPC (Remote Procedure Call) methods on Durable Objects
+ * for better performance compared to traditional HTTP requests.
  */
 export class PTTAudioService {
 	private env: Env;
@@ -44,7 +47,7 @@ export class PTTAudioService {
 
 	/**
 	 * Start a new PTT transmission session
-	 * Routes to the appropriate channel Durable Object
+	 * Routes to the appropriate channel Durable Object using RPC
 	 */
 	async startTransmission(
 		request: PTTStartTransmissionRequest,
@@ -55,23 +58,14 @@ export class PTTAudioService {
 			const channelUuid = request.channel_uuid.toLowerCase();
 
 			// Get the Durable Object for this channel
-			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
-			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
+			const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
 
-			// Forward request to Durable Object
-			const response = await durableObject.fetch("https://dummy/ptt/start", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					...request,
-					user_id: userId,
-					username: username,
-				}),
+			// Use RPC method
+			const result = await (durableObject as any).pttStart({
+				...request,
+				user_id: userId,
+				username: username,
 			});
-
-			const result = (await response.json()) as PTTStartTransmissionResponse;
 
 			// Add WebSocket URL for real-time communication
 			if (result.success && result.session_id) {
@@ -94,7 +88,7 @@ export class PTTAudioService {
 	}
 
 	/**
-	 * Send audio chunk to active transmission
+	 * Send audio chunk to active transmission using RPC
 	 */
 	async receiveAudioChunk(
 		request: PTTAudioChunkRequest,
@@ -115,16 +109,10 @@ export class PTTAudioService {
 			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
 			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-			// Forward request to Durable Object
-			const response = await durableObject.fetch("https://dummy/ptt/chunk", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(request),
-			});
+			// Use RPC method
+			const result = await (durableObject as any).pttChunk(request);
 
-			return (await response.json()) as PTTAudioChunkResponse;
+			return result;
 		} catch (error) {
 			console.error("Error receiving audio chunk:", error);
 
@@ -137,7 +125,7 @@ export class PTTAudioService {
 	}
 
 	/**
-	 * End PTT transmission session
+	 * End PTT transmission session using RPC
 	 */
 	async endTransmission(
 		request: PTTEndTransmissionRequest,
@@ -157,16 +145,10 @@ export class PTTAudioService {
 			const durableObjectId = this.env.CHANNEL_OBJECTS.idFromName(channelUuid);
 			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-			// Forward request to Durable Object
-			const response = await durableObject.fetch("https://dummy/ptt/end", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(request),
-			});
+			// Use RPC method
+			const result = await (durableObject as any).pttEnd(request);
 
-			return (await response.json()) as PTTEndTransmissionResponse;
+			return result;
 		} catch (error) {
 			console.error("Error ending PTT transmission:", error);
 
@@ -178,7 +160,7 @@ export class PTTAudioService {
 	}
 
 	/**
-	 * Get active transmission for a channel
+	 * Get active transmission for a channel using RPC
 	 */
 	async getActiveTransmission(channelUuid: string): Promise<any> {
 		try {
@@ -190,15 +172,8 @@ export class PTTAudioService {
 			);
 			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
-			// Request status from Durable Object
-			const response = await durableObject.fetch("https://dummy/ptt/status", {
-				method: "GET",
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
-
-			const result = (await response.json()) as any;
+			// Use RPC method
+			const result = await (durableObject as any).pttStatus();
 
 			return result.success ? result.active_transmission : null;
 		} catch (error) {
