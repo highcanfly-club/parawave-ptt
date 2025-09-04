@@ -57,7 +57,7 @@
 				"type": "ratelimit",
 				"namespace_id": "1001",
 				"simple": {
-					"limit": 100,
+					"limit": 500,
 					"period": 60
 				}
 			}
