@@ -61,11 +61,11 @@ export class PTTAudioService {
 			const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
 
 			// Use RPC method
-			const result = await (durableObject as any).pttStart({
+			const result = await durableObject.pttStart({
 				...request,
 				user_id: userId,
 				username: username,
-			});
+			}) as PTTStartTransmissionResponse;
 
 			// Add WebSocket URL for real-time communication
 			if (result.success && result.session_id) {
@@ -109,7 +109,7 @@ export class PTTAudioService {
 			const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
 
 			// Use RPC method
-			const result = await (durableObject as any).pttChunk(request);
+			const result = await durableObject.pttChunk(request);
 
 			return result;
 		} catch (error) {
@@ -145,7 +145,7 @@ export class PTTAudioService {
 			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
 			// Use RPC method
-			const result = await (durableObject as any).pttEnd(request);
+			const result = await durableObject.pttEnd(request);
 
 			return result;
 		} catch (error) {
@@ -172,7 +172,7 @@ export class PTTAudioService {
 			const durableObject = this.env.CHANNEL_OBJECTS.get(durableObjectId);
 
 			// Use RPC method
-			const result = await (durableObject as any).pttStatus();
+			const result = await durableObject.pttStatus();
 
 			return result.success ? result.active_transmission : null;
 		} catch (error) {
