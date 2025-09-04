@@ -144,10 +144,11 @@ export class PTTChannelDurableObject extends DurableObject {
 		const url = new URL(request.url);
 		const userId = url.searchParams.get("userId");
 		const username = url.searchParams.get("username");
+		const ephemeralPushToken = url.searchParams.get("ephemeralPushToken");
 		const token = url.searchParams.get("token");
 
-		if (!userId || !username || !token) {
-			return new Response("Missing required parameters", { status: 400 });
+		if (!userId || !username || !ephemeralPushToken || !token) {
+			return new Response("Missing required parameters: userId, username, ephemeralPushToken, token", { status: 400 });
 		}
 
 		// TODO: Validate JWT token
@@ -160,8 +161,8 @@ export class PTTChannelDurableObject extends DurableObject {
 		// Accept WebSocket connection
 		server.accept();
 
-		// Add participant to connected list
-		this.connectedParticipants.set(userId, {
+		// Add participant to connected list using ephemeralPushToken as unique identifier
+		this.connectedParticipants.set(ephemeralPushToken, {
 			userId,
 			username,
 			websocket: server,
@@ -170,11 +171,11 @@ export class PTTChannelDurableObject extends DurableObject {
 
 		// Set up WebSocket event handlers
 		server.addEventListener("message", (event) => {
-			this.handleWebSocketMessage(userId, event.data as string);
+			this.handleWebSocketMessage(ephemeralPushToken, event.data as string);
 		});
 
 		server.addEventListener("close", () => {
-			this.connectedParticipants.delete(userId);
+			this.connectedParticipants.delete(ephemeralPushToken);
 			this.broadcastToParticipants({
 				type: "participant_leave",
 				userId,
@@ -195,7 +196,7 @@ export class PTTChannelDurableObject extends DurableObject {
 
 		// Send current transmission state to new participant
 		if (this.activeTransmission) {
-			this.sendToParticipant(userId, {
+			this.sendToParticipant(ephemeralPushToken, {
 				type: "transmission_started",
 				session_id: this.activeTransmission.sessionId,
 				channel_uuid: this.activeTransmission.channelUuid,
@@ -214,7 +215,7 @@ export class PTTChannelDurableObject extends DurableObject {
 			for (const [sequence, bufferedChunk] of this.activeTransmission
 				.audioChunks) {
 				if (now < bufferedChunk.expires) {
-					this.sendToParticipant(userId, {
+					this.sendToParticipant(ephemeralPushToken, {
 						type: "audio_chunk",
 						session_id: this.activeTransmission.sessionId,
 						channel_uuid: this.activeTransmission.channelUuid,
@@ -242,7 +243,7 @@ export class PTTChannelDurableObject extends DurableObject {
 	 * Designed to be extensible for future features like participant controls,
 	 * transmission management, or custom commands.
 	 *
-	 * @param userId - The ID of the participant who sent the message
+	 * @param ephemeralPushToken - The ephemeral push token of the client who sent the message
 	 * @param data - The raw message data (expected to be JSON string)
 	 *
 	 * @example
@@ -254,14 +255,14 @@ export class PTTChannelDurableObject extends DurableObject {
 	 * ws.send(JSON.stringify({ type: "mute", targetUserId: "user123" }));
 	 * ```
 	 */
-	private async handleWebSocketMessage(userId: string, data: string) {
+	private async handleWebSocketMessage(ephemeralPushToken: string, data: string) {
 		try {
 			const message = JSON.parse(data);
 
 			// Handle different message types
 			switch (message.type) {
 				case "ping":
-					this.sendToParticipant(userId, {
+					this.sendToParticipant(ephemeralPushToken, {
 						type: "pong",
 						session_id: "",
 						channel_uuid: this.activeTransmission?.channelUuid || "",
@@ -275,7 +276,7 @@ export class PTTChannelDurableObject extends DurableObject {
 			}
 		} catch (error) {
 			console.error("Error handling WebSocket message:", error);
-			this.sendToParticipant(userId, {
+			this.sendToParticipant(ephemeralPushToken, {
 				type: "error",
 				session_id: "",
 				channel_uuid: this.activeTransmission?.channelUuid || "",
@@ -1014,27 +1015,27 @@ export class PTTChannelDurableObject extends DurableObject {
 	/**
 	 * Send WebSocket message to a specific participant.
 	 *
-	 * Delivers a message to a single participant identified by user ID.
+	 * Delivers a message to a single participant identified by ephemeral push token.
 	 * Handles connection errors by removing broken connections from the participant map.
 	 *
 	 * This method is used for targeted communication with individual participants,
 	 * such as private notifications or user-specific updates.
 	 *
-	 * @param userId - ID of the target participant
+	 * @param ephemeralPushToken - Ephemeral push token of the target participant
 	 * @param message - WebSocket message to send
 	 *
 	 * @private
 	 */
-	private sendToParticipant(userId: string, message: PTTWebSocketMessage) {
-		const participant = this.connectedParticipants.get(userId);
+	private sendToParticipant(ephemeralPushToken: string, message: PTTWebSocketMessage) {
+		const participant = this.connectedParticipants.get(ephemeralPushToken);
 
 		if (!participant) return;
 
 		try {
 			participant.websocket.send(JSON.stringify(message));
 		} catch (error) {
-			console.error(`Failed to send message to participant ${userId}:`, error);
-			this.connectedParticipants.delete(userId);
+			console.error(`Failed to send message to participant ${ephemeralPushToken}:`, error);
+			this.connectedParticipants.delete(ephemeralPushToken);
 		}
 	}
 
@@ -1102,6 +1103,7 @@ export class PTTChannelDurableObject extends DurableObject {
 				sessionId: transmission.sessionId,
 				channelUuid: transmission.channelUuid,
 				userId: transmission.userId,
+				clientId: "TODO",
 				username: transmission.username,
 				startTime: new Date(transmission.startTime).toISOString(),
 				endTime: new Date().toISOString(),

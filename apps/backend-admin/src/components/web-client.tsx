@@ -14,7 +14,8 @@ import {
     PTTWebSocketMessage,
     NetworkQuality,
     AudioFormat,
-    DeviceInfo
+    DeviceInfo,
+    ClientIdUtils
 } from "@/types/ptt";
 
 interface WebClientProps {
@@ -29,6 +30,34 @@ interface TransmissionState {
     isTransmitting: boolean;
     startTime: number | null;
     chunksSent: number;
+}
+
+/**
+ * Utility class for managing ephemeral tokens in web client
+ */
+class WebClientIdUtils {
+    private static readonly TOKEN_KEY = 'parawave_ephemeral_token';
+
+    /**
+     * Get or generate an ephemeral token for this client session
+     */
+    static getEphemeralToken(): string {
+        let token = localStorage.getItem(this.TOKEN_KEY);
+
+        if (!token || !ClientIdUtils.isValidEphemeralToken(token)) {
+            token = ClientIdUtils.generateEphemeralToken('web');
+            localStorage.setItem(this.TOKEN_KEY, token);
+        }
+
+        return token;
+    }
+
+    /**
+     * Clear the stored ephemeral token (useful for logout)
+     */
+    static clearEphemeralToken(): void {
+        localStorage.removeItem(this.TOKEN_KEY);
+    }
 }
 
 export default function WebClient({ channelUuid, channelName, isAdmin }: WebClientProps) {
@@ -61,13 +90,17 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
         setConnectionError(null);
 
         try {
+            // Generate or retrieve ephemeral token for this client
+            const ephemeralToken = WebClientIdUtils.getEphemeralToken();
+
             // Join the channel
             const joinRequest = {
                 device_info: {
                     os: "WebClient",
                     os_version: navigator.userAgent,
                     app_version: "1.0.0"
-                } as DeviceInfo
+                } as DeviceInfo,
+                ephemeral_push_token: ephemeralToken
             };
 
             const joinResponse = await postJson(

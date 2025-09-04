@@ -463,6 +463,7 @@ export interface TransmissionAuditLog {
 	sessionId: string;
 	channelUuid: string;
 	userId: string;
+	clientId: string;
 	username: string;
 	startTime: string;
 	endTime?: string;
@@ -474,4 +475,61 @@ export interface TransmissionAuditLog {
 	isEmergency: boolean;
 	networkQuality: NetworkQuality;
 	location?: Coordinates;
+}
+
+/**
+ * Client identification for device-specific operations
+ */
+export interface ClientInfo {
+	clientId: string;
+	userId: string;
+	userAgent?: string;
+	platform: "ios" | "android" | "web" | "desktop" | "unknown";
+	deviceModel?: string;
+	osVersion?: string;
+	appVersion?: string;
+}
+
+/**
+ * Participant information with client identification
+ */
+export interface PTTChannelParticipant {
+	userId: string;
+	clientId: string;
+	username: string;
+	joinedAt: number;
+	lastActivity: number;
+	clientInfo?: ClientInfo;
+}
+
+/**
+ * Utility functions for client identification
+ */
+export class ClientIdUtils {
+	/**
+	 * Generate a unique ephemeral token for client identification
+	 * This token is used to uniquely identify a client device/app instance
+	 *
+	 * @param prefix - Optional prefix for the token (e.g., "web", "ios")
+	 * @returns Unique ephemeral token string
+	 */
+	static generateEphemeralToken(prefix: string = "client"): string {
+		const timestamp = Date.now().toString(36);
+		const random = Math.random().toString(36).substring(2, 15);
+		const random2 = Math.random().toString(36).substring(2, 8);
+
+		return `${prefix}_${timestamp}_${random}_${random2}`;
+	}
+
+	/**
+	 * Validate that a token has the correct format
+	 *
+	 * @param token - The token to validate
+	 * @returns True if the token format is valid
+	 */
+	static isValidEphemeralToken(token: string): boolean {
+		// Format: prefix_timestamp_random1_random2
+		const parts = token.split('_');
+		return parts.length === 4 && parts[0].length > 0 && parts[1].length > 0 && parts[2].length > 0 && parts[3].length > 0;
+	}
 }

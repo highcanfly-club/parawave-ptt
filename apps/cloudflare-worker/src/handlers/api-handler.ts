@@ -3102,11 +3102,27 @@ export class PTTAPIHandler {
 				);
 			}
 
-			// Create new request with user info in query params for Durable Object
+			// Get participant's ephemeral_push_token from channel
+			const participants = await this.channelService.getChannelParticipants(
+				channelUuid.toLowerCase(),
+			);
+
+			// Find the participant with matching userId
+			const participant = participants.find(p => p.user_id === userId);
+
+			if (!participant?.ephemeral_push_token) {
+				return this.errorResponse(
+					"Participant not found or missing ephemeral_push_token. Please join the channel first.",
+					403,
+				);
+			}
+
+			// Create new request with user info and ephemeral_push_token in query params for Durable Object
 			const url = new URL(request.url);
 
 			url.searchParams.set("userId", userId);
 			url.searchParams.set("username", username);
+			url.searchParams.set("ephemeralPushToken", participant.ephemeral_push_token);
 
 			const newRequest = new Request(url.toString(), request);
 
