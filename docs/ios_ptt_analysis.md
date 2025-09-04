@@ -650,44 +650,245 @@ Cette architecture garantit une gestion sécurisée et scalable des permissions 
 
 ### Vue d'ensemble de l'Architecture
 
-Le système PTT utilise **Cloudflare Workers avec Durable Objects** pour assurer une transmission audio temps réel ultra-rapide (latence <100ms) entre les participants d'un canal.
+Le système PTT utilise **Cloudflare Workers avec Durable Objects** pour assurer une transmission audio temps réel ultra-rapide (latence <100ms) entre les participants d'un canal. L'architecture a été améliorée avec :
+
+- **Tolérance aux pertes de paquets** : Gestion intelligente des chunks manquants
+- **RPC haute performance** : Communication directe avec les Durable Objects
+- **Streaming WebSocket bidirectionnel** : Diffusion temps réel des chunks audio
+- **Audit complet** : Traçabilité des transmissions avec statistiques de perte
 
 ### Composants Clés
 
-#### 1. Durable Objects PTT
+#### 1. Durable Objects PTT avec Tolérance aux Pertes
 
 - **PTTChannelDurableObject** : Un objet durable par canal pour la gestion temps réel
 - **Gestion des sessions** : Sessions PTT éphémères (30 secondes maximum)
+- **Tolérance aux pertes** : Accepte les chunks hors séquence et gère les retransmissions
 - **WebSocket broadcasting** : Diffusion live des chunks audio aux participants connectés
 - **Mémoire partagée** : Stockage temporaire des chunks audio en mémoire (auto-nettoyage)
+- **Statistiques de perte** : Calcul automatique du taux de perte de paquets
 
-#### 2. Service PTT Audio
+#### 2. Service PTT Audio (RPC-Based)
 
 ```typescript
 export class PTTAudioService {
   async startTransmission(
     request: PTTStartTransmissionRequest,
     userId: string,
-    username: string
-  ) {
-    // Routage vers le Durable Object du canal
-    const durableObjectId = this.env.PTT_CHANNEL_DO.idFromString(channelUuid);
-    const durableObject = this.env.PTT_CHANNEL_DO.get(durableObjectId);
+    username: string,
+  ): Promise<PTTStartTransmissionResponse> {
+    // Utilise les méthodes RPC des Durable Objects
+    const channelUuid = request.channel_uuid.toLowerCase();
+    const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
 
-    return await durableObject.startAudioTransmission(
-      request,
-      userId,
-      username
-    );
+    const result = await (durableObject as any).pttStart({
+      ...request,
+      user_id: userId,
+      username: username,
+    });
+
+    // Ajoute l'URL WebSocket pour la communication temps réel
+    if (result.success && result.session_id) {
+      result.websocket_url = this.generateWebSocketURL(channelUuid, userId, username);
+    }
+
+    return result;
   }
 
-  async receiveAudioChunk(chunk: PTTAudioChunkRequest) {
-    // Diffusion temps réel du chunk aux participants via WebSocket
-    const durableObjectId = this.getDurableObjectForSession(chunk.session_id);
-    return await durableObjectId.receiveAudioChunk(chunk);
+  async receiveAudioChunk(
+    request: PTTAudioChunkRequest,
+  ): Promise<PTTAudioChunkResponse> {
+    // RPC directe pour performance optimale
+    const channelUuid = this.extractChannelFromSessionId(request.session_id);
+    const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
+
+    const result = await (durableObject as any).pttChunk(request);
+    return result;
+  }
+
+  async endTransmission(
+    request: PTTEndTransmissionRequest,
+  ): Promise<PTTEndTransmissionResponse> {
+    // RPC avec statistiques de perte
+    const channelUuid = this.extractChannelFromSessionId(request.session_id);
+    const durableObject = this.env.CHANNEL_OBJECTS.getByName(channelUuid);
+
+    const result = await (durableObject as any).pttEnd(request);
+    return result;
   }
 }
 ```
+
+### Logique de Tolérance aux Pertes de Paquets
+
+#### Gestion des Chunks Hors Séquence
+
+```typescript
+// Dans handleAudioChunkLogic()
+const isExpectedSequence = request.chunk_sequence === this.activeTransmission.expectedSequence;
+const isDuplicate = this.activeTransmission.audioChunks.has(request.chunk_sequence);
+const isFutureSequence = request.chunk_sequence > this.activeTransmission.expectedSequence;
+
+// Accepte les chunks dans ces conditions :
+if (isExpectedSequence || isFutureSequence || isDuplicate) {
+  // Traite le chunk
+  this.activeTransmission.audioChunks.set(request.chunk_sequence, {
+    chunk: audioChunk,
+    expires: Date.now() + this.CHUNK_BUFFER_DURATION_MS
+  });
+
+  // Met à jour expectedSequence intelligemment
+  this.updateExpectedSequence();
+}
+```
+
+#### Calcul des Statistiques de Perte
+
+```typescript
+// Lors de la fin de transmission
+const missingChunks = this.calculateMissingChunks();
+const packetLossRate = (missingChunks / (chunksReceived + missingChunks)) * 100;
+
+return {
+  session_summary: {
+    total_duration_ms: duration,
+    chunks_received: chunksReceived,
+    total_bytes: totalBytes,
+    participants_notified: participantsCount,
+    missing_chunks: missingChunks,
+    packet_loss_rate: packetLossRate
+  }
+};
+```
+
+### Avantages de l'Architecture RPC
+
+- **Latence réduite** : Pas de sérialisation/désérialisation JSON pour les appels internes
+- **Performance optimale** : Communication directe entre services
+- **Tolérance aux pertes** : Gestion intelligente des paquets manquants
+- **Monitoring avancé** : Statistiques détaillées de performance réseau
+- **Fiabilité** : Reprise automatique sur les erreurs de réseau
+
+## Améliorations Récents de l'API
+
+### Tolérance aux Pertes de Paquets
+
+L'API a été améliorée pour gérer intelligemment les pertes de paquets réseau courantes dans les environnements mobiles :
+
+#### Gestion des Chunks Hors Séquence
+- **Acceptation des chunks retardés** : Les chunks qui arrivent hors ordre sont acceptés
+- **Détection des doublons** : Évite le traitement des chunks dupliqués
+- **Reprise automatique** : Met à jour automatiquement la séquence attendue
+- **Limite de tolérance** : Rejette seulement les chunks trop anciens (>10 chunks de retard)
+
+#### Métriques de Performance
+- **Taux de perte de paquets** : Calcul automatique du pourcentage de paquets perdus
+- **Chunks manquants** : Comptage précis des paquets non reçus
+- **Statistiques de session** : Rapport détaillé à la fin de chaque transmission
+- **Logging intelligent** : Alertes sur les pertes importantes sans spam
+
+#### Exemple de Log d'Amélioration
+
+```
+[INFO] Transmission started: session_id=ptt_chamonix-local-001_user123_1234567890_abc123
+[WARN] Received out-of-order chunk: expected 31, got 32
+[WARN] Detected 1 missing chunk(s) between 31 and 32
+[INFO] Transmission ended: 50 chunks received, 1 missing (1.96% loss)
+```
+
+### Spécifications OpenAPI Complètes
+
+L'API inclut maintenant des spécifications OpenAPI complètes pour tous les endpoints PTT :
+
+#### Schémas de Données
+
+```yaml
+components:
+  schemas:
+    PTTStartTransmissionRequest:
+      type: object
+      required:
+        - channel_uuid
+        - audio_format
+      properties:
+        channel_uuid:
+          type: string
+          format: uuid
+          description: "UUID du canal PTT"
+        audio_format:
+          type: string
+          enum: [aac-lc, opus, pcm]
+          description: "Format d'encodage audio"
+        expected_duration:
+          type: integer
+          minimum: 1
+          maximum: 30
+          description: "Durée attendue en secondes"
+        device_info:
+          type: object
+          properties:
+            model:
+              type: string
+            os_version:
+              type: string
+
+    PTTAudioChunkRequest:
+      type: object
+      required:
+        - session_id
+        - chunk_sequence
+        - audio_data
+        - chunk_size_bytes
+        - timestamp_ms
+      properties:
+        session_id:
+          type: string
+          description: "ID de session PTT"
+        chunk_sequence:
+          type: integer
+          minimum: 1
+          description: "Numéro de séquence du chunk"
+        audio_data:
+          type: string
+          description: "Données audio en base64"
+        chunk_size_bytes:
+          type: integer
+          minimum: 1
+          maximum: 65536
+          description: "Taille des données audio"
+        timestamp_ms:
+          type: integer
+          description: "Timestamp du chunk en millisecondes"
+```
+
+### Gestion d'État Avancée
+
+#### États de Transmission
+- **INITIALIZING** : Transmission en cours d'initialisation
+- **ACTIVE** : Transmission active et recevant des chunks
+- **COMPLETING** : Transmission en cours de finalisation
+- **COMPLETED** : Transmission terminée avec succès
+- **FAILED** : Transmission échouée (timeout, erreur)
+
+#### Nettoyage Automatique
+- **Timeout automatique** : 30 secondes maximum par transmission
+- **Nettoyage des chunks expirés** : Suppression automatique toutes les 30 secondes
+- **Déconnexion des participants** : Nettoyage automatique des connexions rompues
+- **Audit des transmissions** : Logging en base de données pour conformité
+
+### Sécurité et Authentification
+
+#### Authentification JWT Auth0
+- **Validation automatique** : Vérification des tokens sur chaque requête
+- **Extraction d'identité** : Récupération userId et username depuis le JWT
+- **Gestion des expirations** : Renouvellement automatique des tokens
+- **Permissions granulaires** : Contrôle d'accès par canal et opération
+
+#### Autorisation par Canal
+- **Vérification d'appartenance** : Utilisateur doit être participant du canal
+- **Permissions dynamiques** : Génération automatique des permissions Auth0
+- **Cache des autorisations** : Mise en cache pour performance optimale
+- **Audit des accès** : Traçabilité complète des opérations autorisées/refusées
 
 ### API Endpoints PTT Réels
 
@@ -718,7 +919,7 @@ Response 200:
 }
 ```
 
-#### Envoi de Chunks Audio
+#### Envoi de Chunks Audio (Avec Tolérance aux Pertes)
 
 ```
 POST /api/v1/transmissions/{session_id}/chunk
@@ -726,22 +927,29 @@ Authorization: Bearer JWT_TOKEN_FROM_Auth0
 Content-Type: application/json
 
 {
+  "session_id": "ptt_chamonix-local-001_user123_1234567890_abc123",
+  "chunk_sequence": 1,
   "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
-  "sequence_number": 0,
-  "timestamp": 1640995200.123,
-  "duration_ms": 100
+  "chunk_size_bytes": 4096,
+  "timestamp_ms": 1640995200000
 }
 
 Response 200:
 {
   "success": true,
-  "sequence_number": 0,
-  "total_chunks": 1,
-  "duration_so_far": 0.1
+  "chunk_received": true,
+  "next_expected_sequence": 2
+}
+
+Response 400 (Chunk trop ancien):
+{
+  "success": false,
+  "chunk_received": false,
+  "error": "Chunk too old. Expected >= 25, got 15"
 }
 ```
 
-#### Fin de Transmission
+#### Fin de Transmission (Avec Statistiques de Perte)
 
 ```
 POST /api/v1/transmissions/{session_id}/end
@@ -749,15 +957,21 @@ Authorization: Bearer JWT_TOKEN_FROM_Auth0
 Content-Type: application/json
 
 {
-  "reason": "completed"  // "completed" | "cancelled" | "timeout" | "error"
+  "session_id": "ptt_chamonix-local-001_user123_1234567890_abc123",
+  "total_duration_ms": 5000
 }
 
 Response 200:
 {
   "success": true,
-  "total_duration": 5.2,
-  "total_chunks": 52,
-  "participants_reached": 3
+  "session_summary": {
+    "total_duration_ms": 5000,
+    "chunks_received": 50,
+    "total_bytes": 204800,
+    "participants_notified": 3,
+    "missing_chunks": 2,
+    "packet_loss_rate": 3.85
+  }
 }
 ```
 
@@ -793,11 +1007,179 @@ Connection: Upgrade
 // Messages WebSocket reçus :
 {
   "type": "transmission_start",
-  "session_id": "ptt_...",
-  "data": {
-    "sessionId": "ptt_...",
-    "userId": "auth0|user123",
-    "username": "Pilot Alpha",
+  "sessionId": "ptt_chamonix-local-001_user123_1234567890_abc123",
+  "userId": "user123",
+  "username": "Jean Dupont",
+  "audioFormat": "aac-lc",
+  "isEmergency": false,
+  "timestamp": 1640995200000
+}
+
+{
+  "type": "audio_chunk",
+  "sessionId": "ptt_chamonix-local-001_user123_1234567890_abc123",
+  "sequence": 1,
+  "audioData": "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+  "timestamp": 1640995200100,
+  "sizeBytes": 4096
+}
+
+{
+  "type": "transmission_end",
+  "sessionId": "ptt_chamonix-local-001_user123_1234567890_abc123",
+  "userId": "user123",
+  "duration": 5000,
+  "totalChunks": 50,
+  "totalBytes": 204800,
+  "timestamp": 1640995205000
+}
+
+{
+  "type": "participant_join",
+  "userId": "user456",
+  "username": "Marie Dubois",
+  "timestamp": 1640995201000
+}
+
+{
+  "type": "participant_leave",
+  "userId": "user456",
+  "timestamp": 1640995206000
+}
+
+## Gestion des Erreurs et Cas d'Échec
+
+### Erreurs de Réseau et Tolérance aux Pertes
+
+#### Scénarios de Perte de Paquets
+
+1. **Perte isolée** : Un chunk sur cent est perdu
+   - ✅ **Gestion** : Transmission continue, chunk marqué comme manquant
+   - ✅ **Impact** : Audio avec petite lacune, transmission utilisable
+
+2. **Perte en rafale** : Plusieurs chunks consécutifs perdus
+   - ✅ **Gestion** : Transmission continue, séquence mise à jour
+   - ⚠️ **Impact** : Lacune audio plus importante, mais transmission préservée
+
+3. **Perte massive** : Plus de 50% des chunks perdus
+   - ⚠️ **Gestion** : Transmission peut continuer mais qualité dégradée
+   - ❌ **Recommandation** : Interruption manuelle si perte >70%
+
+#### Métriques de Qualité
+
+```typescript
+interface TransmissionQuality {
+  packetLossRate: number;      // Pourcentage de paquets perdus
+  averageLatency: number;      // Latence moyenne en ms
+  jitter: number;             // Variation de latence
+  connectionStability: number; // Stabilité de connexion (0-100)
+}
+```
+
+### Codes d'Erreur API
+
+#### Erreurs de Transmission (400-499)
+
+```typescript
+// Chunk rejeté pour cause de séquence
+{
+  "success": false,
+  "chunk_received": false,
+  "error": "Chunk too old. Expected >= 25, got 15"
+}
+
+// Session expirée
+{
+  "success": false,
+  "error": "Invalid or expired session"
+}
+
+// Canal non accessible
+{
+  "success": false,
+  "error": "Channel access denied"
+}
+```
+
+#### Erreurs Système (500-599)
+
+```typescript
+// Erreur interne
+{
+  "success": false,
+  "error": "Internal server error"
+}
+
+// Service indisponible
+{
+  "success": false,
+  "error": "Service temporarily unavailable"
+}
+```
+
+### Stratégies de Reprise
+
+#### Reconnexion WebSocket
+
+```typescript
+class PTTWebSocketManager {
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectDelay = 1000; // ms
+
+  private handleConnectionLoss() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      setTimeout(() => {
+        this.attemptReconnect();
+      }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
+    }
+  }
+
+  private attemptReconnect() {
+    this.reconnectAttempts++;
+    // Tentative de reconnexion WebSocket
+    // Synchronisation avec transmission en cours
+  }
+}
+```
+
+#### Reprise de Transmission
+
+1. **Détection de déconnexion** : Timeout WebSocket
+2. **Tentative de reconnexion** : Backoff exponentiel
+3. **Synchronisation** : Récupération des chunks manqués
+4. **Reprise transparente** : Continuation de la transmission
+
+### Monitoring et Observabilité
+
+#### Métriques Clés
+
+- **Taux de succès des transmissions** : % de transmissions terminées
+- **Latence moyenne** : Temps entre envoi et réception
+- **Taux de perte de paquets** : % de paquets perdus par transmission
+- **Temps de reconnexion** : Durée moyenne de reprise après déconnexion
+- **Utilisation des canaux** : Nombre de transmissions actives par canal
+
+#### Logging Structuré
+
+```typescript
+interface TransmissionLog {
+  sessionId: string;
+  channelUuid: string;
+  userId: string;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  chunksSent: number;
+  chunksReceived: number;
+  packetLossRate: number;
+  averageLatency: number;
+  errors: string[];
+  quality: TransmissionQuality;
+}
+```
+
+Cette architecture robuste assure une expérience utilisateur fiable même dans des conditions réseau difficiles, typiques des environnements de vol où la connectivité cellulaire peut être intermittente.
     "audioFormat": "aac-lc"
   },
   "timestamp": "2024-01-15T10:30:00Z"
