@@ -244,6 +244,8 @@ import { Auth0ManagementTokenData } from "../types/auth0-management";
  *       required:
  *         - channel_uuid
  *         - audio_format
+ *         - sample_rate
+ *         - network_quality
  *       properties:
  *         channel_uuid:
  *           type: string
@@ -253,6 +255,17 @@ import { Auth0ManagementTokenData } from "../types/auth0-management";
  *           type: string
  *           enum: [aac-lc, opus, pcm]
  *           description: Audio encoding format
+ *         sample_rate:
+ *           type: integer
+ *           minimum: 8000
+ *           maximum: 48000
+ *           description: Audio sample rate in Hz
+ *           example: 44100
+ *         network_quality:
+ *           type: string
+ *           enum: [excellent, good, fair, poor]
+ *           description: Network connection quality
+ *           example: "good"
  *         device_info:
  *           type: object
  *           properties:
@@ -428,6 +441,163 @@ import { Auth0ManagementTokenData } from "../types/auth0-management";
  *         error:
  *           type: string
  *           description: Error message if success is false
+ *     CreateChannelRequest:
+ *       type: object
+ *       required:
+ *         - name
+ *         - type
+ *       properties:
+ *         name:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 100
+ *           description: Channel name
+ *           example: "Val d'Isère - Site Local"
+ *         description:
+ *           type: string
+ *           maxLength: 500
+ *           description: Channel description
+ *           example: "Canal local pour le site de parapente de Val d'Isère"
+ *         type:
+ *           type: string
+ *           enum: [site_local, emergency, general, cross_country, instructors]
+ *           description: Channel type
+ *           example: "site_local"
+ *         frequency:
+ *           type: number
+ *           minimum: 118.0
+ *           maximum: 136.975
+ *           description: Radio frequency in MHz
+ *           example: 143.9875
+ *         flying_site_id:
+ *           type: integer
+ *           description: Associated flying site ID
+ *           example: 1234
+ *         max_participants:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *           description: Maximum number of participants
+ *           example: 30
+ *         difficulty:
+ *           type: string
+ *           enum: [beginner, intermediate, advanced, expert]
+ *           description: Channel difficulty level
+ *           example: "intermediate"
+ *         location:
+ *           $ref: '#/components/schemas/Coordinates'
+ *     ChannelResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: true
+ *         data:
+ *           $ref: '#/components/schemas/Channel'
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *         version:
+ *           type: string
+ *           example: "1.0.0"
+ *     CreateChannelWithUuidRequest:
+ *       allOf:
+ *         - $ref: '#/components/schemas/CreateChannelRequest'
+ *         - type: object
+ *           required:
+ *             - uuid
+ *           properties:
+ *             uuid:
+ *               type: string
+ *               format: uuid
+ *               description: Specific UUID for the channel
+ *     UpdateChannelRequest:
+ *       type: object
+ *       properties:
+ *         name:
+ *           type: string
+ *           description: Channel name
+ *         description:
+ *           type: string
+ *           description: Channel description
+ *         type:
+ *           type: string
+ *           enum: [site_local, emergency, general, cross_country, instructors]
+ *           description: Channel type
+ *         frequency:
+ *           type: number
+ *           description: Radio frequency in MHz
+ *         flying_site_id:
+ *           type: integer
+ *           description: Associated flying site ID
+ *         max_participants:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           description: Maximum number of participants
+ *         difficulty:
+ *           type: string
+ *           enum: [beginner, intermediate, advanced, expert]
+ *           description: Channel difficulty level
+ *         location:
+ *           $ref: '#/components/schemas/Coordinates'
+ *     ChannelsListResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           example: true
+ *         data:
+ *           type: object
+ *           properties:
+ *             channels:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Channel'
+ *             total:
+ *               type: integer
+ *               description: Total number of channels
+ *             filters_applied:
+ *               type: object
+ *               description: Applied filter parameters
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *         version:
+ *           type: string
+ *           example: "1.0.0"
+ *     APIResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         data:
+ *           description: Response data
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *         version:
+ *           type: string
+ *           example: "1.0.0"
+ *         error:
+ *           type: string
+ *           description: Error message if success is false
+ *     Auth0ManagementTokenData:
+ *       type: object
+ *       properties:
+ *         access_token:
+ *           type: string
+ *           description: Auth0 Management API token
+ *         token_type:
+ *           type: string
+ *           example: "Bearer"
+ *         expires_in:
+ *           type: integer
+ *           description: Token expiration time in seconds
+ *         cached:
+ *           type: boolean
+ *           description: Whether the token was retrieved from cache
  *
  * info:
  *   title: ParaWave PTT API
@@ -452,6 +622,8 @@ import { Auth0ManagementTokenData } from "../types/auth0-management";
  *     description: Real-time PTT audio transmission operations
  *   - name: System
  *     description: System health and status endpoints
+ *   - name: Auth0 Management
+ *     description: Auth0 Management API operations
  */
 
 /**
@@ -770,30 +942,7 @@ export class PTTAPIHandler {
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: true
-	 *                 data:
-	 *                   type: object
-	 *                   properties:
-	 *                     channels:
-	 *                       type: array
-	 *                       items:
-	 *                         $ref: '#/components/schemas/Channel'
-	 *                     total:
-	 *                       type: integer
-	 *                       description: Total number of channels
-	 *                     filters_applied:
-	 *                       type: object
-	 *                       description: Applied filter parameters
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ChannelsListResponse'
 	 *       401:
 	 *         description: Authentication failed
 	 *         content:
@@ -1298,151 +1447,37 @@ export class PTTAPIHandler {
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: true
-	 *                 data:
-	 *                   type: object
-	 *                   properties:
-	 *                     uuid:
-	 *                       type: string
-	 *                       format: uuid
-	 *                     name:
-	 *                       type: string
-	 *                     description:
-	 *                       type: string
-	 *                     type:
-	 *                       type: string
-	 *                       enum: [site_local, emergency, general, cross_country, instructors]
-	 *                     frequency:
-	 *                       type: number
-	 *                     flying_site_id:
-	 *                       type: integer
-	 *                     is_active:
-	 *                       type: boolean
-	 *                     created_at:
-	 *                       type: string
-	 *                       format: date-time
-	 *                     updated_at:
-	 *                       type: string
-	 *                       format: date-time
-	 *                     creator_user_id:
-	 *                       type: string
-	 *                     max_participants:
-	 *                       type: integer
-	 *                     difficulty:
-	 *                       type: string
-	 *                       enum: [beginner, intermediate, advanced, expert]
-	 *                     location:
-	 *                       type: object
-	 *                       properties:
-	 *                         lat:
-	 *                           type: number
-	 *                         lon:
-	 *                           type: number
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ChannelResponse'
 	 *       400:
 	 *         description: Invalid JSON payload
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: false
-	 *                 error:
-	 *                   type: string
-	 *                   example: "Invalid JSON payload"
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 *       401:
 	 *         description: Authentication failed
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: false
-	 *                 error:
-	 *                   type: string
-	 *                   example: "Authentication failed"
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 *       403:
 	 *         description: Insufficient permissions
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: false
-	 *                 error:
-	 *                   type: string
-	 *                   example: "Insufficient permissions"
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 *       404:
 	 *         description: Channel not found
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: false
-	 *                 error:
-	 *                   type: string
-	 *                   example: "Channel not found"
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 *       500:
 	 *         description: Failed to update channel
 	 *         content:
 	 *           application/json:
 	 *             schema:
-	 *               type: object
-	 *               properties:
-	 *                 success:
-	 *                   type: boolean
-	 *                   example: false
-	 *                 error:
-	 *                   type: string
-	 *                   example: "Failed to update channel"
-	 *                 timestamp:
-	 *                   type: string
-	 *                   format: date-time
-	 *                 version:
-	 *                   type: string
-	 *                   example: "1.0.0"
+	 *               $ref: '#/components/schemas/ErrorResponse'
 	 */
 	private async updateChannel(
 		request: Request,
