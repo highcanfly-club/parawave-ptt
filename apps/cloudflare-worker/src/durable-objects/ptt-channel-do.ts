@@ -30,7 +30,7 @@ import {
 	PTTAudioChunkRequest,
 	PTTEndTransmissionRequest,
 	TransmissionAuditLog,
-} from "../types/ptt-audio";
+} from "../types/ptt";
 import { DurableObject } from "cloudflare:workers";
 
 /**
@@ -196,13 +196,16 @@ export class PTTChannelDurableObject extends DurableObject {
 		// Send current transmission state to new participant
 		if (this.activeTransmission) {
 			this.sendToParticipant(userId, {
-				type: "transmission_start",
-				sessionId: this.activeTransmission.sessionId,
-				userId: this.activeTransmission.userId,
-				username: this.activeTransmission.username,
-				audioFormat: this.activeTransmission.audioFormat,
-				isEmergency: this.activeTransmission.isEmergency,
-				timestamp: this.activeTransmission.startTime,
+				type: "transmission_started",
+				session_id: this.activeTransmission.sessionId,
+				channel_uuid: this.activeTransmission.channelUuid,
+				timestamp_ms: this.activeTransmission.startTime,
+				data: {
+					user_id: this.activeTransmission.userId,
+					username: this.activeTransmission.username,
+					audio_format: this.activeTransmission.audioFormat,
+					is_emergency: this.activeTransmission.isEmergency,
+				},
 			});
 
 			// Send recent audio chunks for late joiner
@@ -213,11 +216,14 @@ export class PTTChannelDurableObject extends DurableObject {
 				if (now < bufferedChunk.expires) {
 					this.sendToParticipant(userId, {
 						type: "audio_chunk",
-						sessionId: this.activeTransmission.sessionId,
-						sequence: bufferedChunk.chunk.sequence,
-						audioData: bufferedChunk.chunk.data,
-						timestamp: bufferedChunk.chunk.timestamp,
-						sizeBytes: bufferedChunk.chunk.sizeBytes,
+						session_id: this.activeTransmission.sessionId,
+						channel_uuid: this.activeTransmission.channelUuid,
+						timestamp_ms: bufferedChunk.chunk.timestamp,
+						data: {
+							sequence: bufferedChunk.chunk.sequence,
+							audio_data: bufferedChunk.chunk.data,
+							size_bytes: bufferedChunk.chunk.sizeBytes,
+						},
 					});
 				}
 			}
@@ -257,7 +263,10 @@ export class PTTChannelDurableObject extends DurableObject {
 				case "ping":
 					this.sendToParticipant(userId, {
 						type: "pong",
-						timestamp: Date.now(),
+						session_id: "",
+						channel_uuid: this.activeTransmission?.channelUuid || "",
+						timestamp_ms: Date.now(),
+						data: {},
 					});
 					break;
 
@@ -268,8 +277,12 @@ export class PTTChannelDurableObject extends DurableObject {
 			console.error("Error handling WebSocket message:", error);
 			this.sendToParticipant(userId, {
 				type: "error",
-				error: "Invalid message format",
-				timestamp: Date.now(),
+				session_id: "",
+				channel_uuid: this.activeTransmission?.channelUuid || "",
+				timestamp_ms: Date.now(),
+				data: {
+					message: "Invalid message format",
+				},
 			});
 		}
 	}
@@ -370,13 +383,16 @@ export class PTTChannelDurableObject extends DurableObject {
 
 			// Broadcast start to all connected participants
 			this.broadcastToParticipants({
-				type: "transmission_start",
-				sessionId,
-				userId: request.user_id,
-				username: request.username,
-				audioFormat: request.audio_format,
-				isEmergency: request.is_emergency || false,
-				timestamp: Date.now(),
+				type: "transmission_started",
+				session_id: sessionId,
+				channel_uuid: request.channel_uuid,
+				timestamp_ms: Date.now(),
+				data: {
+					user_id: request.user_id,
+					username: request.username,
+					audio_format: request.audio_format,
+					is_emergency: request.is_emergency || false,
+				},
 			});
 
 			return {
@@ -542,14 +558,18 @@ export class PTTChannelDurableObject extends DurableObject {
 			}
 
 			// Broadcast immediately to all connected participants
-			this.broadcastToParticipants({
+			const message: PTTWebSocketMessage = {
 				type: "audio_chunk",
-				sessionId: request.session_id,
-				sequence: request.chunk_sequence,
-				audioData: request.audio_data,
-				timestamp: request.timestamp_ms,
-				sizeBytes: request.chunk_size_bytes,
-			});
+				session_id: request.session_id,
+				channel_uuid: this.activeTransmission.channelUuid,
+				timestamp_ms: request.timestamp_ms,
+				data: {
+					sequence: request.chunk_sequence,
+					audio_data: request.audio_data,
+					size_bytes: request.chunk_size_bytes,
+				},
+			};
+			this.broadcastToParticipants(message);
 
 			return {
 				success: true,
@@ -650,13 +670,18 @@ export class PTTChannelDurableObject extends DurableObject {
 
 			// Broadcast end to participants
 			this.broadcastToParticipants({
-				type: "transmission_end",
-				sessionId: transmission.sessionId,
-				userId: transmission.userId,
-				duration: duration,
-				totalChunks: chunksReceived,
-				totalBytes: transmission.totalBytes,
-				timestamp: Date.now(),
+				type: "transmission_ended",
+				session_id: transmission.sessionId,
+				channel_uuid: transmission.channelUuid,
+				timestamp_ms: Date.now(),
+				data: {
+					user_id: transmission.userId,
+					duration_ms: duration,
+					total_chunks: chunksReceived,
+					total_bytes: transmission.totalBytes,
+					missing_chunks: missingChunks,
+					packet_loss_rate: packetLossRate,
+				},
 			});
 
 			// Log transmission for audit (minimal metadata only)
@@ -923,13 +948,17 @@ export class PTTChannelDurableObject extends DurableObject {
 
 		// Broadcast forced end
 		this.broadcastToParticipants({
-			type: "transmission_end",
-			sessionId: transmission.sessionId,
-			userId: transmission.userId,
-			duration: duration,
-			totalChunks: transmission.expectedSequence - 1,
-			totalBytes: transmission.totalBytes,
-			timestamp: Date.now(),
+			type: "transmission_ended",
+			session_id: transmission.sessionId,
+			channel_uuid: transmission.channelUuid,
+			timestamp_ms: Date.now(),
+			data: {
+				user_id: transmission.userId,
+				duration_ms: duration,
+				total_chunks: transmission.expectedSequence - 1,
+				total_bytes: transmission.totalBytes,
+				reason: reason,
+			},
 		});
 
 		// Log forced end
@@ -1352,5 +1381,20 @@ export class PTTChannelDurableObject extends DurableObject {
 		timestamp: number;
 	}> {
 		return this.getPTTStatusLogic();
+	}
+
+	/**
+	 * Handle incoming requests to the Durable Object
+	 * This is the main entry point for all requests to this Durable Object
+	 * Only handles WebSocket upgrades since other operations use RPC calls
+	 */
+	async fetch(request: Request): Promise<Response> {
+		// Handle WebSocket upgrade requests only
+		if (request.headers.get("Upgrade") === "websocket") {
+			return this.handleWebSocketUpgrade(request);
+		}
+
+		// All other operations should use RPC methods (pttStart, pttChunk, pttEnd, pttStatus)
+		return new Response("Use RPC methods for PTT operations", { status: 405 });
 	}
 }

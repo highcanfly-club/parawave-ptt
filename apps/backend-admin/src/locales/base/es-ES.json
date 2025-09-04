@@ -154,5 +154,27 @@
   "write-permission-description": "Acceso de escritura para crear y modificar canales",
   "admin-permission-description": "Acceso administrativo completo",
   "tenant-admin-permission-description": "Privilegios de administración del tenant",
-  "users-administration": "Administración de Usuarios"
+  "users-administration": "Administración de Usuarios",
+  "webclient": {
+    "title": "Cliente PTT Web",
+    "connection": "Conexión",
+    "connecting": "Conectando...",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "live": "En vivo",
+    "transmission": "Transmisión",
+    "start_talking": "Comenzar a hablar",
+    "stop_talking": "Dejar de hablar",
+    "recording": "Grabando",
+    "ready": "Listo",
+    "chunks": "fragmentos",
+    "join_failed": "Error al unirse al canal",
+    "connection_failed": "Error de conexión",
+    "websocket_error": "Error de conexión WebSocket",
+    "transmission_start_failed": "Error al iniciar la transmisión",
+    "microphone_access_failed": "Acceso al micrófono denegado",
+    "auto_playback_enabled": "Reproducción automática de transmisiones entrantes habilitada",
+    "opus_format_supported": "Formato de audio Opus compatible",
+    "websocket_connected": "WebSocket conectado para audio en tiempo real"
+  }
 }

@@ -154,5 +154,27 @@
   "write-permission-description": "وصول الكتابة لإنشاء وتعديل القنوات",
   "admin-permission-description": "وصول إداري كامل",
   "tenant-admin-permission-description": "امتيازات إدارة المستأجر",
-  "users-administration": "إدارة المستخدمين"
+  "users-administration": "إدارة المستخدمين",
+  "webclient": {
+    "title": "عميل PTT الويب",
+    "connection": "الاتصال",
+    "connecting": "جاري الاتصال...",
+    "connected": "متصل",
+    "disconnected": "غير متصل",
+    "live": "مباشر",
+    "transmission": "البث",
+    "start_talking": "ابدأ الحديث",
+    "stop_talking": "توقف عن الحديث",
+    "recording": "جاري التسجيل",
+    "ready": "جاهز",
+    "chunks": "قطع",
+    "join_failed": "فشل في الانضمام إلى القناة",
+    "connection_failed": "فشل في الاتصال",
+    "websocket_error": "خطأ في اتصال WebSocket",
+    "transmission_start_failed": "فشل في بدء البث",
+    "microphone_access_failed": "تم رفض الوصول إلى الميكروفون",
+    "auto_playback_enabled": "تم تمكين التشغيل التلقائي للبث الوارد",
+    "opus_format_supported": "تنسيق الصوت Opus مدعوم",
+    "websocket_connected": "WebSocket متصل للصوت في الوقت الفعلي"
+  }
 }

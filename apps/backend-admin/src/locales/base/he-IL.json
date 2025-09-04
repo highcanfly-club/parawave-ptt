@@ -154,5 +154,27 @@
   "write-permission-description": "גישת כתיבה ליצירה ועריכת ערוצים",
   "admin-permission-description": "גישת מנהל מלאה",
   "tenant-admin-permission-description": "הרשאות ניהול דייר",
-  "users-administration": "ניהול משתמשים"
+  "users-administration": "ניהול משתמשים",
+  "webclient": {
+    "title": "לקוח PTT אינטרנט",
+    "connection": "חיבור",
+    "connecting": "מתחבר...",
+    "connected": "מחובר",
+    "disconnected": "מנותק",
+    "live": "חי",
+    "transmission": "שידור",
+    "start_talking": "התחל לדבר",
+    "stop_talking": "הפסק לדבר",
+    "recording": "מקליט",
+    "ready": "מוכן",
+    "chunks": "חתיכות",
+    "join_failed": "נכשל בהצטרפות לערוץ",
+    "connection_failed": "חיבור נכשל",
+    "websocket_error": "שגיאת חיבור WebSocket",
+    "transmission_start_failed": "נכשל בהתחלת שידור",
+    "microphone_access_failed": "גישה למיקרופון נדחתה",
+    "auto_playback_enabled": "הפעלה אוטומטית של שידורים נכנסים מופעלת",
+    "opus_format_supported": "פורמט שמע Opus נתמך",
+    "websocket_connected": "WebSocket מחובר לשמע בזמן אמת"
+  }
 }

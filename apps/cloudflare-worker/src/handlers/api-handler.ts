@@ -43,7 +43,7 @@ import {
 	PTTStartTransmissionRequest,
 	PTTAudioChunkRequest,
 	PTTEndTransmissionRequest,
-} from "../types/ptt-audio";
+} from "../types/ptt";
 import { Auth0ManagementTokenData } from "../types/auth0-management";
 
 /**
@@ -1785,7 +1785,16 @@ export class PTTAPIHandler {
 		permissions?: string[];
 		error?: string;
 	}> {
-		const authHeader = request.headers.get("Authorization");
+		let authHeader = request.headers.get("Authorization");
+
+		// For WebSocket connections, check for token in query parameters
+		if (!authHeader) {
+			const url = new URL(request.url);
+			const tokenParam = url.searchParams.get("token");
+			if (tokenParam) {
+				authHeader = `Bearer ${tokenParam}`;
+			}
+		}
 
 		if (!authHeader || !authHeader.startsWith("Bearer ")) {
 			return {

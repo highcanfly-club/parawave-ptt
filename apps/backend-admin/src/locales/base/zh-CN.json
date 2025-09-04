@@ -154,5 +154,27 @@
   "write-permission-description": "创建和修改频道的写入访问权限",
   "admin-permission-description": "完全管理访问权限",
   "tenant-admin-permission-description": "租户管理权限",
-  "users-administration": "用户管理"
+  "users-administration": "用户管理",
+  "webclient": {
+    "title": "网页PTT客户端",
+    "connection": "连接",
+    "connecting": "连接中...",
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "live": "直播",
+    "transmission": "传输",
+    "start_talking": "开始说话",
+    "stop_talking": "停止说话",
+    "recording": "录音中",
+    "ready": "就绪",
+    "chunks": "块",
+    "join_failed": "加入频道失败",
+    "connection_failed": "连接失败",
+    "websocket_error": "WebSocket连接错误",
+    "transmission_start_failed": "启动传输失败",
+    "microphone_access_failed": "麦克风访问被拒绝",
+    "auto_playback_enabled": "已启用传入传输的自动播放",
+    "opus_format_supported": "支持Opus音频格式",
+    "websocket_connected": "WebSocket已连接实时音频"
+  }
 }

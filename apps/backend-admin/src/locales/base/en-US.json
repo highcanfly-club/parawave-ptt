@@ -154,5 +154,27 @@
   "write-permission-description": "Write access to create and modify channels",
   "admin-permission-description": "Full administrative access",
   "tenant-admin-permission-description": "Tenant administration privileges",
-  "users-administration": "Users Administration"
+  "users-administration": "Users Administration",
+  "webclient": {
+    "title": "Web PTT Client",
+    "connection": "Connection",
+    "connecting": "Connecting...",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "live": "Live",
+    "transmission": "Transmission",
+    "start_talking": "Start Talking",
+    "stop_talking": "Stop Talking",
+    "recording": "Recording",
+    "ready": "Ready",
+    "chunks": "chunks",
+    "join_failed": "Failed to join channel",
+    "connection_failed": "Connection failed",
+    "websocket_error": "WebSocket connection error",
+    "transmission_start_failed": "Failed to start transmission",
+    "microphone_access_failed": "Microphone access failed",
+    "auto_playback_enabled": "Auto-playback of incoming transmissions enabled",
+    "opus_format_supported": "Opus audio format supported",
+    "websocket_connected": "WebSocket connected for real-time audio"
+  }
 }

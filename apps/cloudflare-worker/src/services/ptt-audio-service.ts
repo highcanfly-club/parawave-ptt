@@ -29,7 +29,7 @@ import {
 	PTTAudioChunkResponse,
 	PTTEndTransmissionRequest,
 	PTTEndTransmissionResponse,
-} from "../types/ptt-audio";
+} from "../types/ptt";
 
 /**
  * Service for managing PTT audio transmissions via Durable Objects

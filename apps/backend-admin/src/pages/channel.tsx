@@ -8,6 +8,7 @@ import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
 import { useSecuredApi, useAuth } from "@/authentication";
 import { APIResponse, PTTChannel, ChannelParticipant } from "@/types/ptt";
+import WebClient from "@/components/web-client";
 
 export default function ChannelPage() {
     const { t } = useTranslation();
@@ -20,6 +21,7 @@ export default function ChannelPage() {
     const [participantsLoading, setParticipantsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [canViewParticipants, setCanViewParticipants] = useState<boolean>(false);
+    const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
     useEffect(() => {
         const fetchChannel = async () => {
@@ -35,10 +37,12 @@ export default function ChannelPage() {
                     setChannel(response.data);
 
                     // Check permissions for viewing participants
-                    const isAdmin = await hasPermission(import.meta.env.ADMIN_PERMISSION);
+                    const isAdminUser = await hasPermission(import.meta.env.ADMIN_PERMISSION);
                     const hasAccessToChannel = await hasPermission(`${import.meta.env.ACCESS_PERMISSION_PREFIX}:${uuid.toLowerCase()}`);
 
-                    if (isAdmin || hasAccessToChannel) {
+                    setIsAdmin(isAdminUser);
+
+                    if (isAdminUser || hasAccessToChannel) {
                         setCanViewParticipants(true);
                         // Fetch participants after channel is loaded and permissions verified
                         await fetchParticipants();
@@ -126,7 +130,14 @@ export default function ChannelPage() {
                     <h1 className={title()}>{channel.name}</h1>
                     <h2 className="text-lg text-default-600 mt-2">{channel.description}</h2>
                 </div>
-
+                {/* Web Client for PTT - Only for admin users */}
+                {channel && (
+                    <WebClient
+                        channelUuid={channel.uuid}
+                        channelName={channel.name}
+                        isAdmin={isAdmin}
+                    />
+                )}
                 <Card className="max-w-2xl w-full">
                     <CardHeader className="flex gap-3">
                         <div className="flex flex-col">
