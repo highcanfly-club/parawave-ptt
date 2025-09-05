@@ -99,9 +99,11 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // Configuration PTT
     private var ephemeralPushToken: String?
-    private var pendingPushToken: String? // Token temporaire en attente d'un canal
     private var currentSessionId: String?
     private var transmissionStartTime: Date?
+    
+    // PTT Framework initialization state
+    private var pttInitializationTask: Task<Void, Never>?
     
     // Audio recording for PTT transmission
     private var audioEngine: AVAudioEngine?
@@ -126,8 +128,9 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         setupNotifications()
 
         // Initialize PTT framework asynchronously
-        Task { @MainActor in
+        self.pttInitializationTask = Task { @MainActor in
             await self.setupPTTFramework()
+            self.pttInitializationTask = nil
         }
     }
 
@@ -244,6 +247,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 delegate: self,
                 restorationDelegate: self)
             print("✅ PTT Channel Manager initialized successfully")
+            print("   - Delegate set to: \(String(describing: self))")
         } catch {
             print("❌ Failed to initialize PTT Channel Manager: \(error.localizedDescription)")
 
@@ -360,28 +364,18 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             throw ParapenteError.insufficientPermissions
         }
 
+        // Wait for PTT framework initialization if it's still in progress
+        if let initializationTask = pttInitializationTask {
+            print("⏳ Waiting for PTT framework initialization to complete...")
+            await initializationTask.value
+            print("✅ PTT framework initialization completed")
+        }
+
         // Create the channel descriptor for the PTT framework
         let channelDescriptor = PTChannelDescriptor(
             name: channel.name,
             image: createChannelImage(for: channel)
         )
-
-        // Join the channel via API first
-        let location = locationManager.location
-        let joinResponse = try await networkService.joinChannel(
-            channel.uuid,
-            location: location,
-            ephemeralPushToken: ephemeralPushToken
-        )
-
-        guard joinResponse.success else {
-            throw ParapenteError.networkError(
-                NSError(
-                    domain: "JoinFailed", code: 0,
-                    userInfo: [
-                        NSLocalizedDescriptionKey: joinResponse.error ?? "Failed to join channel"
-                    ]))
-        }
 
         // Store channel info immediately (before PTT framework call)
         self.currentChannel = channel
@@ -391,34 +385,36 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if let channelManager = channelManager {
             // Create a UUID for this channel session
             let channelUUID = UUID()
-            self.currentChannelUUID = channelUUID
             
             print("🔄 Requesting join to Apple PTT framework...")
+            print("   - Channel UUID: \(channelUUID)")
+            print("   - Channel name: \(channelDescriptor.name)")
             
-            // Use the correct Apple API - this triggers didJoinChannel delegate when successful
-            try await channelManager.requestJoinChannel(
-                channelUUID: channelUUID, 
-                descriptor: channelDescriptor
-            )
-            
-            print("✅ Apple PTT join request sent, waiting for delegate callback...")
-            // The actual join confirmation will come via didJoinChannel delegate
+            do {
+                // Use the correct Apple API - this triggers didJoinChannel delegate when successful
+                try await channelManager.requestJoinChannel(
+                    channelUUID: channelUUID, 
+                    descriptor: channelDescriptor
+                )
+                
+                print("✅ Apple PTT join request sent successfully, waiting for delegate callback...")
+                // The actual join confirmation will come via didJoinChannel delegate
+                // Note: currentChannelUUID will be set in didJoinChannel when successful
+            } catch {
+                print("❌ Apple PTT join request failed: \(error.localizedDescription)")
+                print("   - Error domain: \((error as NSError).domain)")
+                print("   - Error code: \((error as NSError).code)")
+                
+                // Continue with API-only mode
+                self.isJoined = true
+                print("⚠️ Falling back to API-only mode due to PTT framework error")
+            }
         } else {
             print("⚠️ PTT Channel Manager not available - continuing with API-only mode")
             print("💡 For full PTT functionality, test on a physical device with iOS 16+")
             self.currentChannelUUID = nil
             // Set joined manually since we won't get the delegate callback
             self.isJoined = true
-        }
-
-        // Send pending push token if available
-        if let pendingToken = self.pendingPushToken {
-            print("📤 Sending pending push token (\(pendingToken.prefix(20))...) now that channel is ready...")
-            Task {
-                await updateEphemeralPushToken(pendingToken)
-                self.pendingPushToken = nil
-                print("🧹 Pending token sent and cleared")
-            }
         }
 
         // Load participants
@@ -484,6 +480,34 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("Channel leave process completed: \(channel.name)")
     }
 
+    /// Perform API join with ephemeral push token (called when token is received)
+    @MainActor
+    private func performAPIJoin(with token: String) async {
+        guard let channel = currentChannel else {
+            print("❌ No current channel found for API join")
+            return
+        }
+
+        print("🔄 Performing API join with ephemeral push token...")
+
+        do {
+            let location = locationManager.location
+            let joinResponse = try await networkService.joinChannel(
+                channel.uuid,
+                location: location,
+                ephemeralPushToken: token
+            )
+
+            if joinResponse.success {
+                print("✅ API join successful with ephemeral push token")
+            } else {
+                print("❌ API join failed: \(joinResponse.error ?? "Unknown error")")
+            }
+        } catch {
+            print("❌ Error performing API join: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Participants Management
 
     @MainActor
@@ -534,6 +558,13 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// This will show the Apple PTT interface and begin transmission if successful
     @MainActor
     func requestStartTransmission() async throws {
+        print("🎙️ Starting PTT transmission...")
+        print("   - Channel manager available: \(channelManager != nil)")
+        print("   - Current channel UUID: \(currentChannelUUID?.uuidString ?? "nil")")
+        print("   - Is joined: \(isJoined)")
+        print("   - Current channel: \(currentChannel?.name ?? "nil")")
+        print("   - Is transmitting: \(isTransmitting)")
+        
         guard let channelManager = channelManager else {
             throw ParapenteError.transmissionFailed
         }
@@ -1079,19 +1110,16 @@ extension PTTChannelManager: PTChannelManagerDelegate {
     ) {
         print("✅ Successfully joined Apple PTT channel: \(channelUUID), reason: \(reason)")
         print("📱 Blue PTT button should now appear in iOS status bar")
+        print("   - Current channel UUID was: \(self.currentChannelUUID?.uuidString ?? "nil")")
 
         Task { @MainActor in
             self.isJoined = true
             
-            // Confirm the channel UUID matches what we expect
-            if self.currentChannelUUID == channelUUID {
-                print("🎯 Channel UUID matches our expectation")
-                if let channelName = self.currentChannel?.name {
-                    print("🔗 Linked to channel: \(channelName)")
-                }
-            } else {
-                print("⚠️ Channel UUID mismatch - updating to match Apple's framework")
-                self.currentChannelUUID = channelUUID
+            // Set the channel UUID from Apple's framework
+            self.currentChannelUUID = channelUUID
+            print("🎯 Channel UUID set to: \(channelUUID)")
+            if let channelName = self.currentChannel?.name {
+                print("🔗 Linked to channel: \(channelName)")
             }
             
             NotificationCenter.default.post(name: .pttChannelJoined, object: channelUUID)
@@ -1103,10 +1131,14 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         reason: PTChannelLeaveReason
     ) {
         print("👋 Left Apple PTT channel: \(channelUUID), reason: \(reason)")
+        print("   - Reason code: \(reason.rawValue)")
         print("📱 Blue PTT button should now disappear from iOS status bar")
 
         Task { @MainActor in
             self.isJoined = false
+            
+            // Clear the channel UUID
+            self.currentChannelUUID = nil
             
             // Stop any ongoing transmission
             if self.isTransmitting {
@@ -1236,19 +1268,13 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         // Convertir le token binaire en hexadécimal
         let tokenHex = pushToken.map { String(format: "%02x", $0) }.joined()
         print("🔑 Received PTT push token: \(tokenHex.prefix(20))...")
+        print("   - Current channel UUID: \(self.currentChannelUUID?.uuidString ?? "nil")")
+        print("   - Is joined: \(self.isJoined)")
+        print("   - Current channel: \(self.currentChannel?.name ?? "nil")")
 
-        // Stocker temporairement le token
-        self.pendingPushToken = tokenHex
-        print("📦 Token stored temporarily, waiting for channel to be ready...")
-
-        // Essayer d'envoyer immédiatement si le canal est déjà défini
-        if currentChannel != nil {
-            print("� Channel already available, sending token immediately...")
-            Task {
-                await updateEphemeralPushToken(tokenHex)
-            }
-        } else {
-            print("⏳ Channel not ready yet, token will be sent when channel is joined")
+        // Perform API join immediately with the received token
+        Task {
+            await performAPIJoin(with: tokenHex)
         }
     }
 
