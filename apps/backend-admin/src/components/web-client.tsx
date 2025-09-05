@@ -32,11 +32,17 @@ interface TransmissionState {
     chunksSent: number;
 }
 
+function generateUUIDv4(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 /**
  * Utility class for managing ephemeral tokens in web client
  */
 class WebClientIdUtils {
-    private static readonly TOKEN_KEY = 'parawave_ephemeral_token';
+    private static readonly TOKEN_KEY = generateUUIDv4(); // Unique key for localStorage
 
     /**
      * Get or generate an ephemeral token for this client session
