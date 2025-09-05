@@ -2,10 +2,10 @@ import AVFoundation
 import AudioToolbox
 import CoreLocation
 import Foundation
+import Opus
 import PushToTalk
 import UIKit
 import UserNotifications
-import Opus
 
 /*
  Copyright (C) 2025 Ronan Le Meillat
@@ -37,7 +37,7 @@ public enum AudioQuality {
     case excellent
     case transmitting
     case listening
-    
+
     var displayName: String {
         switch self {
         case .unknown: return "Unknown"
@@ -49,7 +49,7 @@ public enum AudioQuality {
         case .listening: return "Listening"
         }
     }
-    
+
     var color: UIColor {
         switch self {
         case .unknown: return .systemGray
@@ -69,8 +69,11 @@ public struct AudioStats {
     let signalStrength: Float
     let noiseLevel: Float
     let latency: TimeInterval
-    
-    public init(quality: AudioQuality = .unknown, signalStrength: Float = 0.0, noiseLevel: Float = 0.0, latency: TimeInterval = 0.0) {
+
+    public init(
+        quality: AudioQuality = .unknown, signalStrength: Float = 0.0, noiseLevel: Float = 0.0,
+        latency: TimeInterval = 0.0
+    ) {
         self.quality = quality
         self.signalStrength = signalStrength
         self.noiseLevel = noiseLevel
@@ -101,19 +104,19 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var ephemeralPushToken: String?
     private var currentSessionId: String?
     private var transmissionStartTime: Date?
-    
+
     // PTT Framework initialization state
     private var pttInitializationTask: Task<Void, Never>?
-    
+
     // Audio recording for PTT transmission
     private var audioEngine: AVAudioEngine?
     private var audioInputNode: AVAudioInputNode?
     private var audioChunkSequence: Int = 0
-    
+
     // Hardware-accelerated AAC encoder
     private var aacConverter: AVAudioConverter?
     private var aacOutputFormat: AVAudioFormat?
-    
+
     // Opus encoder for low-latency voice transmission
     private var opusEncoder: Opus.Encoder?
     private var opusDecoder: Opus.Decoder?
@@ -385,26 +388,27 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if let channelManager = channelManager {
             // Create a UUID for this channel session
             let channelUUID = UUID()
-            
+
             print("🔄 Requesting join to Apple PTT framework...")
             print("   - Channel UUID: \(channelUUID)")
             print("   - Channel name: \(channelDescriptor.name)")
-            
+
             do {
                 // Use the correct Apple API - this triggers didJoinChannel delegate when successful
                 try await channelManager.requestJoinChannel(
-                    channelUUID: channelUUID, 
+                    channelUUID: channelUUID,
                     descriptor: channelDescriptor
                 )
-                
-                print("✅ Apple PTT join request sent successfully, waiting for delegate callback...")
+
+                print(
+                    "✅ Apple PTT join request sent successfully, waiting for delegate callback...")
                 // The actual join confirmation will come via didJoinChannel delegate
                 // Note: currentChannelUUID will be set in didJoinChannel when successful
             } catch {
                 print("❌ Apple PTT join request failed: \(error.localizedDescription)")
                 print("   - Error domain: \((error as NSError).domain)")
                 print("   - Error code: \((error as NSError).code)")
-                
+
                 // Continue with API-only mode
                 self.isJoined = true
                 print("⚠️ Falling back to API-only mode due to PTT framework error")
@@ -469,7 +473,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         self.currentChannelUUID = nil
         self.participants = []
         self.activeTransmission = nil
-        
+
         // Reset transmission state
         if isTransmitting {
             self.isTransmitting = false
@@ -553,7 +557,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     // MARK: - Transmission Control (Apple PTT Framework)
-    
+
     /// Request to start transmission via Apple's PTT framework
     /// This will show the Apple PTT interface and begin transmission if successful
     @MainActor
@@ -564,22 +568,22 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("   - Is joined: \(isJoined)")
         print("   - Current channel: \(currentChannel?.name ?? "nil")")
         print("   - Is transmitting: \(isTransmitting)")
-        
+
         guard let channelManager = channelManager else {
             throw ParapenteError.transmissionFailed
         }
-        
+
         guard let channelUUID = currentChannelUUID else {
             throw ParapenteError.channelNotFound
         }
-        
+
         guard !isTransmitting else {
             print("Transmission already in progress")
             return
         }
-        
+
         print("🎙️ Requesting transmission start via Apple's PTT framework...")
-        
+
         do {
             try await channelManager.requestBeginTransmitting(channelUUID: channelUUID)
             print("✅ Apple PTT transmission request sent, waiting for delegate callback...")
@@ -589,7 +593,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             throw error
         }
     }
-    
+
     /// Request to stop transmission via Apple's PTT framework
     @MainActor
     func requestStopTransmission() {
@@ -597,14 +601,14 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("❌ Apple PTT framework not available")
             return
         }
-        
+
         guard let channelUUID = currentChannelUUID else {
             print("❌ No active channel to stop transmission on")
             return
         }
-        
+
         print("🛑 Requesting transmission end via Apple's PTT framework...")
-        
+
         // Apple's stopTransmitting is synchronous
         channelManager.stopTransmitting(channelUUID: channelUUID)
         print("✅ Apple PTT transmission stop request sent")
@@ -612,50 +616,53 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     // MARK: - Audio Recording and Transmission
-    
+
     /// Start audio recording and streaming to backend
     @MainActor
     private func startAudioRecording() async {
         print("🎵 Starting audio recording...")
-        
+
         // Don't require session ID to start recording
         // We'll buffer audio until we have the session ID
-        
+
         // Reset sequence counter
         audioChunkSequence = 0
-        
+
         // Initialize audio engine
         audioEngine = AVAudioEngine()
         guard let audioEngine = audioEngine else {
             print("❌ Failed to create audio engine")
             return
         }
-        
+
         audioInputNode = audioEngine.inputNode
         guard let inputNode = audioInputNode else {
             print("❌ Failed to get audio input node")
             return
         }
-        
+
         // Configure audio format - matching backend expectations
         let audioFormat = inputNode.outputFormat(forBus: 0)
-        print("📊 Audio format - Sample Rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)")
-        
+        print(
+            "📊 Audio format - Sample Rate: \(audioFormat.sampleRate), Channels: \(audioFormat.channelCount)"
+        )
+
         // Initialize hardware-accelerated AAC encoder
         setupAACEncoder(with: audioFormat)
-        
+
         // Initialize Opus encoder for voice optimization
         setupOpusEncoder(with: audioFormat)
-        
+
         // Install tap to capture audio data
-        let bufferSize: AVAudioFrameCount = 4096 // Small buffer for low latency
-        
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: audioFormat) { [weak self] (buffer, time) in
+        let bufferSize: AVAudioFrameCount = 4096  // Small buffer for low latency
+
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: audioFormat) {
+            [weak self] (buffer, time) in
             Task {
                 await self?.processAudioBuffer(buffer, timestamp: time)
             }
         }
-        
+
         // Start the audio engine
         do {
             try audioEngine.start()
@@ -665,39 +672,39 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             await stopAudioRecording()
         }
     }
-    
+
     /// Stop audio recording and cleanup
     @MainActor
     private func stopAudioRecording() async {
         print("🛑 Stopping audio recording")
-        
+
         // Stop and cleanup audio engine
         audioEngine?.stop()
         audioInputNode?.removeTap(onBus: 0)
         audioEngine = nil
         audioInputNode = nil
-        
+
         // Cleanup AAC encoder
         aacConverter = nil
         aacOutputFormat = nil
-        
+
         // Cleanup Opus encoder
         opusEncoder = nil
         opusDecoder = nil
-        
+
         // Reset sequence counter
         audioChunkSequence = 0
     }
-    
+
     /// Setup hardware-accelerated AAC encoder
     private func setupAACEncoder(with inputFormat: AVAudioFormat) {
         print("🔧 Setting up hardware-accelerated AAC encoder...")
-        
+
         // Create AAC-LC output format optimized for hardware encoding
         var aacDescription = AudioStreamBasicDescription(
             mSampleRate: inputFormat.sampleRate,
             mFormatID: kAudioFormatMPEG4AAC,
-            mFormatFlags: 0, // Let the system choose optimal flags for hardware
+            mFormatFlags: 0,  // Let the system choose optimal flags for hardware
             mBytesPerPacket: 0,
             mFramesPerPacket: 1024,
             mBytesPerFrame: 0,
@@ -705,46 +712,49 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             mBitsPerChannel: 0,
             mReserved: 0
         )
-        
+
         guard let outputFormat = AVAudioFormat(streamDescription: &aacDescription) else {
             print("❌ Failed to create AAC output format")
             return
         }
-        
+
         // Create converter with hardware acceleration hints
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             print("❌ Failed to create AAC converter")
             return
         }
-        
+
         // Optimize converter settings for hardware acceleration
-        converter.bitRate = 64000 // 64kbps for good quality/battery balance
+        converter.bitRate = 64000  // 64kbps for good quality/battery balance
         converter.bitRateStrategy = "AVAudioBitRateStrategy_Constant"
-        
+
         // Store for reuse
         self.aacConverter = converter
         self.aacOutputFormat = outputFormat
-        
+
         print("✅ Hardware-accelerated AAC encoder ready")
     }
-    
+
     /// Setup Opus encoder optimized for voice transmission
     private func setupOpusEncoder(with inputFormat: AVAudioFormat) {
         print("🔧 Setting up Opus encoder for voice transmission...")
-        
+
         do {
             // Create Opus-compatible format (16kHz mono for voice)
-            guard let opusFormat = AVAudioFormat(opusPCMFormat: .float32, sampleRate: .opus16khz, channels: 1) else {
+            guard
+                let opusFormat = AVAudioFormat(
+                    opusPCMFormat: .float32, sampleRate: .opus16khz, channels: 1)
+            else {
                 print("❌ Failed to create Opus format")
                 return
             }
-            
+
             // Create Opus encoder with VOIP application for voice optimization
             self.opusEncoder = try Opus.Encoder(format: opusFormat, application: .voip)
-            
+
             // Create decoder for testing/debugging
             self.opusDecoder = try Opus.Decoder(format: opusFormat)
-            
+
             print("✅ Opus encoder ready (16kHz mono, VOIP-optimized)")
         } catch {
             print("❌ Failed to setup Opus encoder: \(error)")
@@ -752,273 +762,283 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             opusDecoder = nil
         }
     }
-    
+
     /// Convert AVAudioPCMBuffer to WebM container with Opus codec
     private func convertBufferToWebMOpusData(_ buffer: AVAudioPCMBuffer) -> Data? {
         guard let encoder = opusEncoder else {
             print("❌ Opus encoder not initialized, falling back to PCM")
             return convertBufferToPCMData(buffer)
         }
-        
+
         guard let channelData = buffer.floatChannelData?[0] else {
             print("❌ No audio data in buffer")
             return nil
         }
-        
+
         let frameCount = Int(buffer.frameLength)
-        
+
         // Convert to 16kHz mono format expected by Opus encoder
         let targetSampleRate: Double = 16000
         let inputSampleRate = buffer.format.sampleRate
         let resampleRatio = targetSampleRate / inputSampleRate
-        
+
         let targetFrameCount = Int(Double(frameCount) * resampleRatio)
         var resampledData = [Float32]()
         resampledData.reserveCapacity(targetFrameCount)
-        
+
         // Simple downsampling - take every nth sample
         let step = Int(inputSampleRate / targetSampleRate)
-        
+
         for i in stride(from: 0, to: frameCount, by: step) {
             if i < frameCount {
                 resampledData.append(channelData[i])
             }
         }
-        
+
         // Create Opus-compatible buffer (16kHz mono float32)
-        guard let opusFormat = AVAudioFormat(opusPCMFormat: .float32, sampleRate: .opus16khz, channels: 1) else {
+        guard
+            let opusFormat = AVAudioFormat(
+                opusPCMFormat: .float32, sampleRate: .opus16khz, channels: 1)
+        else {
             print("❌ Failed to create Opus format for encoding")
             return convertBufferToPCMData(buffer)
         }
-        
+
         // Create PCM buffer with resampled data
-        let opusFrameSize = min(resampledData.count, Int(AVAudioFrameCount.opusMax)) // Limit to max Opus frame size
-        guard let opusBuffer = AVAudioPCMBuffer(pcmFormat: opusFormat, frameCapacity: AVAudioFrameCount(opusFrameSize)) else {
+        let opusFrameSize = min(resampledData.count, Int(AVAudioFrameCount.opusMax))  // Limit to max Opus frame size
+        guard
+            let opusBuffer = AVAudioPCMBuffer(
+                pcmFormat: opusFormat, frameCapacity: AVAudioFrameCount(opusFrameSize))
+        else {
             print("❌ Failed to create Opus PCM buffer")
             return convertBufferToPCMData(buffer)
         }
-        
+
         // Copy resampled data to Opus buffer
         guard let opusChannelData = opusBuffer.floatChannelData?[0] else {
             print("❌ Failed to get Opus buffer channel data")
             return convertBufferToPCMData(buffer)
         }
-        
+
         let copyCount = min(opusFrameSize, resampledData.count)
         for i in 0..<copyCount {
             opusChannelData[i] = resampledData[i]
         }
         opusBuffer.frameLength = AVAudioFrameCount(copyCount)
-        
+
         do {
             // Encode with swift-opus
-            var opusData = Data(count: 1500) // Max Opus packet size
+            var opusData = Data(count: 1500)  // Max Opus packet size
             let encodedBytes = try encoder.encode(opusBuffer, to: &opusData)
-            opusData = Data(opusData.prefix(encodedBytes)) // Trim to actual size
-            
+            opusData = Data(opusData.prefix(encodedBytes))  // Trim to actual size
+
             // Debug info
-            let compressionRatio = Double(copyCount * 4) / Double(encodedBytes) // Float32 = 4 bytes per sample
-            print("🎵 Opus: \(copyCount) samples → \(encodedBytes) bytes (compression: \(String(format: "%.1f", compressionRatio))x)")
-            
+            let compressionRatio = Double(copyCount * 4) / Double(encodedBytes)  // Float32 = 4 bytes per sample
+            print(
+                "🎵 Opus: \(copyCount) samples → \(encodedBytes) bytes (compression: \(String(format: "%.1f", compressionRatio))x)"
+            )
+
             // Create WebM container with Opus data
             let webmData = createWebMContainer(with: opusData, sampleRate: Int(targetSampleRate))
-            
+
             // Encode to base64
             let base64String = webmData.base64EncodedString()
             let base64Data = Data(base64String.utf8)
-            
-            print("📦 WebM container created: \(webmData.count) bytes → Base64: \(base64Data.count) bytes")
-            
+
+            print(
+                "📦 WebM container created: \(webmData.count) bytes → Base64: \(base64Data.count) bytes"
+            )
+
             return base64Data
-            
+
         } catch {
             print("❌ Opus encoding failed: \(error)")
             // Fallback to PCM
             return convertBufferToPCMData(buffer)
         }
     }
-    
+
     /// Create a minimal WebM container with Opus audio data
     private func createWebMContainer(with opusData: Data, sampleRate: Int) -> Data {
         var webmData = Data()
-        
+
         // WebM header (EBML)
         let ebmlHeader: [UInt8] = [
-            0x1A, 0x45, 0xDF, 0xA3, // EBML ID
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, // EBML size
-            0x42, 0x82, // DocType ID
-            0x88, // DocType size
-            0x77, 0x65, 0x62, 0x6D, // "webm"
-            0x42, 0x87, // DocTypeVersion ID
-            0x81, // DocTypeVersion size
-            0x01, // Version 1
-            0x42, 0x85, // DocTypeReadVersion ID
-            0x81, // DocTypeReadVersion size
-            0x01  // Read version 1
+            0x1A, 0x45, 0xDF, 0xA3,  // EBML ID
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20,  // EBML size
+            0x42, 0x82,  // DocType ID
+            0x88,  // DocType size
+            0x77, 0x65, 0x62, 0x6D,  // "webm"
+            0x42, 0x87,  // DocTypeVersion ID
+            0x81,  // DocTypeVersion size
+            0x01,  // Version 1
+            0x42, 0x85,  // DocTypeReadVersion ID
+            0x81,  // DocTypeReadVersion size
+            0x01,  // Read version 1
         ]
-        
+
         // Segment header
         let segmentHeader: [UInt8] = [
-            0x18, 0x53, 0x80, 0x67, // Segment ID
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // Segment size (placeholder)
+            0x18, 0x53, 0x80, 0x67,  // Segment ID
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // Segment size (placeholder)
         ]
-        
+
         // Info section
         let infoSection: [UInt8] = [
-            0x15, 0x49, 0xA9, 0x66, // Info ID
-            0x8F, // Info size
-            0x2A, 0xD7, 0xB1, // TimecodeScale ID
-            0x83, // TimecodeScale size
-            0x0F, 0x42, 0x40, // 1,000,000 (nanoseconds)
-            0x44, 0x89, // Duration ID
-            0x84, // Duration size
-            0x3F, 0x80, 0x00, 0x00  // Duration (placeholder)
+            0x15, 0x49, 0xA9, 0x66,  // Info ID
+            0x8F,  // Info size
+            0x2A, 0xD7, 0xB1,  // TimecodeScale ID
+            0x83,  // TimecodeScale size
+            0x0F, 0x42, 0x40,  // 1,000,000 (nanoseconds)
+            0x44, 0x89,  // Duration ID
+            0x84,  // Duration size
+            0x3F, 0x80, 0x00, 0x00,  // Duration (placeholder)
         ]
-        
+
         // Tracks section with Opus codec
         var tracksData = Data()
         let tracksHeader: [UInt8] = [
-            0x16, 0x54, 0xAE, 0x6B, // Tracks ID
-            0x00, 0x00, 0x00, 0x00  // Tracks size (placeholder)
+            0x16, 0x54, 0xAE, 0x6B,  // Tracks ID
+            0x00, 0x00, 0x00, 0x00,  // Tracks size (placeholder)
         ]
         tracksData.append(contentsOf: tracksHeader)
-        
+
         // Track entry
         let trackEntry: [UInt8] = [
-            0xAE, // TrackEntry ID
-            0x00, 0x00, 0x00  // TrackEntry size (placeholder)
+            0xAE,  // TrackEntry ID
+            0x00, 0x00, 0x00,  // TrackEntry size (placeholder)
         ]
         tracksData.append(contentsOf: trackEntry)
-        
+
         // Track number
         let trackNumber: [UInt8] = [
-            0xD7, // TrackNumber ID
-            0x81, // TrackNumber size
-            0x01  // Track number 1
+            0xD7,  // TrackNumber ID
+            0x81,  // TrackNumber size
+            0x01,  // Track number 1
         ]
         tracksData.append(contentsOf: trackNumber)
-        
+
         // Track UID
         let trackUID: [UInt8] = [
-            0x73, 0xC5, // TrackUID ID
-            0x84, // TrackUID size
-            0x00, 0x00, 0x00, 0x01  // UID 1
+            0x73, 0xC5,  // TrackUID ID
+            0x84,  // TrackUID size
+            0x00, 0x00, 0x00, 0x01,  // UID 1
         ]
         tracksData.append(contentsOf: trackUID)
-        
+
         // Track type (audio)
         let trackType: [UInt8] = [
-            0x83, // TrackType ID
-            0x81, // TrackType size
-            0x02  // Audio track
+            0x83,  // TrackType ID
+            0x81,  // TrackType size
+            0x02,  // Audio track
         ]
         tracksData.append(contentsOf: trackType)
-        
+
         // Codec ID (Opus)
         let codecID = "A_OPUS"
         var codecIDData = Data()
-        codecIDData.append(0x86) // CodecID ID
-        codecIDData.append(UInt8(codecID.count + 0x80)) // CodecID size
+        codecIDData.append(0x86)  // CodecID ID
+        codecIDData.append(UInt8(codecID.count + 0x80))  // CodecID size
         codecIDData.append(contentsOf: codecID.utf8)
         tracksData.append(codecIDData)
-        
+
         // Audio settings
         let audioHeader: [UInt8] = [
-            0xE1, // Audio ID
-            0x00, 0x00  // Audio size (placeholder)
+            0xE1,  // Audio ID
+            0x00, 0x00,  // Audio size (placeholder)
         ]
         tracksData.append(contentsOf: audioHeader)
-        
+
         // Sample rate
         var sampleRateData = Data()
-        sampleRateData.append(0xB5) // SamplingFrequency ID
-        sampleRateData.append(0x84) // SamplingFrequency size
+        sampleRateData.append(0xB5)  // SamplingFrequency ID
+        sampleRateData.append(0x84)  // SamplingFrequency size
         let sampleRateBytes = withUnsafeBytes(of: Float64(sampleRate)) { Data($0) }
         sampleRateData.append(contentsOf: sampleRateBytes)
         tracksData.append(sampleRateData)
-        
+
         // Channels
         let channels: [UInt8] = [
-            0x9F, // Channels ID
-            0x81, // Channels size
-            0x01  // Mono
+            0x9F,  // Channels ID
+            0x81,  // Channels size
+            0x01,  // Mono
         ]
         tracksData.append(contentsOf: channels)
-        
+
         // Update sizes in tracks section
         let tracksSize = tracksData.count - 5
         tracksData[4] = UInt8((tracksSize >> 24) & 0xFF)
         tracksData[5] = UInt8((tracksSize >> 16) & 0xFF)
         tracksData[6] = UInt8((tracksSize >> 8) & 0xFF)
         tracksData[7] = UInt8(tracksSize & 0xFF)
-        
+
         // Cluster with audio data
         var clusterData = Data()
         let clusterHeader: [UInt8] = [
-            0x1F, 0x43, 0xB6, 0x75, // Cluster ID
-            0x00, 0x00, 0x00, 0x00  // Cluster size (placeholder)
+            0x1F, 0x43, 0xB6, 0x75,  // Cluster ID
+            0x00, 0x00, 0x00, 0x00,  // Cluster size (placeholder)
         ]
         clusterData.append(contentsOf: clusterHeader)
-        
+
         // Timecode
         let timecode: [UInt8] = [
-            0xE7, // Timecode ID
-            0x81, // Timecode size
-            0x00  // Timecode 0
+            0xE7,  // Timecode ID
+            0x81,  // Timecode size
+            0x00,  // Timecode 0
         ]
         clusterData.append(contentsOf: timecode)
-        
+
         // Simple block with Opus data
         var simpleBlock = Data()
-        simpleBlock.append(0xA3) // SimpleBlock ID
-        simpleBlock.append(0x00) // SimpleBlock size (placeholder)
-        
+        simpleBlock.append(0xA3)  // SimpleBlock ID
+        simpleBlock.append(0x00)  // SimpleBlock size (placeholder)
+
         // SimpleBlock header (track number 1, no flags)
-        simpleBlock.append(0x81) // Track number 1 with keyframe flag
-        
+        simpleBlock.append(0x81)  // Track number 1 with keyframe flag
+
         // Timecode (relative to cluster)
-        simpleBlock.append(0x00) // Timecode 0
-        simpleBlock.append(0x00) // Timecode 0
-        
+        simpleBlock.append(0x00)  // Timecode 0
+        simpleBlock.append(0x00)  // Timecode 0
+
         // Opus data
         simpleBlock.append(opusData)
-        
+
         // Update SimpleBlock size
         let simpleBlockSize = simpleBlock.count - 2
-        simpleBlock[1] = UInt8(simpleBlockSize & 0xFF) | 0x80 // Size with length 1
-        
+        simpleBlock[1] = UInt8(simpleBlockSize & 0xFF) | 0x80  // Size with length 1
+
         clusterData.append(simpleBlock)
-        
+
         // Update cluster size
         let clusterSize = clusterData.count - 5
         clusterData[4] = UInt8((clusterSize >> 24) & 0xFF)
         clusterData[5] = UInt8((clusterSize >> 16) & 0xFF)
         clusterData[6] = UInt8((clusterSize >> 8) & 0xFF)
         clusterData[7] = UInt8(clusterSize & 0xFF)
-        
+
         // Assemble final WebM file
         webmData.append(contentsOf: ebmlHeader)
         webmData.append(contentsOf: segmentHeader)
         webmData.append(contentsOf: infoSection)
         webmData.append(tracksData)
         webmData.append(clusterData)
-        
+
         return webmData
     }
-    
+
     /// Process audio buffer and send to backend
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, timestamp: AVAudioTime) async {
-        guard let sessionId = currentSessionId else { 
+        guard let sessionId = currentSessionId else {
             print("🎵 Audio buffer received but no session ID yet - buffering...")
-            return 
+            return
         }
-        
+
         // Don't send chunks if transmission has ended
         guard isTransmitting else {
             print("🎵 Audio buffer received but transmission has ended - dropping chunk")
             return
         }
-        
+
         // Create WebM container with Opus codec and encode to base64
         guard let audioData = convertBufferToWebMOpusData(buffer) else {
             print("⚠️ Failed to convert audio buffer to WebM Opus data")
@@ -1028,37 +1048,40 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Create audio chunk for backend
         let chunkSize = audioData.count
         let timestampMs = Int64(Date().timeIntervalSince1970 * 1000)
-        
+
         // Increment sequence number
         audioChunkSequence += 1
-        
+
         do {
-            print("📤 Sending WebM Opus audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
-            
+            print(
+                "📤 Sending WebM Opus audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
+
             let response = try await networkService.sendAudioChunk(
                 sessionId: sessionId,
                 audioData: audioData,
                 sequenceNumber: audioChunkSequence
             )
-            
+
             if !response.success {
-                print("❌ Failed to send audio chunk \(audioChunkSequence): \(response.error ?? "Unknown error")")
+                print(
+                    "❌ Failed to send audio chunk \(audioChunkSequence): \(response.error ?? "Unknown error")"
+                )
             }
-            
+
         } catch {
             print("❌ Network error sending audio chunk \(audioChunkSequence): \(error)")
         }
     }
-    
+
     /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding)
     private func convertBufferToPCMData(_ buffer: AVAudioPCMBuffer) -> Data? {
         guard let channelData = buffer.floatChannelData?[0] else {
             return nil
         }
-        
+
         let frameCount = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
-        
+
         // Convert float samples to PCM16 for AAC encoding
         var pcmData = Data()
         for i in 0..<frameCount {
@@ -1067,7 +1090,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             var pcmBytes = pcmValue.littleEndian
             pcmData.append(Data(bytes: &pcmBytes, count: MemoryLayout<Int16>.size))
         }
-        
+
         // For now, we'll send PCM data. In production, you might want to encode to AAC-LC
         // This would require additional AudioToolbox integration
         return pcmData
@@ -1076,12 +1099,12 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Convert AVAudioPCMBuffer to Data (AAC-LC encoding with hardware acceleration)
     private func convertBufferToAACData(_ buffer: AVAudioPCMBuffer) -> Data? {
         let inputFormat = buffer.format
-        
+
         // Create AAC-LC output format optimized for hardware encoding
         var aacDescription = AudioStreamBasicDescription(
             mSampleRate: inputFormat.sampleRate,
             mFormatID: kAudioFormatMPEG4AAC,
-            mFormatFlags: 0, // Let the system choose optimal flags for hardware
+            mFormatFlags: 0,  // Let the system choose optimal flags for hardware
             mBytesPerPacket: 0,
             mFramesPerPacket: 1024,
             mBytesPerFrame: 0,
@@ -1089,73 +1112,77 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             mBitsPerChannel: 0,
             mReserved: 0
         )
-        
+
         guard let outputFormat = AVAudioFormat(streamDescription: &aacDescription) else {
             print("❌ Failed to create AAC output format")
             return nil
         }
-        
+
         // Create converter with hardware acceleration hints
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             print("❌ Failed to create AAC converter")
             return nil
         }
-        
+
         // Optimize converter settings for hardware acceleration
-        converter.bitRate = 64000 // 64kbps for good quality/battery balance
+        converter.bitRate = 64000  // 64kbps for good quality/battery balance
         converter.bitRateStrategy = "AVAudioBitRateStrategy_Constant"
-        
+
         // Create compressed buffer with optimal size for hardware encoding
-        let maxOutputSize = AVAudioFrameCount(inputFormat.sampleRate * 0.1) // 100ms worth
+        let maxOutputSize = AVAudioFrameCount(inputFormat.sampleRate * 0.1)  // 100ms worth
         let compressedBuffer = AVAudioCompressedBuffer(
             format: outputFormat,
             packetCapacity: maxOutputSize,
             maximumPacketSize: 1024
         )
-        
+
         var error: NSError?
-        let status = converter.convert(to: compressedBuffer, error: &error) { inNumPackets, outStatus in
+        let status = converter.convert(to: compressedBuffer, error: &error) {
+            inNumPackets, outStatus in
             outStatus.pointee = .haveData
             return buffer
         }
-        
+
         if status == .error {
             print("❌ AAC conversion failed: \(error?.localizedDescription ?? "Unknown error")")
             return nil
         }
-        
+
         // Extract AAC data
         let aacData = Data(bytes: compressedBuffer.data, count: Int(compressedBuffer.byteLength))
         return aacData
     }
-    
+
     /// Convert AVAudioPCMBuffer to AAC Data using pre-configured hardware-accelerated converter
     private func convertBufferToAACDataOptimized(_ buffer: AVAudioPCMBuffer) -> Data? {
         guard let converter = aacConverter, let outputFormat = aacOutputFormat else {
             print("❌ AAC converter not initialized, falling back to PCM")
             return convertBufferToPCMData(buffer)
         }
-        
+
         // Create compressed buffer with optimal size for hardware encoding
-        let maxOutputSize = AVAudioFrameCount(buffer.format.sampleRate * 0.1) // 100ms worth
+        let maxOutputSize = AVAudioFrameCount(buffer.format.sampleRate * 0.1)  // 100ms worth
         let compressedBuffer = AVAudioCompressedBuffer(
             format: outputFormat,
             packetCapacity: maxOutputSize,
             maximumPacketSize: 1024
         )
-        
+
         var error: NSError?
-        let status = converter.convert(to: compressedBuffer, error: &error) { inNumPackets, outStatus in
+        let status = converter.convert(to: compressedBuffer, error: &error) {
+            inNumPackets, outStatus in
             outStatus.pointee = .haveData
             return buffer
         }
-        
+
         if status == .error {
-            print("❌ Hardware AAC conversion failed: \(error?.localizedDescription ?? "Unknown error")")
+            print(
+                "❌ Hardware AAC conversion failed: \(error?.localizedDescription ?? "Unknown error")"
+            )
             // Fallback to PCM if hardware encoding fails
             return convertBufferToPCMData(buffer)
         }
-        
+
         // Extract AAC data
         let aacData = Data(bytes: compressedBuffer.data, count: Int(compressedBuffer.byteLength))
         return aacData
@@ -1165,7 +1192,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     var isPTTFrameworkAvailable: Bool {
         return channelManager != nil
     }
-    
+
     /// Get current PTT status for debugging
     func debugPrintPTTStatus() {
         print("=== Apple PushToTalk Status ===")
@@ -1176,7 +1203,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("Is transmitting: \(isTransmitting)")
         print("Current session ID: \(currentSessionId ?? "none")")
         print("Participants count: \(participants.count)")
-        
+
         if isPTTFrameworkAvailable {
             print("📱 Expected behavior:")
             print("  1. Blue PTT button in iOS status bar when joined")
@@ -1255,18 +1282,19 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
     }
-    
+
     // MARK: - Permission Management
-    
+
     /// Request microphone permissions - Static method for compatibility
     public static func requestMicrophonePermission() async -> Bool {
         print("🎤 Requesting microphone permission...")
-        
+
         // With Apple's PTT framework, microphone permissions are handled automatically
         // when the user first attempts to use PTT functionality
         return await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                print(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
+                print(
+                    granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
                 continuation.resume(returning: granted)
             }
         }
@@ -1287,14 +1315,22 @@ extension PTTChannelManager: PTChannelManagerDelegate {
 
         Task { @MainActor in
             self.isJoined = true
-            
+
             // Set the channel UUID from Apple's framework
             self.currentChannelUUID = channelUUID
             print("🎯 Channel UUID set to: \(channelUUID)")
             if let channelName = self.currentChannel?.name {
                 print("🔗 Linked to channel: \(channelName)")
             }
-            
+
+            // Perform API join if we have an ephemeral push token
+            if let token = self.ephemeralPushToken {
+                print("🔄 Performing API join with stored ephemeral push token...")
+                await self.performAPIJoin(with: token)
+            } else {
+                print("⚠️ No ephemeral push token available for API join")
+            }
+
             NotificationCenter.default.post(name: .pttChannelJoined, object: channelUUID)
         }
     }
@@ -1309,21 +1345,21 @@ extension PTTChannelManager: PTChannelManagerDelegate {
 
         Task { @MainActor in
             self.isJoined = false
-            
+
             // Clear the channel UUID
             self.currentChannelUUID = nil
-            
+
             // Stop any ongoing transmission
             if self.isTransmitting {
                 self.isTransmitting = false
-                
+
                 // Clean up server session if active
                 if let sessionId = self.currentSessionId {
                     print("🧹 Cleaning up server transmission session: \(sessionId)")
                     self.currentSessionId = nil
                 }
             }
-            
+
             NotificationCenter.default.post(name: .pttChannelLeft, object: channelUUID)
         }
     }
@@ -1338,7 +1374,7 @@ extension PTTChannelManager: PTChannelManagerDelegate {
             // Update local state
             self.isTransmitting = true
             self.transmissionStartTime = Date()
-            
+
             // Start server transmission session
             if let channel = self.currentChannel {
                 do {
@@ -1349,15 +1385,18 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                         expectedDuration: Int(NetworkConfiguration.maxTransmissionDuration),
                         location: location
                     )
-                    
-                    if transmissionResponse.success, let sessionId = transmissionResponse.sessionId {
+
+                    if transmissionResponse.success, let sessionId = transmissionResponse.sessionId
+                    {
                         self.currentSessionId = sessionId
                         print("✅ Server transmission session started: \(sessionId)")
-                        
+
                         // If audio recording was already started by Apple PTT framework,
                         // we can now start processing audio chunks with the session ID
                         if self.audioEngine?.isRunning == true {
-                            print("🎵 Audio recording already active, session ID now available for chunk processing")
+                            print(
+                                "🎵 Audio recording already active, session ID now available for chunk processing"
+                            )
                         }
                     } else {
                         print("❌ Failed to start server transmission session")
@@ -1366,7 +1405,7 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                     print("❌ Error starting server transmission: \(error)")
                 }
             }
-            
+
             // Notify UI
             NotificationCenter.default.post(name: .pttTransmissionStarted, object: channelUUID)
         }
@@ -1381,55 +1420,57 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         Task { @MainActor in
             // Update local state
             self.isTransmitting = false
-            
+
             // Calculate transmission duration
             let durationMs: Int
             if let startTime = self.transmissionStartTime {
                 let duration = Date().timeIntervalSince(startTime)
-                durationMs = Int(duration * 1000) // Convert to milliseconds
+                durationMs = Int(duration * 1000)  // Convert to milliseconds
                 print("📊 Transmission duration: \(duration)s (\(durationMs)ms)")
             } else {
                 durationMs = 0
                 print("⚠️ No start time recorded, using 0 duration")
             }
-            
+
             // End server transmission session with a small delay to allow final chunks to be sent
             if let sessionId = self.currentSessionId {
                 // Wait a short moment to let any remaining audio chunks be processed
                 print("⏳ Waiting 500ms for final audio chunks to be sent...")
-                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
-                
+                try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms delay
+
                 do {
                     print("📡 Ending server transmission session: \(sessionId)")
                     let location = self.locationManager.location
                     let coordinates = location.map { loc in
                         Coordinates(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
                     }
-                    
+
                     let endResponse = try await self.networkService.endTransmission(
-                        sessionId: sessionId, 
-                        totalDurationMs: durationMs, 
+                        sessionId: sessionId,
+                        totalDurationMs: durationMs,
                         finalLocation: coordinates
                     )
-                    
+
                     if endResponse.success {
-                        print("✅ Server transmission ended. Duration: \(endResponse.totalDuration ?? 0)s, Participants: \(endResponse.participantsReached ?? 0)")
+                        print(
+                            "✅ Server transmission ended. Duration: \(endResponse.totalDuration ?? 0)s, Participants: \(endResponse.participantsReached ?? 0)"
+                        )
                     } else {
                         print("❌ Failed to end server transmission session")
                     }
                 } catch {
                     print("❌ Error ending server transmission: \(error)")
                 }
-                
+
                 self.currentSessionId = nil
             }
-            
+
             // Clear transmission timing
             self.transmissionStartTime = nil
-            
+
             // Reload participants to update state
             await self.loadParticipants()
-            
+
             // Notify UI
             NotificationCenter.default.post(name: .pttTransmissionStopped, object: channelUUID)
         }
@@ -1445,9 +1486,9 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         print("   - Is joined: \(self.isJoined)")
         print("   - Current channel: \(self.currentChannel?.name ?? "nil")")
 
-        // Perform API join immediately with the received token
+        // Store the token for later use when channel is joined
         Task {
-            await performAPIJoin(with: tokenHex)
+            await updateEphemeralPushToken(tokenHex)
         }
     }
 
@@ -1472,15 +1513,15 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                 .playAndRecord,
                 mode: .voiceChat,
                 options: [.allowBluetooth, .defaultToSpeaker])
-            
+
             // Configure sample rate for high quality audio (matching backend expectation)
             try audioSession.setPreferredSampleRate(44100)
-            try audioSession.setPreferredIOBufferDuration(0.02) // 20ms buffer for low latency
-            
+            try audioSession.setPreferredIOBufferDuration(0.02)  // 20ms buffer for low latency
+
         } catch {
             print("❌ PTT audio session configuration error: \(error)")
         }
-        
+
         // Start audio recording for transmission
         Task { @MainActor in
             await self.startAudioRecording()
@@ -1495,18 +1536,20 @@ extension PTTChannelManager: PTChannelManagerDelegate {
         Task { @MainActor in
             // Stop audio recording first
             await self.stopAudioRecording()
-            
+
             // Clean up transmission state if needed
             // Note: When Apple deactivates the audio session, it usually means
             // the transmission has already ended, so we just clean up our state
             if self.isTransmitting {
                 print("⚠️ Audio session deactivated while transmitting - cleaning up state")
                 self.isTransmitting = false
-                
+
                 // Clean up server session if active
                 if let sessionId = self.currentSessionId {
-                    print("🧹 Cleaning up server transmission session after audio deactivation: \(sessionId)")
-                    
+                    print(
+                        "🧹 Cleaning up server transmission session after audio deactivation: \(sessionId)"
+                    )
+
                     // Calculate duration if we have a start time
                     let durationMs: Int
                     if let startTime = self.transmissionStartTime {
@@ -1514,39 +1557,42 @@ extension PTTChannelManager: PTChannelManagerDelegate {
                         durationMs = Int(duration * 1000)
                         print("📊 Emergency cleanup - transmission duration: \(duration)s")
                     } else {
-                        durationMs = 1000 // Default 1 second for emergency cleanup
+                        durationMs = 1000  // Default 1 second for emergency cleanup
                         print("⚠️ No start time recorded for emergency cleanup, using 1s")
                     }
-                    
+
                     // Attempt to end the server session
                     Task {
                         do {
                             let location = self.locationManager.location
                             let coordinates = location.map { loc in
-                                Coordinates(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+                                Coordinates(
+                                    lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
                             }
-                            
+
                             let endResponse = try await self.networkService.endTransmission(
-                                sessionId: sessionId, 
-                                totalDurationMs: durationMs, 
+                                sessionId: sessionId,
+                                totalDurationMs: durationMs,
                                 finalLocation: coordinates
                             )
                             if endResponse.success {
                                 print("✅ Server session cleaned up after audio deactivation")
                             } else {
-                                print("⚠️ Server session cleanup warning: \(endResponse.error ?? "unknown error")")
+                                print(
+                                    "⚠️ Server session cleanup warning: \(endResponse.error ?? "unknown error")"
+                                )
                             }
                         } catch {
                             print("❌ Error cleaning up server session: \(error)")
                         }
                     }
-                    
+
                     self.currentSessionId = nil
                 }
-                
+
                 // Clear transmission timing
                 self.transmissionStartTime = nil
-                
+
                 // Reload participants to update state
                 await self.loadParticipants()
             }
