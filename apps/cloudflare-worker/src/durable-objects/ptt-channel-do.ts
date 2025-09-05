@@ -996,18 +996,18 @@ export class PTTChannelDurableObject extends DurableObject {
 		const payload = JSON.stringify(message);
 		const excludeSet = new Set(excludeUsers);
 
-		for (const [userId, participant] of this.connectedParticipants) {
-			if (excludeSet.has(userId)) continue;
+		for (const [ephemeralPushToken, participant] of this.connectedParticipants) {
+			if (excludeSet.has(participant.userId)) continue;
 
 			try {
 				participant.websocket.send(payload);
 			} catch (error) {
 				console.error(
-					`Failed to send message to participant ${userId}:`,
+					`Failed to send message to participant ${participant.userId}:`,
 					error,
 				);
 				// Remove broken connection
-				this.connectedParticipants.delete(userId);
+				this.connectedParticipants.delete(ephemeralPushToken);
 			}
 		}
 	}

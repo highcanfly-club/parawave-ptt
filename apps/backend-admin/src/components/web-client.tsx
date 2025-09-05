@@ -206,12 +206,15 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
     }, [isConnected, disconnectFromChannel]);
 
     const handleWebSocketMessage = useCallback((message: PTTWebSocketMessage) => {
+        console.log("WebClient received WebSocket message:", message);
+
         switch (message.type) {
             case "transmission_started":
                 console.log("Transmission started:", message.session_id);
                 break;
 
             case "audio_chunk":
+                console.log("Received audio chunk:", message.data?.sequence);
                 if (message.data?.audio_data) {
                     playAudioChunk(message.data.audio_data);
                 }
@@ -230,6 +233,8 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
 
     const playAudioChunk = useCallback(async (audioData: string) => {
         try {
+            console.log("Decoding audio chunk, data length:", audioData.length);
+
             // Decode base64 audio data
             const binaryString = atob(audioData);
             const bytes = new Uint8Array(binaryString.length);
@@ -237,16 +242,23 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
+            console.log("Decoded binary data, length:", bytes.length);
+
             // Create audio buffer and play
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                console.log("Created AudioContext");
             }
 
+            console.log("Starting audio decode...");
             const audioBuffer = await audioContextRef.current.decodeAudioData(bytes.buffer.slice());
+            console.log("Audio decoded successfully, duration:", audioBuffer.duration);
+
             const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(audioContextRef.current.destination);
             source.start();
+            console.log("Audio playback started");
         } catch (error) {
             console.error("Error playing audio chunk:", error);
         }
