@@ -841,15 +841,11 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             // Create WebM container with Opus data
             let webmData = createWebMContainer(with: opusData, sampleRate: Int(targetSampleRate))
 
-            // Encode to base64
-            let base64String = webmData.base64EncodedString()
-            let base64Data = Data(base64String.utf8)
-
             print(
-                "📦 WebM container created: \(webmData.count) bytes → Base64: \(base64Data.count) bytes"
+                "📦 WebM container created: \(webmData.count) bytes"
             )
 
-            return base64Data
+            return webmData
 
         } catch {
             print("❌ Opus encoding failed: \(error)")
