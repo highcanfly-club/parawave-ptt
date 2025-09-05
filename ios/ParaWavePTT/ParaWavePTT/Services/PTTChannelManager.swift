@@ -753,8 +753,8 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
     
-    /// Convert AVAudioPCMBuffer to Opus Data optimized for voice
-    private func convertBufferToOpusData(_ buffer: AVAudioPCMBuffer) -> Data? {
+    /// Convert AVAudioPCMBuffer to WebM container with Opus codec
+    private func convertBufferToWebMOpusData(_ buffer: AVAudioPCMBuffer) -> Data? {
         guard let encoder = opusEncoder else {
             print("❌ Opus encoder not initialized, falling back to PCM")
             return convertBufferToPCMData(buffer)
@@ -820,13 +820,190 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             let compressionRatio = Double(copyCount * 4) / Double(encodedBytes) // Float32 = 4 bytes per sample
             print("🎵 Opus: \(copyCount) samples → \(encodedBytes) bytes (compression: \(String(format: "%.1f", compressionRatio))x)")
             
-            return opusData
+            // Create WebM container with Opus data
+            let webmData = createWebMContainer(with: opusData, sampleRate: Int(targetSampleRate))
+            
+            // Encode to base64
+            let base64String = webmData.base64EncodedString()
+            let base64Data = Data(base64String.utf8)
+            
+            print("📦 WebM container created: \(webmData.count) bytes → Base64: \(base64Data.count) bytes")
+            
+            return base64Data
             
         } catch {
             print("❌ Opus encoding failed: \(error)")
             // Fallback to PCM
             return convertBufferToPCMData(buffer)
         }
+    }
+    
+    /// Create a minimal WebM container with Opus audio data
+    private func createWebMContainer(with opusData: Data, sampleRate: Int) -> Data {
+        var webmData = Data()
+        
+        // WebM header (EBML)
+        let ebmlHeader: [UInt8] = [
+            0x1A, 0x45, 0xDF, 0xA3, // EBML ID
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, // EBML size
+            0x42, 0x82, // DocType ID
+            0x88, // DocType size
+            0x77, 0x65, 0x62, 0x6D, // "webm"
+            0x42, 0x87, // DocTypeVersion ID
+            0x81, // DocTypeVersion size
+            0x01, // Version 1
+            0x42, 0x85, // DocTypeReadVersion ID
+            0x81, // DocTypeReadVersion size
+            0x01  // Read version 1
+        ]
+        
+        // Segment header
+        let segmentHeader: [UInt8] = [
+            0x18, 0x53, 0x80, 0x67, // Segment ID
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // Segment size (placeholder)
+        ]
+        
+        // Info section
+        let infoSection: [UInt8] = [
+            0x15, 0x49, 0xA9, 0x66, // Info ID
+            0x8F, // Info size
+            0x2A, 0xD7, 0xB1, // TimecodeScale ID
+            0x83, // TimecodeScale size
+            0x0F, 0x42, 0x40, // 1,000,000 (nanoseconds)
+            0x44, 0x89, // Duration ID
+            0x84, // Duration size
+            0x3F, 0x80, 0x00, 0x00  // Duration (placeholder)
+        ]
+        
+        // Tracks section with Opus codec
+        var tracksData = Data()
+        let tracksHeader: [UInt8] = [
+            0x16, 0x54, 0xAE, 0x6B, // Tracks ID
+            0x00, 0x00, 0x00, 0x00  // Tracks size (placeholder)
+        ]
+        tracksData.append(contentsOf: tracksHeader)
+        
+        // Track entry
+        let trackEntry: [UInt8] = [
+            0xAE, // TrackEntry ID
+            0x00, 0x00, 0x00  // TrackEntry size (placeholder)
+        ]
+        tracksData.append(contentsOf: trackEntry)
+        
+        // Track number
+        let trackNumber: [UInt8] = [
+            0xD7, // TrackNumber ID
+            0x81, // TrackNumber size
+            0x01  // Track number 1
+        ]
+        tracksData.append(contentsOf: trackNumber)
+        
+        // Track UID
+        let trackUID: [UInt8] = [
+            0x73, 0xC5, // TrackUID ID
+            0x84, // TrackUID size
+            0x00, 0x00, 0x00, 0x01  // UID 1
+        ]
+        tracksData.append(contentsOf: trackUID)
+        
+        // Track type (audio)
+        let trackType: [UInt8] = [
+            0x83, // TrackType ID
+            0x81, // TrackType size
+            0x02  // Audio track
+        ]
+        tracksData.append(contentsOf: trackType)
+        
+        // Codec ID (Opus)
+        let codecID = "A_OPUS"
+        var codecIDData = Data()
+        codecIDData.append(0x86) // CodecID ID
+        codecIDData.append(UInt8(codecID.count + 0x80)) // CodecID size
+        codecIDData.append(contentsOf: codecID.utf8)
+        tracksData.append(codecIDData)
+        
+        // Audio settings
+        let audioHeader: [UInt8] = [
+            0xE1, // Audio ID
+            0x00, 0x00  // Audio size (placeholder)
+        ]
+        tracksData.append(contentsOf: audioHeader)
+        
+        // Sample rate
+        var sampleRateData = Data()
+        sampleRateData.append(0xB5) // SamplingFrequency ID
+        sampleRateData.append(0x84) // SamplingFrequency size
+        let sampleRateBytes = withUnsafeBytes(of: Float64(sampleRate)) { Data($0) }
+        sampleRateData.append(contentsOf: sampleRateBytes)
+        tracksData.append(sampleRateData)
+        
+        // Channels
+        let channels: [UInt8] = [
+            0x9F, // Channels ID
+            0x81, // Channels size
+            0x01  // Mono
+        ]
+        tracksData.append(contentsOf: channels)
+        
+        // Update sizes in tracks section
+        let tracksSize = tracksData.count - 5
+        tracksData[4] = UInt8((tracksSize >> 24) & 0xFF)
+        tracksData[5] = UInt8((tracksSize >> 16) & 0xFF)
+        tracksData[6] = UInt8((tracksSize >> 8) & 0xFF)
+        tracksData[7] = UInt8(tracksSize & 0xFF)
+        
+        // Cluster with audio data
+        var clusterData = Data()
+        let clusterHeader: [UInt8] = [
+            0x1F, 0x43, 0xB6, 0x75, // Cluster ID
+            0x00, 0x00, 0x00, 0x00  // Cluster size (placeholder)
+        ]
+        clusterData.append(contentsOf: clusterHeader)
+        
+        // Timecode
+        let timecode: [UInt8] = [
+            0xE7, // Timecode ID
+            0x81, // Timecode size
+            0x00  // Timecode 0
+        ]
+        clusterData.append(contentsOf: timecode)
+        
+        // Simple block with Opus data
+        var simpleBlock = Data()
+        simpleBlock.append(0xA3) // SimpleBlock ID
+        simpleBlock.append(0x00) // SimpleBlock size (placeholder)
+        
+        // SimpleBlock header (track number 1, no flags)
+        simpleBlock.append(0x81) // Track number 1 with keyframe flag
+        
+        // Timecode (relative to cluster)
+        simpleBlock.append(0x00) // Timecode 0
+        simpleBlock.append(0x00) // Timecode 0
+        
+        // Opus data
+        simpleBlock.append(opusData)
+        
+        // Update SimpleBlock size
+        let simpleBlockSize = simpleBlock.count - 2
+        simpleBlock[1] = UInt8(simpleBlockSize & 0xFF) | 0x80 // Size with length 1
+        
+        clusterData.append(simpleBlock)
+        
+        // Update cluster size
+        let clusterSize = clusterData.count - 5
+        clusterData[4] = UInt8((clusterSize >> 24) & 0xFF)
+        clusterData[5] = UInt8((clusterSize >> 16) & 0xFF)
+        clusterData[6] = UInt8((clusterSize >> 8) & 0xFF)
+        clusterData[7] = UInt8(clusterSize & 0xFF)
+        
+        // Assemble final WebM file
+        webmData.append(contentsOf: ebmlHeader)
+        webmData.append(contentsOf: segmentHeader)
+        webmData.append(contentsOf: infoSection)
+        webmData.append(tracksData)
+        webmData.append(clusterData)
+        
+        return webmData
     }
     
     /// Process audio buffer and send to backend
@@ -842,15 +1019,11 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
         
-        // Use Opus encoding for optimal voice transmission
-        guard let audioData = convertBufferToOpusData(buffer) else {
-            print("⚠️ Failed to convert audio buffer to Opus data")
+        // Create WebM container with Opus codec and encode to base64
+        guard let audioData = convertBufferToWebMOpusData(buffer) else {
+            print("⚠️ Failed to convert audio buffer to WebM Opus data")
             return
         }
-        // guard let audioData = convertBufferToPCMData(buffer) else {
-        //     print("⚠️ Failed to convert audio buffer to PCM data")
-        //     return
-        // }
 
         // Create audio chunk for backend
         let chunkSize = audioData.count
@@ -860,7 +1033,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         audioChunkSequence += 1
         
         do {
-            print("📤 Sending Opus audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
+            print("📤 Sending WebM Opus audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
             
             let response = try await networkService.sendAudioChunk(
                 sessionId: sessionId,

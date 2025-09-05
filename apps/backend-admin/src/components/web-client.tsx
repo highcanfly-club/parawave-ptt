@@ -233,34 +233,35 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
 
     const playAudioChunk = useCallback(async (audioData: string) => {
         try {
-            console.log("Decoding audio chunk, data length:", audioData.length);
+            console.log("Decoding WebM Opus audio chunk, data length:", audioData.length);
 
-            // Decode base64 audio data
+            // Decode base64 WebM data
             const binaryString = atob(audioData);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            console.log("Decoded binary data, length:", bytes.length);
+            console.log("Decoded WebM binary data, length:", bytes.length);
 
-            // Create audio buffer and play
+            // Create audio buffer from WebM data
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
                 console.log("Created AudioContext");
             }
 
-            console.log("Starting audio decode...");
+            console.log("Starting WebM audio decode...");
+            // Convert Uint8Array to ArrayBuffer for Web Audio API
             const audioBuffer = await audioContextRef.current.decodeAudioData(bytes.buffer.slice());
-            console.log("Audio decoded successfully, duration:", audioBuffer.duration);
+            console.log("WebM audio decoded successfully, duration:", audioBuffer.duration);
 
             const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(audioContextRef.current.destination);
             source.start();
-            console.log("Audio playback started");
+            console.log("WebM audio playback started");
         } catch (error) {
-            console.error("Error playing audio chunk:", error);
+            console.error("Error playing WebM audio chunk:", error);
         }
     }, []);
 
