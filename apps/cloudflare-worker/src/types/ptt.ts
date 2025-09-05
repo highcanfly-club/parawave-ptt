@@ -234,6 +234,13 @@ export interface JoinChannelResponse {
 }
 
 /**
+ * Request payload for leaving a channel
+ */
+export interface LeaveChannelRequest {
+	ephemeral_push_token?: string; // Token éphémère pour identifier l'appareil spécifique
+}
+
+/**
  * Response payload for leaving a channel
  */
 export interface LeaveChannelResponse {

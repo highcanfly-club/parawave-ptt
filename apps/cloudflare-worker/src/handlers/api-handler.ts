@@ -36,6 +36,7 @@ import {
 	ChannelsListResponse,
 	JoinChannelRequest,
 	JoinChannelResponse,
+	LeaveChannelRequest,
 	LeaveChannelResponse,
 	ChannelParticipant,
 } from "../types/ptt";
@@ -2086,10 +2087,24 @@ export class PTTAPIHandler {
 		}
 
 		try {
+			// Parse optional request body for ephemeral token
+			let leaveRequest: LeaveChannelRequest = {};
+
+			try {
+				const body = await request.text();
+
+				if (body.trim()) {
+					leaveRequest = JSON.parse(body);
+				}
+			} catch {
+				// Empty or invalid JSON body is OK for leave request
+			}
+
 			// Leave channel using service
 			const result = await this.channelService.leaveChannel(
 				channelUuid.toLowerCase(),
 				userId,
+				leaveRequest.ephemeral_push_token,
 			);
 
 			if (!result.success) {

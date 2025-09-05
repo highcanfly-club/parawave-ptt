@@ -855,15 +855,15 @@ export class ChannelService {
 				return { success: false, error: "Channel is full" };
 			}
 
-			// Check if user is already a participant
+			// Check if user with this device is already a participant
 			const existingParticipant = (await this.db
 				.prepare(
 					`
-				   SELECT * FROM channel_participants 
-				   WHERE channel_uuid = ? AND user_id = ?
+				   SELECT * FROM channel_participants
+				   WHERE channel_uuid = ? AND user_id = ? AND ephemeral_push_token = ?
 			   `,
 				)
-				.bind(uuidLower, userId)
+				.bind(uuidLower, userId, ephemeralPushToken || '')
 				.first()) as any;
 
 			if (existingParticipant) {
@@ -872,22 +872,22 @@ export class ChannelService {
 					.prepare(
 						`
 					UPDATE channel_participants 
-					SET last_seen = ?, location_lat = ?, location_lon = ?, ephemeral_push_token = ?,
+					SET last_seen = ?, location_lat = ?, location_lon = ?, 
 						device_os = ?, device_os_version = ?, app_version = ?, user_agent = ?
-					WHERE channel_uuid = ? AND user_id = ?
+					WHERE channel_uuid = ? AND user_id = ? AND ephemeral_push_token = ?
 				`,
 					)
 					.bind(
 						this.getCurrentTimestamp(),
 						userLocation?.lat || null,
 						userLocation?.lon || null,
-						ephemeralPushToken || null,
 						deviceInfo?.os || null,
 						deviceInfo?.os_version || null,
 						deviceInfo?.app_version || null,
 						deviceInfo?.user_agent || null,
 						uuidLower,
 						userId,
+						ephemeralPushToken || '',
 					)
 					.run();
 
@@ -971,11 +971,13 @@ export class ChannelService {
 	 * Remove a user from channel participants
 	 * @param channelUuid Channel UUID
 	 * @param userId User ID leaving the channel
+	 * @param ephemeralPushToken Ephemeral token to identify the specific device
 	 * @returns Success status
 	 */
 	async leaveChannel(
 		channelUuid: string,
 		userId: string,
+		ephemeralPushToken?: string,
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			const uuidLower = channelUuid.toLowerCase();
@@ -984,10 +986,10 @@ export class ChannelService {
 				.prepare(
 					`
 			   SELECT * FROM channel_participants 
-			   WHERE channel_uuid = ? AND user_id = ?
+			   WHERE channel_uuid = ? AND user_id = ? AND ephemeral_push_token = ?
 		   `,
 				)
-				.bind(uuidLower, userId)
+				.bind(uuidLower, userId, ephemeralPushToken || '')
 				.first()) as any;
 
 			if (!participant) {
@@ -1002,10 +1004,10 @@ export class ChannelService {
 				.prepare(
 					`
 			   DELETE FROM channel_participants 
-			   WHERE channel_uuid = ? AND user_id = ?
+			   WHERE channel_uuid = ? AND user_id = ? AND ephemeral_push_token = ?
 		   `,
 				)
-				.bind(uuidLower, userId)
+				.bind(uuidLower, userId, ephemeralPushToken || '')
 				.run(); // Log leave event
 			await this.logChannelEvent(uuidLower, "user_left", userId);
 

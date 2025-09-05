@@ -157,10 +157,13 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
         if (!isConnected) return;
 
         try {
-            // Leave the channel
+            // Leave the channel with ephemeral token
+            const ephemeralToken = WebClientIdUtils.getEphemeralToken();
             await postJson(
                 `${import.meta.env.API_BASE_URL}/v1/channels/${channelUuid}/leave`,
-                {}
+                {
+                    ephemeral_push_token: ephemeralToken
+                }
             );
         } catch (error) {
             console.error("Error leaving channel:", error);
@@ -192,6 +195,15 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             chunksSent: 0
         });
     }, [channelUuid, isConnected, postJson, transmission.isRecording]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (isConnected) {
+                disconnectFromChannel();
+            }
+        };
+    }, [isConnected, disconnectFromChannel]);
 
     const handleWebSocketMessage = useCallback((message: PTTWebSocketMessage) => {
         switch (message.type) {

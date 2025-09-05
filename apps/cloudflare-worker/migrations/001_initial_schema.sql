@@ -32,13 +32,13 @@ CREATE TABLE IF NOT EXISTS channel_participants (
     location_lon REAL,
     connection_quality TEXT DEFAULT 'good' CHECK (connection_quality IN ('poor', 'fair', 'good', 'excellent')),
     is_transmitting BOOLEAN DEFAULT FALSE,
-    ephemeral_push_token TEXT, -- Ephemeral APNs PTT token from iOS framework
+    ephemeral_push_token TEXT NOT NULL, -- Ephemeral APNs PTT token from iOS framework (required for multi-device support)
     device_os TEXT, -- Operating system (iOS, Android, Web, etc.)
     device_os_version TEXT, -- OS version (e.g., "17.5.1", "14", "Chrome 119.0")
     app_version TEXT, -- Application version (e.g., "1.2.3", "2.0.0-beta.1")
     user_agent TEXT, -- Full user agent string for debugging
     FOREIGN KEY (channel_uuid) REFERENCES channels (uuid) ON DELETE CASCADE,
-    UNIQUE(channel_uuid, user_id)
+    UNIQUE(channel_uuid, user_id, ephemeral_push_token) -- Allow multiple devices per user
 );
 
 -- Channel messages - Message and transmission history
@@ -129,7 +129,7 @@ CREATE INDEX IF NOT EXISTS idx_channels_coordinates ON channels(coordinates_lat,
 CREATE INDEX IF NOT EXISTS idx_channel_participants_channel ON channel_participants(channel_uuid);
 CREATE INDEX IF NOT EXISTS idx_channel_participants_user ON channel_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_channel_participants_last_seen ON channel_participants(last_seen);
-CREATE INDEX IF NOT EXISTS idx_channel_participants_push_token ON channel_participants(ephemeral_push_token) WHERE ephemeral_push_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_channel_participants_push_token ON channel_participants(ephemeral_push_token);
 CREATE INDEX IF NOT EXISTS idx_channel_messages_channel ON channel_messages(channel_uuid);
 CREATE INDEX IF NOT EXISTS idx_channel_messages_timestamp ON channel_messages(timestamp);
 CREATE INDEX IF NOT EXISTS idx_channel_messages_type ON channel_messages(message_type);
