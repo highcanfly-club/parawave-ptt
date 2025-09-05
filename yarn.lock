@@ -5436,7 +5436,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vitest/runner@npm:3.2.4":
+"@vitest/runner@npm:3.2.4, @vitest/runner@npm:^3.2.4":
   version: 3.2.4
   resolution: "@vitest/runner@npm:3.2.4"
   dependencies:
@@ -5447,7 +5447,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vitest/snapshot@npm:3.2.4":
+"@vitest/snapshot@npm:3.2.4, @vitest/snapshot@npm:^3.2.4":
   version: 3.2.4
   resolution: "@vitest/snapshot@npm:3.2.4"
   dependencies:
@@ -10462,6 +10462,7 @@ __metadata:
     i18next-http-backend: "npm:^3.0.2"
     jose: "npm:^6.1.0"
     oidc-client-ts: "npm:^3.3.0"
+    postcss: "npm:^8.5.6"
     prettier: "npm:^3.6.2"
     react: "npm:^19.1.1"
     react-dom: "npm:^19.1.1"
@@ -10489,6 +10490,8 @@ __metadata:
     "@types/node": "npm:22.17.1"
     "@typescript-eslint/eslint-plugin": "npm:8.41.0"
     "@typescript-eslint/parser": "npm:8.41.0"
+    "@vitest/runner": "npm:^3.2.4"
+    "@vitest/snapshot": "npm:^3.2.4"
     eslint: "npm:^9.34.0"
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-import: "npm:^2.32.0"
