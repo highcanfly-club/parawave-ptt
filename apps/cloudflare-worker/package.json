@@ -15,20 +15,20 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint ./src/**/*.ts --fix",
     "clean": "rm -rf .wrangler .dev.vars .turbo node_modules",
-    "cf-typegen": "wrangler types",
+    "cf-typegen": "bash -c 'cp ../../.env .dev.vars && wrangler types'",
     "d1:create": "npx wrangler d1 execute --local --file migrations/001_initial_schema.sql ptt-parapente",
     "d1:delete": "npx wrangler d1 execute --local --file migrations/000_reset_and_init.sql ptt-parapente",
     "d1:reset": "npm run d1:delete && npm run d1:create",
     "d1:create:remote": "npx wrangler d1 execute --remote --file migrations/001_initial_schema.sql ptt-parapente"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.8.68",
-    "@cloudflare/workers-types": "4.20250829.0",
+    "@cloudflare/vitest-pool-workers": "^0.8.70",
+    "@cloudflare/workers-types": "^4.20250902.0",
     "@jest/globals": "^30.1.1",
     "@types/jest": "^30.0.0",
-    "@types/node": "22.17.1",
-    "@typescript-eslint/eslint-plugin": "8.41.0",
-    "@typescript-eslint/parser": "8.41.0",
+    "@types/node": "^22.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
     "@vitest/runner": "^3.2.4",
     "@vitest/snapshot": "^3.2.4",
     "eslint": "^9.34.0",
@@ -42,10 +42,11 @@
     "prettier": "^3.6.2",
     "ts-jest": "^29.4.1",
     "typescript": "^5.9.2",
-    "vitest": "~3.2.4",
-    "wrangler": "4.33.1"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.34.0"
   },
   "dependencies": {
+    "ebml": "^3.0.0",
     "jose": "^6.1.0"
   }
 }

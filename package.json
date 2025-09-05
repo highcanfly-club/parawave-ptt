@@ -31,17 +31,10 @@
     "build:worker:env": "turbo run build:env --filter=ptt-backend-worker",
     "deploy:worker": "turbo run deploy --filter=ptt-backend-worker"
   },
+  "dependencies": {
+    "swagger-ui-react": "^5.28.1"
+  },
   "devDependencies": {
-    "@types/node": "^22.15.18",
-    "turbo": "2.5.6",
-    "typescript": "^5.9.2"
-  },
-  "resolutions": {
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
-  },
-  "engines": {
-    "node": ">=22.0.0",
-    "yarn": ">=4.0.0"
+    "turbo": "2.5.6"
   }
 }

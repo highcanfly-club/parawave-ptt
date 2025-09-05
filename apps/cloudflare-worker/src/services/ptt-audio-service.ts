@@ -88,6 +88,97 @@ export class PTTAudioService {
 	}
 
 	/**
+	 * Validate WebM/Opus audio chunk format
+	 * Only called when WEBM_DEBUG environment variable is set
+	 */
+	private async validateWebMOpusChunk(audioData: string): Promise<{ valid: boolean; error?: string }> {
+		try {
+			// Decode base64 audio data
+			const binaryString = atob(audioData);
+			const uint8Array = new Uint8Array(binaryString.length);
+			for (let i = 0; i < binaryString.length; i++) {
+				uint8Array[i] = binaryString.charCodeAt(i);
+			}
+
+			// For Cloudflare Workers, we'll do basic WebM validation without EBML parser
+			// Check for WebM header
+			if (uint8Array.length < 4) {
+				return { valid: false, error: 'Data too short for WebM format' };
+			}
+
+			// WebM files start with EBML header
+			// Check for EBML ID (0x1A 0x45 0xDF 0xA3)
+			if (uint8Array[0] !== 0x1A || uint8Array[1] !== 0x45 ||
+				uint8Array[2] !== 0xDF || uint8Array[3] !== 0xA3) {
+				return { valid: false, error: 'Invalid EBML header - not a WebM file' };
+			}
+
+			// Look for DocType "webm"
+			let foundWebM = false;
+			let foundOpus = false;
+			let i = 4;
+
+			while (i < uint8Array.length - 10) {
+				// Look for DocType element (0x42 0x82)
+				if (uint8Array[i] === 0x42 && uint8Array[i + 1] === 0x82) {
+					// Skip element ID and size, look for "webm" string
+					const docTypeStart = i + 4;
+					if (docTypeStart + 4 <= uint8Array.length) {
+						const docType = String.fromCharCode(
+							uint8Array[docTypeStart],
+							uint8Array[docTypeStart + 1],
+							uint8Array[docTypeStart + 2],
+							uint8Array[docTypeStart + 3]
+						);
+						if (docType === 'webm') {
+							foundWebM = true;
+						}
+					}
+					break;
+				}
+				i++;
+			}
+
+			// Look for A_OPUS codec
+			i = 4;
+			while (i < uint8Array.length - 10) {
+				// Look for CodecID element (0x86)
+				if (uint8Array[i] === 0x86) {
+					const codecStart = i + 2;
+					if (codecStart + 5 <= uint8Array.length) {
+						const codec = String.fromCharCode(
+							uint8Array[codecStart],
+							uint8Array[codecStart + 1],
+							uint8Array[codecStart + 2],
+							uint8Array[codecStart + 3],
+							uint8Array[codecStart + 4]
+						);
+						if (codec === 'A_OPUS') {
+							foundOpus = true;
+						}
+					}
+					break;
+				}
+				i++;
+			}
+
+			if (!foundWebM) {
+				return { valid: false, error: 'Not a WebM file (DocType not found)' };
+			}
+
+			if (!foundOpus) {
+				return { valid: false, error: 'No Opus codec found in WebM file' };
+			}
+
+			return { valid: true };
+
+		} catch (error) {
+			console.error('WebM validation error:', error);
+			return { valid: false, error: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
+		}
+	}
+
+	/**
 	 * Send audio chunk to active transmission using RPC
 	 */
 	async receiveAudioChunk(
@@ -103,6 +194,21 @@ export class PTTAudioService {
 					chunk_received: false,
 					error: "Invalid session ID format",
 				};
+			}
+
+			// Validate WebM/Opus format if WEBM_DEBUG is enabled
+			if (this.env.WEBM_DEBUG && this.env.WEBM_DEBUG === 'true') {
+				// const validation = { valid: true, error: '' };
+				const validation = await this.validateWebMOpusChunk(request.audio_data);
+				if (!validation.valid) {
+					console.error(`WebM validation failed: ${validation.error}`);
+					return {
+						success: false,
+						chunk_received: false,
+						error: `WebM validation failed: ${validation.error}`,
+					};
+				}
+				console.log('WebM/Opus chunk validation passed');
 			}
 
 			// Get the Durable Object for this channel
