@@ -2,6 +2,8 @@ import AVFoundation
 import AudioToolbox
 import CoreLocation
 import Foundation
+// Main manager for Push-to-Talk operations
+import LibWebMSwift
 import Opus
 import PushToTalk
 import UIKit
@@ -81,7 +83,6 @@ public struct AudioStats {
     }
 }
 
-// Main manager for Push-to-Talk operations
 class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Properties
@@ -120,6 +121,12 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // Opus encoder for low-latency voice transmission
     private var opusEncoder: Opus.Encoder?
     private var opusDecoder: Opus.Decoder?
+
+    // WebM muxer for creating standard WebM containers using LibWebMSwift
+    // This replaces the manual WebM container creation with a proper library
+    private var webmMuxer: WebMMuxer?
+    private var webmAudioTrackId: UInt32?
+    private var webmTempFilePath: String?
 
     // MARK: - Initialization
 
@@ -648,10 +655,13 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         )
 
         // Initialize hardware-accelerated AAC encoder
-        setupAACEncoder(with: audioFormat)
+        // setupAACEncoder(with: audioFormat)
 
         // Initialize Opus encoder for voice optimization
         setupOpusEncoder(with: audioFormat)
+
+        // Initialize WebM muxer for standard container creation
+        setupWebMMuxer(with: audioFormat)
 
         // Install tap to capture audio data
         let bufferSize: AVAudioFrameCount = 4096  // Small buffer for low latency
@@ -691,6 +701,25 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Cleanup Opus encoder
         opusEncoder = nil
         opusDecoder = nil
+
+        // Cleanup WebM muxer
+        if let muxer = webmMuxer {
+            do {
+                try muxer.finalize()
+                print("✅ WebM muxer finalized successfully")
+
+                // Clean up temporary file
+                if let tempPath = webmTempFilePath {
+                    try? FileManager.default.removeItem(atPath: tempPath)
+                    print("🗑️ Temporary WebM file cleaned up")
+                }
+            } catch {
+                print("⚠️ Error finalizing WebM muxer: \(error)")
+            }
+        }
+        webmMuxer = nil
+        webmAudioTrackId = nil
+        webmTempFilePath = nil
 
         // Reset sequence counter
         audioChunkSequence = 0
@@ -763,7 +792,42 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Convert AVAudioPCMBuffer to WebM container with Opus codec
+    /// Setup WebM muxer for creating standard WebM containers
+    private func setupWebMMuxer(with inputFormat: AVAudioFormat) {
+        print("🔧 Setting up WebM muxer for standard container creation...")
+
+        do {
+            // Create temporary file path for WebM container
+            let tempDir = NSTemporaryDirectory()
+            let tempFileName = "audio_\(UUID().uuidString).webm"
+            let tempFilePath = URL(fileURLWithPath: tempDir).appendingPathComponent(tempFileName)
+                .path
+
+            // Create WebM muxer
+            let muxer = try WebMMuxer(filePath: tempFilePath)
+
+            // Add Opus audio track with 16kHz mono configuration
+            let audioTrackId = try muxer.addAudioTrack(
+                samplingFrequency: 16000,  // 16kHz for voice optimization
+                channels: 1,  // Mono for voice
+                codecId: "A_OPUS"
+            )
+
+            self.webmMuxer = muxer
+            self.webmAudioTrackId = audioTrackId
+            self.webmTempFilePath = tempFilePath
+
+            print("✅ WebM muxer ready (16kHz mono Opus track)")
+            print("   Temp file: \(tempFilePath)")
+        } catch {
+            print("❌ Failed to setup WebM muxer: \(error)")
+            webmMuxer = nil
+            webmAudioTrackId = nil
+            webmTempFilePath = nil
+        }
+    }
+
+    /// Convert AVAudioPCMBuffer to WebM container with Opus codec using LibWebMSwift
     private func convertBufferToWebMOpusData(_ buffer: AVAudioPCMBuffer) -> Data? {
         guard let encoder = opusEncoder else {
             print("❌ Opus encoder not initialized, falling back to PCM")
@@ -838,14 +902,25 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 "🎵 Opus: \(copyCount) samples → \(encodedBytes) bytes (compression: \(String(format: "%.1f", compressionRatio))x)"
             )
 
-            // Create WebM container with Opus data
-            let webmData = createWebMContainer(with: opusData, sampleRate: Int(targetSampleRate))
+            // Write Opus frame to WebM container for final recording (optional)
+            if let muxer = webmMuxer, let trackId = webmAudioTrackId {
+                do {
+                    let timestampNs = UInt64(audioChunkSequence * 20_000_000)  // 20ms per frame
+                    try muxer.writeAudioFrame(
+                        trackId: trackId,
+                        frameData: opusData,
+                        timestampNs: timestampNs
+                    )
+                    print("📦 WebM frame archived (sequence: \(audioChunkSequence))")
+                } catch {
+                    print("⚠️ Failed to archive WebM frame: \(error)")
+                    // Continue anyway - this is just for archival
+                }
+            }
 
-            print(
-                "📦 WebM container created: \(webmData.count) bytes"
-            )
-
-            return webmData
+            // Create individual WebM container for this chunk using LibWebMSwift
+            // This ensures backend compatibility while keeping the archive feature
+            return createIndividualWebMChunk(with: opusData, sequenceNumber: audioChunkSequence)
 
         } catch {
             print("❌ Opus encoding failed: \(error)")
@@ -854,172 +929,74 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Create a minimal WebM container with Opus audio data
-    private func createWebMContainer(with opusData: Data, sampleRate: Int) -> Data {
-        var webmData = Data()
+    /// Create individual WebM container for a single audio chunk
+    private func createIndividualWebMChunk(with opusData: Data, sequenceNumber: Int) -> Data? {
+        do {
+            // Create temporary file for this chunk
+            let tempDir = NSTemporaryDirectory()
+            let chunkFileName = "chunk_\(sequenceNumber)_\(UUID().uuidString).webm"
+            let chunkFilePath = URL(fileURLWithPath: tempDir).appendingPathComponent(chunkFileName)
+                .path
 
-        // WebM header (EBML)
-        let ebmlHeader: [UInt8] = [
-            0x1A, 0x45, 0xDF, 0xA3,  // EBML ID
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20,  // EBML size
-            0x42, 0x82,  // DocType ID
-            0x88,  // DocType size
-            0x77, 0x65, 0x62, 0x6D,  // "webm"
-            0x42, 0x87,  // DocTypeVersion ID
-            0x81,  // DocTypeVersion size
-            0x01,  // Version 1
-            0x42, 0x85,  // DocTypeReadVersion ID
-            0x81,  // DocTypeReadVersion size
-            0x01,  // Read version 1
-        ]
+            // Create individual WebM muxer for this chunk
+            let chunkMuxer = try WebMMuxer(filePath: chunkFilePath)
 
-        // Segment header
-        let segmentHeader: [UInt8] = [
-            0x18, 0x53, 0x80, 0x67,  // Segment ID
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // Segment size (placeholder)
-        ]
+            // Add Opus audio track
+            let audioTrackId = try chunkMuxer.addAudioTrack(
+                samplingFrequency: 16000,
+                channels: 1,
+                codecId: "A_OPUS"
+            )
 
-        // Info section
-        let infoSection: [UInt8] = [
-            0x15, 0x49, 0xA9, 0x66,  // Info ID
-            0x8F,  // Info size
-            0x2A, 0xD7, 0xB1,  // TimecodeScale ID
-            0x83,  // TimecodeScale size
-            0x0F, 0x42, 0x40,  // 1,000,000 (nanoseconds)
-            0x44, 0x89,  // Duration ID
-            0x84,  // Duration size
-            0x3F, 0x80, 0x00, 0x00,  // Duration (placeholder)
-        ]
+            // Write the single Opus frame
+            let timestampNs: UInt64 = 0  // Single chunk starts at 0
+            try chunkMuxer.writeAudioFrame(
+                trackId: audioTrackId,
+                frameData: opusData,
+                timestampNs: timestampNs
+            )
 
-        // Tracks section with Opus codec
-        var tracksData = Data()
-        let tracksHeader: [UInt8] = [
-            0x16, 0x54, 0xAE, 0x6B,  // Tracks ID
-            0x00, 0x00, 0x00, 0x00,  // Tracks size (placeholder)
-        ]
-        tracksData.append(contentsOf: tracksHeader)
+            // Finalize the chunk
+            try chunkMuxer.finalize()
 
-        // Track entry
-        let trackEntry: [UInt8] = [
-            0xAE,  // TrackEntry ID
-            0x00, 0x00, 0x00,  // TrackEntry size (placeholder)
-        ]
-        tracksData.append(contentsOf: trackEntry)
+            // Read the WebM chunk data
+            let webmChunkData = try Data(contentsOf: URL(fileURLWithPath: chunkFilePath))
 
-        // Track number
-        let trackNumber: [UInt8] = [
-            0xD7,  // TrackNumber ID
-            0x81,  // TrackNumber size
-            0x01,  // Track number 1
-        ]
-        tracksData.append(contentsOf: trackNumber)
+            // Clean up temporary file
+            try FileManager.default.removeItem(atPath: chunkFilePath)
 
-        // Track UID
-        let trackUID: [UInt8] = [
-            0x73, 0xC5,  // TrackUID ID
-            0x84,  // TrackUID size
-            0x00, 0x00, 0x00, 0x01,  // UID 1
-        ]
-        tracksData.append(contentsOf: trackUID)
+            print("📦 Individual WebM chunk created: \(webmChunkData.count) bytes")
+            return webmChunkData
 
-        // Track type (audio)
-        let trackType: [UInt8] = [
-            0x83,  // TrackType ID
-            0x81,  // TrackType size
-            0x02,  // Audio track
-        ]
-        tracksData.append(contentsOf: trackType)
+        } catch {
+            print("❌ Failed to create individual WebM chunk: \(error)")
+            // Fallback to raw Opus data
+            return opusData
+        }
+    }
 
-        // Codec ID (Opus)
-        let codecID = "A_OPUS"
-        var codecIDData = Data()
-        codecIDData.append(0x86)  // CodecID ID
-        codecIDData.append(UInt8(codecID.count + 0x80))  // CodecID size
-        codecIDData.append(contentsOf: codecID.utf8)
-        tracksData.append(codecIDData)
+    /// Finalize WebM recording and get the complete WebM file data
+    private func finalizeWebMRecording() -> Data? {
+        guard let muxer = webmMuxer, let tempPath = webmTempFilePath else {
+            print("❌ No WebM muxer to finalize")
+            return nil
+        }
 
-        // Audio settings
-        let audioHeader: [UInt8] = [
-            0xE1,  // Audio ID
-            0x00, 0x00,  // Audio size (placeholder)
-        ]
-        tracksData.append(contentsOf: audioHeader)
+        do {
+            // Finalize the WebM file
+            try muxer.finalize()
+            print("✅ WebM recording finalized")
 
-        // Sample rate
-        var sampleRateData = Data()
-        sampleRateData.append(0xB5)  // SamplingFrequency ID
-        sampleRateData.append(0x84)  // SamplingFrequency size
-        let sampleRateBytes = withUnsafeBytes(of: Float64(sampleRate)) { Data($0) }
-        sampleRateData.append(contentsOf: sampleRateBytes)
-        tracksData.append(sampleRateData)
+            // Read the complete WebM file
+            let webmData = try Data(contentsOf: URL(fileURLWithPath: tempPath))
+            print("📦 Complete WebM file created: \(webmData.count) bytes")
 
-        // Channels
-        let channels: [UInt8] = [
-            0x9F,  // Channels ID
-            0x81,  // Channels size
-            0x01,  // Mono
-        ]
-        tracksData.append(contentsOf: channels)
+            return webmData
 
-        // Update sizes in tracks section
-        let tracksSize = tracksData.count - 5
-        tracksData[4] = UInt8((tracksSize >> 24) & 0xFF)
-        tracksData[5] = UInt8((tracksSize >> 16) & 0xFF)
-        tracksData[6] = UInt8((tracksSize >> 8) & 0xFF)
-        tracksData[7] = UInt8(tracksSize & 0xFF)
-
-        // Cluster with audio data
-        var clusterData = Data()
-        let clusterHeader: [UInt8] = [
-            0x1F, 0x43, 0xB6, 0x75,  // Cluster ID
-            0x00, 0x00, 0x00, 0x00,  // Cluster size (placeholder)
-        ]
-        clusterData.append(contentsOf: clusterHeader)
-
-        // Timecode
-        let timecode: [UInt8] = [
-            0xE7,  // Timecode ID
-            0x81,  // Timecode size
-            0x00,  // Timecode 0
-        ]
-        clusterData.append(contentsOf: timecode)
-
-        // Simple block with Opus data
-        var simpleBlock = Data()
-        simpleBlock.append(0xA3)  // SimpleBlock ID
-        simpleBlock.append(0x00)  // SimpleBlock size (placeholder)
-
-        // SimpleBlock header (track number 1, no flags)
-        simpleBlock.append(0x81)  // Track number 1 with keyframe flag
-
-        // Timecode (relative to cluster)
-        simpleBlock.append(0x00)  // Timecode 0
-        simpleBlock.append(0x00)  // Timecode 0
-
-        // Opus data
-        simpleBlock.append(opusData)
-
-        // Update SimpleBlock size
-        let simpleBlockSize = simpleBlock.count - 2
-        simpleBlock[1] = UInt8(simpleBlockSize & 0xFF) | 0x80  // Size with length 1
-
-        clusterData.append(simpleBlock)
-
-        // Update cluster size
-        let clusterSize = clusterData.count - 5
-        clusterData[4] = UInt8((clusterSize >> 24) & 0xFF)
-        clusterData[5] = UInt8((clusterSize >> 16) & 0xFF)
-        clusterData[6] = UInt8((clusterSize >> 8) & 0xFF)
-        clusterData[7] = UInt8(clusterSize & 0xFF)
-
-        // Assemble final WebM file
-        webmData.append(contentsOf: ebmlHeader)
-        webmData.append(contentsOf: segmentHeader)
-        webmData.append(contentsOf: infoSection)
-        webmData.append(tracksData)
-        webmData.append(clusterData)
-
-        return webmData
+        } catch {
+            print("❌ Error finalizing WebM recording: \(error)")
+            return nil
+        }
     }
 
     /// Process audio buffer and send to backend
@@ -1035,7 +1012,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
 
-        // Create WebM container with Opus codec and encode to base64
+        // Create individual WebM container chunk with Opus codec for backend
         guard let audioData = convertBufferToWebMOpusData(buffer) else {
             print("⚠️ Failed to convert audio buffer to WebM Opus data")
             return
@@ -1050,7 +1027,7 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         do {
             print(
-                "📤 Sending WebM Opus audio chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
+                "📤 Sending individual WebM chunk \(audioChunkSequence) (size: \(chunkSize) bytes)")
 
             let response = try await networkService.sendAudioChunk(
                 sessionId: sessionId,
