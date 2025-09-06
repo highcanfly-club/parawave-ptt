@@ -1,5 +1,5 @@
 {
-  "originHash" : "5387c5c62c03e66a555d5d1185fb0b0196f80265f5bed310d4886dbe15a06c92",
+  "originHash" : "9aa67f5b58b96ef3bb1902441b866cf90f2afd0ecd5a626b7af39ba0b289c3b0",
   "pins" : [
     {
       "identity" : "auth0.swift",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "36a5ce735a61c4bc119593f43ce2c027b4ca7392",
         "version" : "3.3.0"
+      }
+    },
+    {
+      "identity" : "libwebm-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sctg-development/libwebm-swift",
+      "state" : {
+        "branch" : "main",
+        "revision" : "06bd0b0c76b50ddb321a79b99e2520e8e94b5f05"
       }
     },
     {

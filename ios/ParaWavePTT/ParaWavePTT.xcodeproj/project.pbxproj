@@ -28,6 +28,7 @@
 		ACB6DA1C2E5A53FA00C242EF /* ParapenteStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1B2E5A53FA00C242EF /* ParapenteStateManager.swift */; };
 		ACB6DA1F2E5A541600C242EF /* ChannelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1D2E5A541600C242EF /* ChannelViews.swift */; };
 		ACB6DA202E5A541600C242EF /* PlaceholderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6DA1E2E5A541600C242EF /* PlaceholderViews.swift */; };
+		ACC317002E6C5019002BB6D0 /* LibWebMSwift in Frameworks */ = {isa = PBXBuildFile; productRef = ACC316FF2E6C5019002BB6D0 /* LibWebMSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +73,7 @@
 				ACA08DBE2E5B56E7004F46BB /* Auth0 in Frameworks */,
 				AC4270F72E674B780002F139 /* Copus in Frameworks */,
 				AC4270F92E674B780002F139 /* Opus in Frameworks */,
+				ACC317002E6C5019002BB6D0 /* LibWebMSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -232,6 +234,7 @@
 				ACA08DBD2E5B56E7004F46BB /* Auth0 */,
 				AC4270F62E674B780002F139 /* Copus */,
 				AC4270F82E674B780002F139 /* Opus */,
+				ACC316FF2E6C5019002BB6D0 /* LibWebMSwift */,
 			);
 			productName = ParaWavePTT;
 			productReference = 1A000100000000000 /* ParaWavePTT.app */;
@@ -268,6 +271,7 @@
 			packageReferences = (
 				ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */,
 				AC4270F52E674B780002F139 /* XCRemoteSwiftPackageReference "swift-opus" */,
+				ACC316FE2E6C5019002BB6D0 /* XCRemoteSwiftPackageReference "libwebm-swift" */,
 			);
 			productRefGroup = 1A000100000000004 /* Products */;
 			projectDirPath = "";
@@ -576,6 +580,14 @@
 				minimumVersion = 2.14.0;
 			};
 		};
+		ACC316FE2E6C5019002BB6D0 /* XCRemoteSwiftPackageReference "libwebm-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sctg-development/libwebm-swift";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -593,6 +605,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = ACA08DBC2E5B56E7004F46BB /* XCRemoteSwiftPackageReference "Auth0" */;
 			productName = Auth0;
+		};
+		ACC316FF2E6C5019002BB6D0 /* LibWebMSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ACC316FE2E6C5019002BB6D0 /* XCRemoteSwiftPackageReference "libwebm-swift" */;
+			productName = LibWebMSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
