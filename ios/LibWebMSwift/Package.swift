@@ -22,7 +22,8 @@ let package = Package(
             cxxSettings: [
                 .headerSearchPath("../libwebm"),
                 .define("MKVPARSER_HEADER_ONLY", to: "0"),
-                .define("MKVMUXER_HEADER_ONLY", to: "0")
+                .define("MKVMUXER_HEADER_ONLY", to: "0"),
+                .define("_LIBCPP_DISABLE_AVAILABILITY", to: "1")
             ],
             linkerSettings: [
                 .linkedLibrary("c++")
@@ -35,7 +36,10 @@ let package = Package(
         ),
         .testTarget(
             name: "LibWebMSwiftTests",
-            dependencies: ["LibWebMSwift"]
+            dependencies: ["LibWebMSwift"],
+            resources: [
+                .copy("sample.webm")
+            ]
         )
     ],
     cxxLanguageStandard: .cxx11

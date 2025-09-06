@@ -1,0 +1,5 @@
+module CLibWebM {
+    header "WebMBridge.hpp"
+    link "c++"
+    export *
+}
