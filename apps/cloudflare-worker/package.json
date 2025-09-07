@@ -46,7 +46,7 @@
     "wrangler": "^4.34.0"
   },
   "dependencies": {
-    "@sctg/libwebm-js": "file:../../libwebm-js",
+    "@sctg/libwebm-js": "^1.0.3",
     "jose": "^6.1.0"
   }
 }

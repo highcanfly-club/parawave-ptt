@@ -840,6 +840,9 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
 
         let frameCount = Int(buffer.frameLength)
+        print(
+            "🔍 iOS Debug: Converting PCM buffer - frameCount: \(frameCount), sampleRate: \(buffer.format.sampleRate)"
+        )
 
         // Convert to 16kHz mono format expected by Opus encoder
         let targetSampleRate: Double = 16000
@@ -852,12 +855,15 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         // Simple downsampling - take every nth sample
         let step = Int(inputSampleRate / targetSampleRate)
+        print("🔍 iOS Debug: Resampling - step: \(step), targetFrameCount: \(targetFrameCount)")
 
         for i in stride(from: 0, to: frameCount, by: step) {
             if i < frameCount {
                 resampledData.append(channelData[i])
             }
         }
+
+        print("🔍 iOS Debug: Resampled to \(resampledData.count) samples")
 
         // Create Opus-compatible buffer (16kHz mono float32)
         guard
@@ -902,6 +908,11 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 "🎵 Opus: \(copyCount) samples → \(encodedBytes) bytes (compression: \(String(format: "%.1f", compressionRatio))x)"
             )
 
+            print("🔍 iOS Debug: Opus encoding successful - \(encodedBytes) bytes")
+            let opusHeaderBytes = opusData.prefix(16).map { String(format: "0x%02x", $0) }.joined(
+                separator: " ")
+            print("🔍 iOS Debug: Opus data header: \(opusHeaderBytes)")
+
             // Write Opus frame to WebM container for final recording (optional)
             if let muxer = webmMuxer, let trackId = webmAudioTrackId {
                 do {
@@ -920,7 +931,11 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
             // Create individual WebM container for this chunk using LibWebMSwift
             // This ensures backend compatibility while keeping the archive feature
-            return createIndividualWebMChunk(with: opusData, sequenceNumber: audioChunkSequence)
+            print("🔍 iOS Debug: Creating individual WebM chunk...")
+            
+            // Calculate actual duration based on the resampled data
+            let actualDurationSeconds = Double(copyCount) / 16000.0  // copyCount samples at 16kHz
+            return createIndividualWebMChunk(with: opusData, sequenceNumber: audioChunkSequence, durationSeconds: actualDurationSeconds)
 
         } catch {
             print("❌ Opus encoding failed: \(error)")
@@ -930,16 +945,23 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     /// Create individual WebM container for a single audio chunk
-    private func createIndividualWebMChunk(with opusData: Data, sequenceNumber: Int) -> Data? {
+    private func createIndividualWebMChunk(with opusData: Data, sequenceNumber: Int, durationSeconds: Double) -> Data? {
         do {
+            print(
+                "🔍 iOS Debug: Creating WebM chunk \(sequenceNumber) with Opus data (\(opusData.count) bytes, duration: \(durationSeconds)s)"
+            )
+
             // Create temporary file for this chunk
             let tempDir = NSTemporaryDirectory()
             let chunkFileName = "chunk_\(sequenceNumber)_\(UUID().uuidString).webm"
             let chunkFilePath = URL(fileURLWithPath: tempDir).appendingPathComponent(chunkFileName)
                 .path
 
+            print("🔍 iOS Debug: Temp file path: \(chunkFilePath)")
+
             // Create individual WebM muxer for this chunk
             let chunkMuxer = try WebMMuxer(filePath: chunkFilePath)
+            print("🔍 iOS Debug: WebM muxer created")
 
             // Add Opus audio track
             let audioTrackId = try chunkMuxer.addAudioTrack(
@@ -947,25 +969,51 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 channels: 1,
                 codecId: "A_OPUS"
             )
+            print("🔍 iOS Debug: Audio track added with ID: \(audioTrackId)")
 
-            // Write the single Opus frame
-            let timestampNs: UInt64 = 0  // Single chunk starts at 0
+            // Convert duration to nanoseconds for WebM
+            let durationNs = UInt64(durationSeconds * 1_000_000_000)
+            
+            print("🔍 iOS Debug: Using actual duration: \(durationSeconds)s (\(durationNs)ns)")
+
+            // Write the Opus frame at timestamp 0
             try chunkMuxer.writeAudioFrame(
                 trackId: audioTrackId,
                 frameData: opusData,
-                timestampNs: timestampNs
+                timestampNs: 0
             )
+            
+            print("🔍 iOS Debug: Main Opus frame written (\(opusData.count) bytes, timestamp: 0)")
+            
+            // Write a minimal silent frame at the end timestamp to establish duration
+            // This helps libwebm calculate the correct segment duration
+            let silentOpusFrame = Data([0xF8, 0xFF, 0xFE]) // Minimal Opus silence frame
+            try chunkMuxer.writeAudioFrame(
+                trackId: audioTrackId,
+                frameData: silentOpusFrame,
+                timestampNs: durationNs
+            )
+            
+            print("🔍 iOS Debug: End silence frame written (\(silentOpusFrame.count) bytes, timestamp: \(durationNs)ns)")
 
             // Finalize the chunk
             try chunkMuxer.finalize()
+            print("🔍 iOS Debug: WebM muxer finalized")
 
             // Read the WebM chunk data
             let webmChunkData = try Data(contentsOf: URL(fileURLWithPath: chunkFilePath))
+            print("🔍 iOS Debug: WebM chunk read from file (\(webmChunkData.count) bytes)")
+
+            // Log first 32 bytes for debugging
+            let headerBytes = webmChunkData.prefix(32).map { String(format: "0x%02x", $0) }.joined(
+                separator: " ")
+            print("🔍 iOS Debug: WebM header bytes: \(headerBytes)")
 
             // Clean up temporary file
             try FileManager.default.removeItem(atPath: chunkFilePath)
+            print("🔍 iOS Debug: Temp file cleaned up")
 
-            print("📦 Individual WebM chunk created: \(webmChunkData.count) bytes")
+            print("✅ Individual WebM chunk created: \(webmChunkData.count) bytes")
             return webmChunkData
 
         } catch {
@@ -1012,11 +1060,22 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
 
+        print(
+            "🔍 iOS Debug: Processing audio buffer (frameLength: \(buffer.frameLength), format: \(buffer.format))"
+        )
+
         // Create individual WebM container chunk with Opus codec for backend
         guard let audioData = convertBufferToWebMOpusData(buffer) else {
             print("⚠️ Failed to convert audio buffer to WebM Opus data")
             return
         }
+
+        print("🔍 iOS Debug: WebM conversion successful, got \(audioData.count) bytes")
+
+        // Log first 32 bytes of the WebM data for comparison with server logs
+        let headerBytes = audioData.prefix(32).map { String(format: "0x%02x", $0) }.joined(
+            separator: " ")
+        print("🔍 iOS Debug: WebM data header: \(headerBytes)")
 
         // Create audio chunk for backend
         let chunkSize = audioData.count
@@ -1024,6 +1083,10 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         // Increment sequence number
         audioChunkSequence += 1
+
+        print(
+            "🔍 iOS Debug: About to send chunk \(audioChunkSequence) (size: \(chunkSize) bytes, timestamp: \(timestampMs))"
+        )
 
         do {
             print(
@@ -1039,6 +1102,8 @@ class PTTChannelManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 print(
                     "❌ Failed to send audio chunk \(audioChunkSequence): \(response.error ?? "Unknown error")"
                 )
+            } else {
+                print("✅ Audio chunk \(audioChunkSequence) sent successfully")
             }
 
         } catch {
