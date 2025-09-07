@@ -6,6 +6,9 @@
 	"$schema": "../../node_modules/wrangler/config-schema.json",
 	"name": "parawave-backend",
 	"main": "src/index.ts",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"compatibility_date": "2025-03-19",
 	"observability": {
 		"enabled": true

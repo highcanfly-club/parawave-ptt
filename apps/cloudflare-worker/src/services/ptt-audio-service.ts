@@ -30,6 +30,7 @@ import {
 	PTTEndTransmissionRequest,
 	PTTEndTransmissionResponse,
 } from "../types/ptt";
+import createLibWebM from "@sctg/libwebm-js";
 
 /**
  * Service for managing PTT audio transmissions via Durable Objects
@@ -40,9 +41,26 @@ import {
  */
 export class PTTAudioService {
 	private env: Env;
+	private libwebm: any = null;
 
 	constructor(env: Env) {
 		this.env = env;
+		// Initialize libwebm asynchronously when first needed
+		this.initializeLibWebM();
+	}
+
+	/**
+	 * Initialize LibWebM library for WebM validation
+	 */
+	private async initializeLibWebM() {
+		try {
+			if (!this.libwebm) {
+				this.libwebm = await createLibWebM();
+				console.log('LibWebM initialized successfully');
+			}
+		} catch (error) {
+			console.error('Failed to initialize LibWebM:', error);
+		}
 	}
 
 	/**
@@ -88,11 +106,19 @@ export class PTTAudioService {
 	}
 
 	/**
-	 * Validate WebM/Opus audio chunk format
-	 * Only called when WEBM_DEBUG environment variable is set
+	 * Validate WebM/Opus audio chunk format using LibWebM-JS
+	 * Provides robust validation using the actual libwebm library
 	 */
 	private async validateWebMOpusChunk(audioData: string): Promise<{ valid: boolean; error?: string }> {
 		try {
+			// Ensure LibWebM is initialized
+			await this.initializeLibWebM();
+
+			if (!this.libwebm) {
+				// console.warn('LibWebM not available, skipping validation');
+				return { valid: true }; // Skip validation if library not available
+			}
+
 			// Decode base64 audio data
 			const binaryString = atob(audioData);
 			const uint8Array = new Uint8Array(binaryString.length);
@@ -100,81 +126,109 @@ export class PTTAudioService {
 				uint8Array[i] = binaryString.charCodeAt(i);
 			}
 
-			// For Cloudflare Workers, we'll do basic WebM validation without EBML parser
-			// Check for WebM header
-			if (uint8Array.length < 4) {
-				return { valid: false, error: 'Data too short for WebM format' };
+			// Basic size check
+			if (uint8Array.length < 32) {
+				// console.warn('WebM chunk too small:', uint8Array.length);
+				return { valid: false, error: 'WebM chunk too small (less than 32 bytes)' };
 			}
 
-			// WebM files start with EBML header
-			// Check for EBML ID (0x1A 0x45 0xDF 0xA3)
-			if (uint8Array[0] !== 0x1A || uint8Array[1] !== 0x45 ||
-				uint8Array[2] !== 0xDF || uint8Array[3] !== 0xA3) {
-				return { valid: false, error: 'Invalid EBML header - not a WebM file' };
-			}
+			try {
+				// Parse WebM file using LibWebM-JS
+				const webmFile = await this.libwebm.WebMFile.fromBuffer(uint8Array, this.libwebm._module);
 
-			// Look for DocType "webm"
-			let foundWebM = false;
-			let foundOpus = false;
-			let i = 4;
+				// Validate file structure
+				const duration = webmFile.getDuration();
+				const trackCount = webmFile.getTrackCount();
 
-			while (i < uint8Array.length - 10) {
-				// Look for DocType element (0x42 0x82)
-				if (uint8Array[i] === 0x42 && uint8Array[i + 1] === 0x82) {
-					// Skip element ID and size, look for "webm" string
-					const docTypeStart = i + 4;
-					if (docTypeStart + 4 <= uint8Array.length) {
-						const docType = String.fromCharCode(
-							uint8Array[docTypeStart],
-							uint8Array[docTypeStart + 1],
-							uint8Array[docTypeStart + 2],
-							uint8Array[docTypeStart + 3]
-						);
-						if (docType === 'webm') {
-							foundWebM = true;
-						}
-					}
-					break;
+				if (trackCount === 0) {
+					// console.warn('No tracks found in WebM chunk');
+					return { valid: false, error: 'No tracks found in WebM chunk' };
 				}
-				i++;
-			}
 
-			// Look for A_OPUS codec
-			i = 4;
-			while (i < uint8Array.length - 10) {
-				// Look for CodecID element (0x86)
-				if (uint8Array[i] === 0x86) {
-					const codecStart = i + 2;
-					if (codecStart + 5 <= uint8Array.length) {
-						const codec = String.fromCharCode(
-							uint8Array[codecStart],
-							uint8Array[codecStart + 1],
-							uint8Array[codecStart + 2],
-							uint8Array[codecStart + 3],
-							uint8Array[codecStart + 4]
-						);
-						if (codec === 'A_OPUS') {
-							foundOpus = true;
+				// Check for audio tracks with Opus codec
+				let hasOpusAudio = false;
+				let hasValidAudioTrack = false;
+
+				for (let i = 0; i < trackCount; i++) {
+					const trackInfo = webmFile.getTrackInfo(i);
+
+					if (trackInfo.trackType === this.libwebm.WebMTrackType.AUDIO) {
+						hasValidAudioTrack = true;
+
+						if (trackInfo.codecId === 'A_OPUS') {
+							hasOpusAudio = true;
+
+							// Get detailed audio info
+							const audioInfo = webmFile.parser.getAudioInfo(trackInfo.trackNumber);
+
+							// Validate audio parameters suitable for PTT
+							if (audioInfo.samplingFrequency < 8000 || audioInfo.samplingFrequency > 48000) {
+								// console.warn('Invalid sample rate:', audioInfo.samplingFrequency);
+								return {
+									valid: false,
+									error: `Invalid sample rate: ${audioInfo.samplingFrequency}Hz (expected 8-48kHz)`
+								};
+							}
+
+							if (audioInfo.channels < 1 || audioInfo.channels > 2) {
+								// console.warn('Invalid channel count:', audioInfo.channels);
+								return {
+									valid: false,
+									error: `Invalid channel count: ${audioInfo.channels} (expected 1-2 channels)`
+								};
+							}
+
+							console.log(`WebM validation: Opus audio ${audioInfo.samplingFrequency}Hz, ${audioInfo.channels}ch, duration: ${duration.toFixed(3)}s`);
 						}
+					} else if (trackInfo.trackType === this.libwebm.WebMTrackType.VIDEO) {
+						// PTT chunks shouldn't contain video
+						// console.warn('Video track found in WebM chunk');
+						return { valid: false, error: 'WebM chunk contains video track (audio-only expected for PTT)' };
 					}
-					break;
 				}
-				i++;
-			}
 
-			if (!foundWebM) {
-				return { valid: false, error: 'Not a WebM file (DocType not found)' };
-			}
+				if (!hasValidAudioTrack) {
+					// console.warn('No audio tracks found in WebM chunk');
+					return { valid: false, error: 'No audio tracks found in WebM chunk' };
+				}
 
-			if (!foundOpus) {
-				return { valid: false, error: 'No Opus codec found in WebM file' };
-			}
+				if (!hasOpusAudio) {
+					// console.warn('No Opus audio track found in WebM chunk');
+					return { valid: false, error: 'No Opus audio codec found (A_OPUS required for PTT)' };
+				}
 
-			return { valid: true };
+				// Validate duration (PTT chunks should be reasonably short)
+				if (duration > 30.0) {
+					// console.warn('WebM chunk too long:', duration);
+					return {
+						valid: false,
+						error: `WebM chunk too long: ${duration.toFixed(1)}s (max 30s for PTT)`
+					};
+				}
+
+				if (duration <= 0) {
+					// console.warn('WebM chunk has invalid duration:', duration);
+					return { valid: false, error: 'WebM chunk has invalid duration' };
+				}
+
+				return { valid: true };
+
+			} catch (parseError) {
+				// If libwebm can't parse it, it's not a valid WebM file
+				const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
+				// console.warn('WebM parsing error:', errorMessage);
+				return {
+					valid: false,
+					error: `WebM parsing failed: ${errorMessage}`
+				};
+			}
 
 		} catch (error) {
-			console.error('WebM validation error:', error);
-			return { valid: false, error: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
+			// console.error('WebM validation error:', error);
+			return {
+				valid: false,
+				error: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+			};
 		}
 	}
 
@@ -196,9 +250,8 @@ export class PTTAudioService {
 				};
 			}
 
-			// Validate WebM/Opus format if WEBM_DEBUG is enabled
+			// Validate WebM/Opus format using LibWebM-JS if WEBM_DEBUG is enabled
 			if (this.env.WEBM_DEBUG && this.env.WEBM_DEBUG === 'true') {
-				// const validation = { valid: true, error: '' };
 				const validation = await this.validateWebMOpusChunk(request.audio_data);
 				if (!validation.valid) {
 					console.error(`WebM validation failed: ${validation.error}`);
