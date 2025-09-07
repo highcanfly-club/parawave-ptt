@@ -1,3 +1,6 @@
 [submodule "ios/LibWebMSwift"]
 	path = ios/LibWebMSwift
 	url = https://github.com/sctg-development/libwebm-swift
+[submodule "libwebm-js"]
+	path = libwebm-js
+	url = git@github.com:sctg-development/libwebm-js.git

@@ -5,4 +5,5 @@
       "[\"'`]([^\"'`]*).*?[\"'`]"
     ]
   ],
+  "cmake.sourceDirectory": "/Users/rlemeill/Development/parawave-ptt/libwebm-js",
 }

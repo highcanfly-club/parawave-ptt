@@ -58,7 +58,10 @@
     "eslint.workingDirectories": [
       "apps/client",
       "apps/cloudflare-worker"
-    ]
+    ],
+    "files.associations": {
+      "vector": "cpp"
+    }
   },
   "extensions": {
     "recommendations": [
