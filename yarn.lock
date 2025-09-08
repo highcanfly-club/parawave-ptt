@@ -3915,10 +3915,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sctg/libwebm-js@npm:^1.0.3":
-  version: 1.0.3
-  resolution: "@sctg/libwebm-js@npm:1.0.3"
-  checksum: 10/e8e228580f494764c7a6b03c45ad22c9f7d38c553a247798c399debf2ca7fbca485353d632f8ec5b017fd85aa7236e97b05a0fb4856f6c3e16b50e168a263465
+"@sctg/libwebm-js@npm:^1.0.5":
+  version: 1.0.5
+  resolution: "@sctg/libwebm-js@npm:1.0.5"
+  checksum: 10/fd714d723cbbb42f4bb43826908e76fe91e1112f44c515b8ebbd354a46e75629ae3ae56dbddba0835e097535562278cff53bf5771522f7ffdf8d7476ed0a92e4
   languageName: node
   linkType: hard
 
@@ -10400,7 +10400,7 @@ __metadata:
     "@cloudflare/vitest-pool-workers": "npm:^0.8.70"
     "@cloudflare/workers-types": "npm:^4.20250902.0"
     "@jest/globals": "npm:^30.1.1"
-    "@sctg/libwebm-js": "npm:^1.0.3"
+    "@sctg/libwebm-js": "npm:^1.0.5"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^22.18.1"
     "@typescript-eslint/eslint-plugin": "npm:^8.42.0"
