@@ -109,11 +109,12 @@ export class PTTAudioService {
 	 * Validate WebM/Opus audio chunk format using LibWebM-JS
 	 * Provides robust validation using the actual libwebm library
 	 */
-	private async validateWebMOpusChunk(audioData: string): Promise<{ valid: boolean; error?: string }> {
+	private async validateWebMOpusChunk(audioData: string, sessionId?: string): Promise<{ valid: boolean; error?: string }> {
 		if (this.env.WEBM_DEBUG !== undefined && (this.env.WEBM_DEBUG.toLowerCase() === 'false') || this.env.WEBM_DEBUG === '0' || this.env.WEBM_DEBUG === 'no' || this.env.WEBM_DEBUG.length === 0) {
 			// Debug disabled, skip validation
 			return { valid: true };
 		}
+		console.log(`🔍 WebM Debug: Validating chunk for session ${sessionId || 'unknown'}`);
 		try {
 			// Ensure LibWebM is initialized
 			await this.initializeLibWebM();
@@ -275,9 +276,8 @@ export class PTTAudioService {
 				};
 			}
 
-			// Validate WebM/Opus format using LibWebM-JS - always enabled for debugging
-			console.log(`🔍 WebM Debug: Validating chunk for session ${request.session_id}`);
-			const validation = await this.validateWebMOpusChunk(request.audio_data);
+			// Validate WebM/Opus format using LibWebM-JS
+			const validation = await this.validateWebMOpusChunk(request.audio_data, request.session_id);
 			if (!validation.valid) {
 				console.error(`❌ WebM validation failed: ${validation.error}`);
 				// Don't return error immediately, log and continue for debugging
