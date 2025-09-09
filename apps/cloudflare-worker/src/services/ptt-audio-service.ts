@@ -110,6 +110,10 @@ export class PTTAudioService {
 	 * Provides robust validation using the actual libwebm library
 	 */
 	private async validateWebMOpusChunk(audioData: string): Promise<{ valid: boolean; error?: string }> {
+		if (this.env.WEBM_DEBUG !== undefined && (this.env.WEBM_DEBUG.toLowerCase() === 'false') || this.env.WEBM_DEBUG === '0' || this.env.WEBM_DEBUG === 'no' || this.env.WEBM_DEBUG.length === 0) {
+			// Debug disabled, skip validation
+			return { valid: true };
+		}
 		try {
 			// Ensure LibWebM is initialized
 			await this.initializeLibWebM();
