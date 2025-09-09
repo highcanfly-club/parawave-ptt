@@ -76,6 +76,7 @@ jobs:
           echo "AUTH0_MANAGEMENT_CLIENT_ID=${{ secrets.AUTH0_MANAGEMENT_CLIENT_ID }}" >> .env
           echo "AUTH0_MANAGEMENT_CLIENT_SECRET=${{ secrets.AUTH0_MANAGEMENT_CLIENT_SECRET }}" >> .env
           echo "WEBM_DEBUG=''" >> .env
+          echo "JSON_DEBUG=''" >> .env
 
       - name: Replace "// vars.*" in wrangler.jsonc with a json string
         run: |
@@ -84,7 +85,7 @@ jobs:
           cp wrangler.jsonc wrangler.jsonc.bak
           set -a && source .env && set +a 
           cat .env
-          cat wrangler.jsonc.bak | sed 's|// "vars".*.|"vars": { "AUTHENTICATION_PROVIDER_TYPE": "'"${AUTHENTICATION_PROVIDER_TYPE}"'", "AUTH0_DOMAIN": "'"${AUTH0_DOMAIN}"'", "AUTH0_CLIENT_ID": "'"${AUTH0_CLIENT_ID}"'", "AUTH0_SCOPE": "'"${AUTH0_SCOPE}"'", "AUTH0_AUDIENCE": "'"${AUTH0_AUDIENCE}"'", "API_BASE_URL": "'"${API_BASE_URL}"'", "CORS_ORIGIN": "'"${CORS_ORIGIN}"'", "READ_PERMISSION": "'"${READ_PERMISSION}"'", "WRITE_PERMISSION": "'"${WRITE_PERMISSION}"'", "ADMIN_PERMISSION": "'"${ADMIN_PERMISSION}"'", "ACCESS_PERMISSION_PREFIX": "'"${ACCESS_PERMISSION_PREFIX}"'", "TENANT_ADMIN_PERMISSION": "'"${TENANT_ADMIN_PERMISSION}"'", "AUTH0_MANAGEMENT_AUDIENCE": "'"${AUTH0_MANAGEMENT_AUDIENCE}"'", "AUTH0_MANAGEMENT_CLIENT_ID": "'"${AUTH0_MANAGEMENT_CLIENT_ID}"'", "AUTH0_MANAGEMENT_CLIENT_SECRET": "'"${AUTH0_MANAGEMENT_CLIENT_SECRET}"'", "WEBM_DEBUG": "'"${WEBM_DEBUG}"'" },|' > wrangler.jsonc.2
+          cat wrangler.jsonc.bak | sed 's|// "vars".*.|"vars": { "AUTHENTICATION_PROVIDER_TYPE": "'"${AUTHENTICATION_PROVIDER_TYPE}"'", "AUTH0_DOMAIN": "'"${AUTH0_DOMAIN}"'", "AUTH0_CLIENT_ID": "'"${AUTH0_CLIENT_ID}"'", "AUTH0_SCOPE": "'"${AUTH0_SCOPE}"'", "AUTH0_AUDIENCE": "'"${AUTH0_AUDIENCE}"'", "API_BASE_URL": "'"${API_BASE_URL}"'", "CORS_ORIGIN": "'"${CORS_ORIGIN}"'", "READ_PERMISSION": "'"${READ_PERMISSION}"'", "WRITE_PERMISSION": "'"${WRITE_PERMISSION}"'", "ADMIN_PERMISSION": "'"${ADMIN_PERMISSION}"'", "ACCESS_PERMISSION_PREFIX": "'"${ACCESS_PERMISSION_PREFIX}"'", "TENANT_ADMIN_PERMISSION": "'"${TENANT_ADMIN_PERMISSION}"'", "AUTH0_MANAGEMENT_AUDIENCE": "'"${AUTH0_MANAGEMENT_AUDIENCE}"'", "AUTH0_MANAGEMENT_CLIENT_ID": "'"${AUTH0_MANAGEMENT_CLIENT_ID}"'", "AUTH0_MANAGEMENT_CLIENT_SECRET": "'"${AUTH0_MANAGEMENT_CLIENT_SECRET}"'", "WEBM_DEBUG": "'"${WEBM_DEBUG}"'", "JSON_DEBUG": "'"${JSON_DEBUG}"'" },|' > wrangler.jsonc.2
           # cat wrangler.jsonc.2 | sed 's|// "routes".*.|"routes": [{ "pattern": "'"${DOMAIN_NAME}"'", "custom_domain": true }]|'  > wrangler.jsonc
           cat wrangler.jsonc.2 > wrangler.jsonc
           cat wrangler.jsonc
@@ -105,6 +106,8 @@ jobs:
             READ_PERMISSION
             WRITE_PERMISSION
             ADMIN_PERMISSION
+            WEBM_DEBUG
+            JSON_DEBUG
         env:
           AUTHENTICATION_PROVIDER_TYPE: ${{ secrets.AUTHENTICATION_PROVIDER_TYPE }}
           AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
@@ -118,3 +121,5 @@ jobs:
           ADMIN_PERMISSION: ${{ secrets.ADMIN_PERMISSION }}
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+          WEBM_DEBUG: ${{ secrets.WEBM_DEBUG }}
+          JSON_DEBUG: ${{ secrets.JSON_DEBUG }}
