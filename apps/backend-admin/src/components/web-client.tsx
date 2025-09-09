@@ -89,6 +89,8 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
     const audioChunksRef = useRef<Blob[]>([]);
     const sequenceNumberRef = useRef(0);
     const mediaSourceRef = useRef<MediaSource | null>(null);
+    const chunkBufferRef = useRef<Blob[]>([]);
+    const bufferTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const connectToChannel = useCallback(async () => {
         if (isConnected) return;
@@ -155,29 +157,52 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
     }, [channelUuid, isConnected, postJson, t]);
 
     const disconnectFromChannel = useCallback(async () => {
-        if (!isConnected) return;
+        if (!isConnected) {
+            console.log('disconnectFromChannel called but not connected');
+            return;
+        }
+
+        console.log('disconnectFromChannel called - disconnecting from channel');
 
         try {
             // Leave the channel with ephemeral token
             const ephemeralToken = WebClientIdUtils.getEphemeralToken();
+            console.log('Leaving channel via API...');
             await postJson(
                 `${import.meta.env.API_BASE_URL}/v1/channels/${channelUuid}/leave`,
                 {
                     ephemeral_push_token: ephemeralToken
                 }
             );
+            console.log('Channel left via API successfully');
         } catch (error) {
             console.error("Error leaving channel:", error);
         }
 
         // Close WebSocket
         if (websocketRef.current) {
+            console.log('Closing WebSocket...');
             websocketRef.current.close();
             websocketRef.current = null;
         }
 
         // Stop any ongoing transmission
         if (transmission.isRecording) {
+            console.log('Stopping ongoing transmission...');
+
+            // Send any remaining buffered chunks before disconnecting, even if less than 3
+            if (chunkBufferRef.current.length > 0 && transmission.sessionId) {
+                const combinedBlob = new Blob(chunkBufferRef.current, { type: 'audio/webm;codecs=opus' });
+                const currentSequence = sequenceNumberRef.current + 1;
+                sequenceNumberRef.current++;
+                console.log(`Sending buffered chunk with ${chunkBufferRef.current.length} fragments before disconnecting, total size: ${combinedBlob.size} bytes`);
+                // Note: We don't await here to avoid blocking disconnection
+                sendAudioChunk(transmission.sessionId, combinedBlob, currentSequence).catch(error => {
+                    console.error('Error sending final buffered chunk during disconnect:', error);
+                });
+                chunkBufferRef.current = [];
+            }
+
             stopTransmission();
         }
 
@@ -216,11 +241,16 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             startTime: null,
             chunksSent: 0
         });
+
+        console.log('Channel disconnection completed');
     }, [channelUuid, isConnected, postJson, transmission.isRecording]);
 
     // Cleanup on unmount
     useEffect(() => {
+        console.log('WebClient component mounted');
+
         return () => {
+            console.log('WebClient component unmounting - cleaning up...');
             if (isConnected) {
                 disconnectFromChannel();
             }
@@ -374,10 +404,12 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             }
 
             const sessionId = startResponse.session_id;
+            console.log(`Transmission started with session ID: ${sessionId}`);
 
             // Set up MediaRecorder for audio capture
             const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm;codecs=opus'
+                mimeType: 'audio/webm;codecs=opus',
+                audioBitsPerSecond: 64000
             });
 
             mediaRecorderRef.current = mediaRecorder;
@@ -386,18 +418,88 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
 
             mediaRecorder.ondataavailable = async (event) => {
                 if (event.data.size > 0) {
+                    console.log(`Audio data available: ${event.data.size} bytes, sequence: ${sequenceNumberRef.current}`);
                     audioChunksRef.current.push(event.data);
-                    await sendAudioChunk(sessionId, event.data, sequenceNumberRef.current);
-                    sequenceNumberRef.current++;
+
+                    // Accumulate chunks in buffer
+                    chunkBufferRef.current.push(event.data);
+
+                    // Clear any existing timeout
+                    if (bufferTimeoutRef.current) {
+                        clearTimeout(bufferTimeoutRef.current);
+                    }
+
+                    // Set a timeout to send the chunk after 1000ms, even if we don't have many fragments
+                    bufferTimeoutRef.current = setTimeout(async () => {
+                        if (chunkBufferRef.current.length > 0) {
+                            const combinedBlob = new Blob(chunkBufferRef.current, { type: 'audio/webm;codecs=opus' });
+                            const currentSequence = sequenceNumberRef.current + 1;
+                            sequenceNumberRef.current++;
+                            console.log(`Sending combined chunk with ${chunkBufferRef.current.length} fragments (timeout), total size: ${combinedBlob.size} bytes`);
+                            await sendAudioChunk(sessionId, combinedBlob, currentSequence);
+
+                            // Clear buffer and timeout
+                            chunkBufferRef.current = [];
+                            bufferTimeoutRef.current = null;
+                        }
+                    }, 1000); // Send after 1000ms with 500ms timeslices
+
+                    // Send immediately if we have at least 2 fragments (1 second of audio)
+                    if (chunkBufferRef.current.length >= 2) {
+                        // Clear the timeout since we're sending now
+                        if (bufferTimeoutRef.current) {
+                            clearTimeout(bufferTimeoutRef.current);
+                            bufferTimeoutRef.current = null;
+                        }
+
+                        const combinedBlob = new Blob(chunkBufferRef.current, { type: 'audio/webm;codecs=opus' });
+                        const currentSequence = sequenceNumberRef.current + 1;
+                        sequenceNumberRef.current++;
+                        console.log(`Sending combined chunk with ${chunkBufferRef.current.length} fragments (immediate), total size: ${combinedBlob.size} bytes`);
+                        await sendAudioChunk(sessionId, combinedBlob, currentSequence);
+
+                        // Clear buffer
+                        chunkBufferRef.current = [];
+                    }
                 }
             };
 
             mediaRecorder.onstop = async () => {
+                console.log(`MediaRecorder stopped, total chunks collected: ${audioChunksRef.current.length}, state: ${mediaRecorder.state}`);
+
+                // Clear any pending timeout
+                if (bufferTimeoutRef.current) {
+                    clearTimeout(bufferTimeoutRef.current);
+                    bufferTimeoutRef.current = null;
+                }
+
+                // Send any remaining buffered chunks, even if less than 3
+                if (chunkBufferRef.current.length > 0) {
+                    const combinedBlob = new Blob(chunkBufferRef.current, { type: 'audio/webm;codecs=opus' });
+                    const currentSequence = sequenceNumberRef.current + 1;
+                    sequenceNumberRef.current++;
+                    console.log(`Sending final combined chunk with ${chunkBufferRef.current.length} fragments, total size: ${combinedBlob.size} bytes`);
+                    await sendAudioChunk(sessionId, combinedBlob, currentSequence);
+                    chunkBufferRef.current = [];
+                }
+
+                // Add a small delay to ensure all pending chunks are processed
+                await new Promise(resolve => setTimeout(resolve, 100));
                 await endTransmission(sessionId);
             };
 
-            // Start recording
-            mediaRecorder.start(100); // Collect data every 100ms
+            mediaRecorder.onerror = (event) => {
+                console.error('MediaRecorder error:', event);
+            };
+
+            mediaRecorder.onstart = () => {
+                console.log('MediaRecorder started successfully');
+            };
+
+            // Start recording with longer timeslices to get more complete WebM structure
+            console.log('Starting MediaRecorder...');
+            mediaRecorder.start(500); // Collect data every 500ms instead of 100ms
+            console.log('MediaRecorder start() called');
 
             setTransmission(prev => ({
                 ...prev,
@@ -428,29 +530,65 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
                 timestamp_ms: Date.now()
             };
 
+            console.log(`Sending chunk request:`, {
+                session_id: sessionId,
+                chunk_sequence: sequenceNumber,
+                chunk_size_bytes: arrayBuffer.byteLength,
+                audio_data_length: base64Data.length,
+                timestamp_ms: Date.now()
+            });
+
+            console.log(`Sending audio chunk ${sequenceNumber} for session ${sessionId}, size: ${arrayBuffer.byteLength} bytes`);
+
             const response = await postJson(
                 `${import.meta.env.API_BASE_URL}/v1/transmissions/${encodeURIComponent(sessionId)}/chunk`,
                 chunkRequest
             );
 
+            console.log(`Chunk ${sequenceNumber} response:`, response);
+
             if (response.success) {
+                console.log(`Audio chunk ${sequenceNumber} sent successfully`);
                 setTransmission(prev => ({
                     ...prev,
                     chunksSent: prev.chunksSent + 1
                 }));
+            } else {
+                console.error(`Failed to send audio chunk ${sequenceNumber}:`, response.error, 'Full response:', response);
             }
         } catch (error) {
-            console.error("Error sending audio chunk:", error);
+            console.error(`Error sending audio chunk ${sequenceNumber}:`, error);
         }
     }, [postJson]);
 
     const stopTransmission = useCallback(async () => {
         if (!transmission.isRecording || !transmission.sessionId) return;
 
+        console.log('stopTransmission called - stopping MediaRecorder');
+
         try {
+            // Clear any pending buffer timeout
+            if (bufferTimeoutRef.current) {
+                clearTimeout(bufferTimeoutRef.current);
+                bufferTimeoutRef.current = null;
+            }
+
+            // Send any remaining buffered chunks before stopping, even if less than 3
+            if (chunkBufferRef.current.length > 0 && transmission.sessionId) {
+                const combinedBlob = new Blob(chunkBufferRef.current, { type: 'audio/webm;codecs=opus' });
+                const currentSequence = sequenceNumberRef.current + 1;
+                sequenceNumberRef.current++;
+                console.log(`Sending buffered chunk with ${chunkBufferRef.current.length} fragments before stopping, total size: ${combinedBlob.size} bytes`);
+                await sendAudioChunk(transmission.sessionId, combinedBlob, currentSequence);
+                chunkBufferRef.current = [];
+            }
+
             // Stop recording
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                console.log('Calling mediaRecorder.stop()');
                 mediaRecorderRef.current.stop();
+            } else {
+                console.log(`MediaRecorder state: ${mediaRecorderRef.current?.state ?? 'null'}`);
             }
 
             // Clean up media stream
@@ -477,13 +615,17 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             const endRequest: PTTEndTransmissionRequest = {
                 session_id: sessionId,
                 total_duration_ms: duration,
-                total_chunks: sequenceNumberRef.current
+                total_chunks: audioChunksRef.current.length
             };
+
+            console.log(`Ending transmission ${sessionId}, duration: ${duration}ms, chunks: ${audioChunksRef.current.length}`);
 
             await postJson(
                 `${import.meta.env.API_BASE_URL}/v1/transmissions/${encodeURIComponent(sessionId)}/end`,
                 endRequest
             );
+
+            console.log(`Transmission ${sessionId} ended successfully`);
 
             setTransmission(prev => ({
                 ...prev,
@@ -493,7 +635,7 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             }));
 
         } catch (error) {
-            console.error("Error ending transmission:", error);
+            console.error(`Error ending transmission ${sessionId}:`, error);
         }
     }, [transmission.startTime, postJson]);
 
@@ -509,6 +651,12 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             if (audioContextRef.current) {
                 audioContextRef.current.close();
             }
+            // Clear any pending buffer timeout
+            if (bufferTimeoutRef.current) {
+                clearTimeout(bufferTimeoutRef.current);
+            }
+            // Clear chunk buffers
+            chunkBufferRef.current = [];
         };
     }, []);
 
