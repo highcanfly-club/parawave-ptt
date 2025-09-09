@@ -88,6 +88,7 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
     const streamRef = useRef<MediaStream | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const sequenceNumberRef = useRef(0);
+    const mediaSourceRef = useRef<MediaSource | null>(null);
 
     const connectToChannel = useCallback(async () => {
         if (isConnected) return;
@@ -186,6 +187,27 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             streamRef.current = null;
         }
 
+        // Clean up MediaSource and audio element
+        const audioElement = document.querySelector('#ptt-audio-player') as HTMLAudioElement;
+        if (audioElement) {
+            audioElement.pause();
+            audioElement.src = '';
+            audioElement.remove();
+            console.log("Cleaned up audio element");
+        }
+
+        if (mediaSourceRef.current) {
+            if (mediaSourceRef.current.readyState === 'open') {
+                try {
+                    mediaSourceRef.current.endOfStream();
+                } catch (error) {
+                    console.error("Error ending MediaSource stream:", error);
+                }
+            }
+            mediaSourceRef.current = null;
+            console.log("Cleaned up MediaSource");
+        }
+
         setIsConnected(false);
         setTransmission({
             sessionId: null,
@@ -206,22 +228,31 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
     }, [isConnected, disconnectFromChannel]);
 
     const handleWebSocketMessage = useCallback((message: PTTWebSocketMessage) => {
-        console.log("WebClient received WebSocket message:", message);
+        // console.log("WebClient received WebSocket message:", message);
 
         switch (message.type) {
             case "transmission_started":
-                console.log("Transmission started:", message.session_id);
+                // console.log("Transmission started:", message.session_id);
                 break;
 
             case "audio_chunk":
-                console.log("Received audio chunk:", message.data?.sequence);
+                // console.log("Received audio chunk:", message.data?.sequence);
                 if (message.data?.audio_data) {
                     playAudioChunk(message.data.audio_data);
                 }
                 break;
 
             case "transmission_ended":
-                console.log("Transmission ended:", message.session_id);
+                // console.log("Transmission ended:", message.session_id);
+                // Signal end of stream to MediaSource
+                if (mediaSourceRef.current && mediaSourceRef.current.readyState === 'open') {
+                    try {
+                        mediaSourceRef.current.endOfStream();
+                        console.log("MediaSource endOfStream signaled");
+                    } catch (error) {
+                        console.error("Error signaling end of stream:", error);
+                    }
+                }
                 break;
 
             case "error":
@@ -232,36 +263,73 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
     }, [t]);
 
     const playAudioChunk = useCallback(async (audioData: string) => {
-        try {
-            console.log("Decoding WebM Opus audio chunk, data length:", audioData.length);
+        let bytes: Uint8Array | null = null;
 
+        try {
             // Decode base64 WebM data
             const binaryString = atob(audioData);
-            const bytes = new Uint8Array(binaryString.length);
+            bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            console.log("Decoded WebM binary data, length:", bytes.length);
-
-            // Create audio buffer from WebM data
+            // Use AudioContext for direct WebM decoding
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-                console.log("Created AudioContext");
             }
 
-            console.log("Starting WebM audio decode...");
-            // Convert Uint8Array to ArrayBuffer for Web Audio API
-            const audioBuffer = await audioContextRef.current.decodeAudioData(bytes.buffer.slice());
-            console.log("WebM audio decoded successfully, duration:", audioBuffer.duration);
+            // Ensure AudioContext is running
+            if (audioContextRef.current.state === 'suspended') {
+                await audioContextRef.current.resume();
+            }
 
+            // Create a new ArrayBuffer to avoid SharedArrayBuffer issues
+            const arrayBuffer = new ArrayBuffer(bytes.length);
+            new Uint8Array(arrayBuffer).set(bytes);
+            const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+
+            // Create audio source and play immediately
             const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(audioContextRef.current.destination);
+
             source.start();
-            console.log("WebM audio playback started");
+
         } catch (error) {
             console.error("Error playing WebM audio chunk:", error);
+
+            // Fallback: try to play as blob URL if decodeAudioData fails
+            try {
+                // Re-decode if bytes is not available
+                if (!bytes) {
+                    const binaryString = atob(audioData);
+                    bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                }
+
+                // Create a new ArrayBuffer for the blob to avoid type issues
+                const blobBuffer = new ArrayBuffer(bytes.length);
+                new Uint8Array(blobBuffer).set(bytes);
+                const blob = new Blob([blobBuffer], { type: 'audio/webm;codecs=opus' });
+                const audioUrl = URL.createObjectURL(blob);
+
+                const audio = new Audio(audioUrl);
+                audio.volume = 1.0;
+                audio.muted = false;
+
+                audio.addEventListener('ended', () => {
+                    URL.revokeObjectURL(audioUrl);
+                });
+                audio.addEventListener('error', () => {
+                    URL.revokeObjectURL(audioUrl);
+                });
+
+                await audio.play();
+            } catch (fallbackError) {
+                console.error("Fallback also failed:", fallbackError);
+            }
         }
     }, []);
 
@@ -440,6 +508,26 @@ export default function WebClient({ channelUuid, channelName, isAdmin }: WebClie
             }
             if (audioContextRef.current) {
                 audioContextRef.current.close();
+            }
+        };
+    }, []);
+
+    // Cleanup MediaSource on unmount or disconnect
+    useEffect(() => {
+        return () => {
+            // Clean up MediaSource and audio element
+            const audioElement = document.querySelector('#ptt-audio-player') as HTMLAudioElement;
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.src = '';
+                audioElement.remove();
+            }
+
+            if (mediaSourceRef.current) {
+                if (mediaSourceRef.current.readyState === 'open') {
+                    mediaSourceRef.current.endOfStream();
+                }
+                mediaSourceRef.current = null;
             }
         };
     }, []);
