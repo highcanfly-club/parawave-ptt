@@ -123,7 +123,7 @@ export class PTTAudioService {
 				return { valid: true }; // Skip validation if library not available
 			}
 
-			console.log(`🔍 WebM Debug: Starting validation of chunk (base64 length: ${audioData.length})`);
+			console.log(`🔍 WebM Debug: Starting validation of chunk (base64 length: ${audioData.length})\nDATA: ${audioData}`);
 
 			// Decode base64 audio data
 			const binaryString = atob(audioData);
